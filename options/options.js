@@ -734,91 +734,99 @@
 
     // Toggle network blocking
     elements.enableNetworkBlocking.addEventListener('change', async () => {
+      const enabled = elements.enableNetworkBlocking.checked;
+      await setStorage({ networkBlockingEnabled: enabled });
       try {
-        await sendMessage({ type: 'TOGGLE_NETWORK_BLOCKING', enabled: elements.enableNetworkBlocking.checked });
-      } catch (e) {
-        await setStorage({ networkBlockingEnabled: elements.enableNetworkBlocking.checked });
-      }
+        await sendMessage({ type: 'TOGGLE_NETWORK_BLOCKING', enabled });
+      } catch (e) {}
     });
 
     // Toggle URL cleaning
     elements.enableUrlCleaning.addEventListener('change', async () => {
+      const enabled = elements.enableUrlCleaning.checked;
+      await setStorage({ urlCleaningEnabled: enabled });
       try {
-        await sendMessage({ type: 'TOGGLE_URL_CLEANING', enabled: elements.enableUrlCleaning.checked });
-      } catch (e) {
-        await setStorage({ urlCleaningEnabled: elements.enableUrlCleaning.checked });
-      }
+        await sendMessage({ type: 'TOGGLE_URL_CLEANING', enabled });
+      } catch (e) {}
     });
 
     // Toggle cookie consent
     elements.enableCookieConsent.addEventListener('change', async () => {
-      await sendMessage({ type: 'TOGGLE_COOKIE_CONSENT', enabled: elements.enableCookieConsent.checked });
+      const enabled = elements.enableCookieConsent.checked;
+      await setStorage({ cookieConsentEnabled: enabled });
+      try {
+        await sendMessage({ type: 'TOGGLE_COOKIE_CONSENT', enabled });
+      } catch (e) {}
     });
 
     // Toggle annoyance blocking
     elements.enableAnnoyanceBlocking.addEventListener('change', async () => {
-      await sendMessage({ type: 'TOGGLE_ANNOYANCE_BLOCKING', enabled: elements.enableAnnoyanceBlocking.checked });
+      const enabled = elements.enableAnnoyanceBlocking.checked;
+      await setStorage({ annoyanceBlockingEnabled: enabled });
+      try {
+        await sendMessage({ type: 'TOGGLE_ANNOYANCE_BLOCKING', enabled });
+      } catch (e) {}
     });
 
     // Toggle ping protection
     elements.enablePingProtection.addEventListener('change', async () => {
+      const enabled = elements.enablePingProtection.checked;
+      await setStorage({ pingProtectionEnabled: enabled });
       try {
-        await sendMessage({ type: 'TOGGLE_PING_PROTECTION', enabled: elements.enablePingProtection.checked });
-      } catch (e) {
-        await setStorage({ pingProtectionEnabled: elements.enablePingProtection.checked });
-      }
+        await sendMessage({ type: 'TOGGLE_PING_PROTECTION', enabled });
+      } catch (e) {}
     });
 
     // Toggle referrer stripping
     elements.enableReferrerStripping.addEventListener('change', async () => {
+      const enabled = elements.enableReferrerStripping.checked;
+      await setStorage({ referrerStrippingEnabled: enabled });
       try {
-        await sendMessage({ type: 'TOGGLE_REFERRER_STRIPPING', enabled: elements.enableReferrerStripping.checked });
-      } catch (e) {
-        await setStorage({ referrerStrippingEnabled: elements.enableReferrerStripping.checked });
-      }
+        await sendMessage({ type: 'TOGGLE_REFERRER_STRIPPING', enabled });
+      } catch (e) {}
     });
 
     // Toggle WebRTC protection
     elements.enableWebRTCProtection.addEventListener('change', async () => {
+      const enabled = elements.enableWebRTCProtection.checked;
+      await setStorage({ webrtcProtectionEnabled: enabled });
       try {
-        await sendMessage({ type: 'TOGGLE_WEBRTC_PROTECTION', enabled: elements.enableWebRTCProtection.checked });
-      } catch (e) {
-        await setStorage({ webrtcProtectionEnabled: elements.enableWebRTCProtection.checked });
-      }
+        await sendMessage({ type: 'TOGGLE_WEBRTC_PROTECTION', enabled });
+      } catch (e) {}
     });
 
     // Toggle phishing protection
     if (elements.enablePhishingProtection) {
       elements.enablePhishingProtection.addEventListener('change', async () => {
+        const enabled = elements.enablePhishingProtection.checked;
+        await setStorage({ phishingProtectionEnabled: enabled });
         try {
-          await sendMessage({ type: 'TOGGLE_PHISHING_PROTECTION', enabled: elements.enablePhishingProtection.checked });
-        } catch (e) {
-          await setStorage({ phishingProtectionEnabled: elements.enablePhishingProtection.checked });
-        }
+          await sendMessage({ type: 'TOGGLE_PHISHING_PROTECTION', enabled });
+        } catch (e) {}
       });
     }
 
     // Toggle telemetry blocking
     if (elements.enableTelemetryBlocking) {
       elements.enableTelemetryBlocking.addEventListener('change', async () => {
+        const enabled = elements.enableTelemetryBlocking.checked;
+        await setStorage({ telemetryBlockingEnabled: enabled });
         try {
-          await sendMessage({ type: 'TOGGLE_TELEMETRY_BLOCKING', enabled: elements.enableTelemetryBlocking.checked });
-          showToast(elements.enableTelemetryBlocking.checked ? 'Telemetry blocking enabled' : 'Telemetry blocking disabled', 'success');
-        } catch (e) {
-          await setStorage({ telemetryBlockingEnabled: elements.enableTelemetryBlocking.checked });
-        }
+          await sendMessage({ type: 'TOGGLE_TELEMETRY_BLOCKING', enabled });
+          showToast(enabled ? 'Telemetry blocking enabled' : 'Telemetry blocking disabled', 'success');
+        } catch (e) {}
       });
     }
 
     // Toggle third-party cookie blocking
     if (elements.enableThirdPartyCookieBlocking) {
       elements.enableThirdPartyCookieBlocking.addEventListener('change', async () => {
+        const enabled = elements.enableThirdPartyCookieBlocking.checked;
+        await setStorage({ thirdPartyCookieBlockingEnabled: enabled });
         try {
-          await sendMessage({ type: 'TOGGLE_THIRD_PARTY_COOKIE_BLOCKING', enabled: elements.enableThirdPartyCookieBlocking.checked });
-          showToast(elements.enableThirdPartyCookieBlocking.checked ? 'Third-party cookies blocked' : 'Third-party cookies allowed', 'success');
-        } catch (e) {
-          await setStorage({ thirdPartyCookieBlockingEnabled: elements.enableThirdPartyCookieBlocking.checked });
-        }
+          await sendMessage({ type: 'TOGGLE_THIRD_PARTY_COOKIE_BLOCKING', enabled });
+          showToast(enabled ? 'Third-party cookies blocked' : 'Third-party cookies allowed', 'success');
+        } catch (e) {}
       });
     }
 
