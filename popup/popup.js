@@ -190,6 +190,13 @@
     }
   }
 
+  // Reload the active tab so toggled settings take effect on the page
+  function reloadActiveTab() {
+    if (currentTab && currentTab.id && api.tabs) {
+      api.tabs.reload(currentTab.id).catch(() => {});
+    }
+  }
+
   // ============================================
   // INITIALIZATION
   // ============================================
@@ -317,6 +324,8 @@
       try {
         await sendToContentScript({ type: 'TOGGLE', enabled });
       } catch (err) {}
+
+      reloadActiveTab();
     });
 
     // Toggle site whitelist
@@ -354,6 +363,7 @@
         } catch (err) {}
 
         showToast(whitelist ? 'Protection disabled on ' + hostname : 'Protection enabled on ' + hostname);
+        reloadActiveTab();
       }
     });
 
@@ -365,6 +375,7 @@
       try {
         await sendToContentScript({ type: 'TOGGLE_PAYWALL', enabled });
       } catch (err) {}
+      reloadActiveTab();
     });
 
     // Toggle JavaScript for this site
@@ -395,34 +406,45 @@
 
     // Network blocking toggle
     elements.networkBlockingToggle.addEventListener('change', async () => {
+      const enabled = elements.networkBlockingToggle.checked;
+      // Persist to storage.local FIRST (ensures setting survives even if background message fails)
+      await setStorage({ networkBlockingEnabled: enabled });
       try {
-        await sendToBackground({ type: 'TOGGLE_NETWORK_BLOCKING', enabled: elements.networkBlockingToggle.checked });
+        await sendToBackground({ type: 'TOGGLE_NETWORK_BLOCKING', enabled });
       } catch (err) {}
+      reloadActiveTab();
     });
 
     // URL cleaning toggle
     elements.urlCleaningToggle.addEventListener('change', async () => {
+      const enabled = elements.urlCleaningToggle.checked;
+      await setStorage({ urlCleaningEnabled: enabled });
       try {
-        await sendToBackground({ type: 'TOGGLE_URL_CLEANING', enabled: elements.urlCleaningToggle.checked });
+        await sendToBackground({ type: 'TOGGLE_URL_CLEANING', enabled });
       } catch (err) {}
+      reloadActiveTab();
     });
 
     // Cookie consent toggle
     elements.cookieConsentToggle.addEventListener('change', async () => {
       const enabled = elements.cookieConsentToggle.checked;
+      await setStorage({ cookieConsentEnabled: enabled });
       try {
         await sendToBackground({ type: 'TOGGLE_COOKIE_CONSENT', enabled });
         await sendToContentScript({ type: 'TOGGLE_COOKIE_CONSENT', enabled });
       } catch (err) {}
+      reloadActiveTab();
     });
 
     // Annoyance blocker toggle
     elements.annoyanceToggle.addEventListener('change', async () => {
       const enabled = elements.annoyanceToggle.checked;
+      await setStorage({ annoyanceBlockingEnabled: enabled });
       try {
         await sendToBackground({ type: 'TOGGLE_ANNOYANCE_BLOCKING', enabled });
         await sendToContentScript({ type: 'TOGGLE_ANNOYANCE_BLOCKING', enabled });
       } catch (err) {}
+      reloadActiveTab();
     });
 
     // Remove paywall button

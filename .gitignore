@@ -1,0 +1,91 @@
+# ============================================
+# WebSuddhi - Git Ignore
+# ============================================
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# IDE and Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Build outputs
+dist/
+build/
+*.zip
+*.crx
+*.xpi
+*.pem
+web-ext-artifacts/
+
+# Safari / Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcuserstate
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+Pods/
+
+# Local development
+.env
+.env.local
+*.local
+local-settings.json
+
+# Claude Code / AI tools
+.claude/
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Documentation builds
+docs/_build/
+
+# Dev-only tools (don't ship)
+icons/convert-icons.js
+icons/convert-icons.sh
+
+# Secrets (never commit)
+*.key
+secrets.json
+credentials.json
