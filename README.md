@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="#installation"><img src="https://img.shields.io/badge/version-2.0.0-blue?style=flat-square" alt="Version"></a>
+  <a href="#installation"><img src="https://img.shields.io/badge/version-2.1.0-blue?style=flat-square" alt="Version"></a>
   <a href="#supported-browsers"><img src="https://img.shields.io/badge/Chrome-MV3-4285F4?style=flat-square&logo=google-chrome&logoColor=white" alt="Chrome"></a>
   <a href="#supported-browsers"><img src="https://img.shields.io/badge/Firefox-MV2-FF7139?style=flat-square&logo=firefox-browser&logoColor=white" alt="Firefox"></a>
   <a href="#supported-browsers"><img src="https://img.shields.io/badge/Safari-macOS%20%7C%20iOS-000?style=flat-square&logo=safari&logoColor=white" alt="Safari"></a>
@@ -366,74 +366,48 @@ Piano, Poool, Tinypass, NYTimes, WSJ, Washington Post, Medium, Economist, Bloomb
 
 ## Architecture
 
-```
-web-suddhi/
-├── manifest.json                    # Chrome/Edge MV3 manifest
-├── manifest-mv2.json                # Firefox MV2 manifest
-│
-├── background/                      # Service worker (MV3) / Background page (MV2)
-│   ├── background.js                # Central message handler, settings, storage
-│   ├── network-blocker.js           # declarativeNetRequest (MV3) / webRequest (MV2)
-│   ├── url-cleaner.js               # Tracking parameter stripping
-│   ├── stats-manager.js             # In-memory stats with periodic flush
-│   ├── privacy.js                   # Referrer, WebRTC, ping protection
-│   └── filter-lists.js              # ABP filter list parser & auto-updater
-│
-├── content/                         # Content scripts (injected into pages)
-│   ├── ad-blocker.js                # Cosmetic blocking, element picker, zap mode
-│   ├── ad-blocker.css               # Overlay styles, pick mode UI
-│   ├── cookie-consent.js            # CMP detection & auto-dismiss
-│   └── annoyance-blocker.js         # Widget/popup/prompt hiding
-│
-├── rules/                           # Static declarativeNetRequest rulesets
-│   ├── ad-domains.json              # 120 ad domain blocking rules (IDs 1-120)
-│   ├── tracking-domains.json        # 103 tracking domain rules (IDs 5001-5103)
-│   └── tracking-params.json         # URL parameter stripping (ID 10001)
-│
-├── popup/                           # Browser action popup
-│   ├── popup.html
-│   ├── popup.js
-│   └── popup.css
-│
-├── options/                         # Full options/settings page
-│   ├── options.html
-│   ├── options.js
-│   └── options.css
-│
-├── icons/                           # Extension icons (16, 32, 48, 128)
-│
-├── safari/                          # Safari macOS extension wrapper
-│   └── WebSuddhi Extension/
-│
-└── safari-iOS/                      # Safari iOS standalone build
-    └── WebSuddhi/iOS/
-        └── WebSuddhi Extension/
-            ├── manifest.json
-            ├── background.js         # Standalone background (browser API)
-            ├── content.js            # All content features in one file
-            ├── popup.html
-            └── popup.js
+```mermaid
+flowchart TB
+    subgraph UI["UI Layer"]
+        popup["Popup"]
+        options["Options Page"]
+    end
+
+    subgraph BG["Background — Service Worker (MV3) / Background Page (MV2)"]
+        router["background.js — Message Router"]
+        nb["network-blocker.js — DNR / webRequest"]
+        uc["url-cleaner.js — Param Stripping"]
+        sm["stats-manager.js — Stats + Flush"]
+        pr["privacy.js — Referrer / WebRTC / Ping"]
+        fl["filter-lists.js — ABP Parser"]
+        pd["phishing-detector.js — Brand Impersonation"]
+    end
+
+    subgraph CS["Content Scripts — Injected per page"]
+        ab["ad-blocker.js — Cosmetic Hiding / Pick / Zap"]
+        cc["cookie-consent.js — CMP Auto-Dismiss"]
+        ann["annoyance-blocker.js — Widgets / Popups"]
+    end
+
+    subgraph Rules["Static DNR Rulesets"]
+        ad["ad-domains.json — 120 rules"]
+        tr["tracking-domains.json — 103 rules"]
+        tp["tracking-params.json — URL params"]
+    end
+
+    utils["shared/utils.js — Storage / DOM / Validation"]
+
+    popup & options <-->|"runtime.sendMessage"| router
+    router -->|"importScripts (MV3)"| nb & uc & sm & pr & fl & pd
+    router <-->|"runtime.sendMessage"| ab & cc & ann
+    nb ---|"reads"| Rules
+    utils -.->|"used by"| router
+    utils -.->|"used by"| ab
 ```
 
-### Module Communication
+All background modules share a single namespace via `self.WebSuddhi = {}` and are loaded by `importScripts()` in MV3. In MV2 (Firefox), they load as separate scripts in the background page. Content scripts communicate with the background exclusively through `runtime.sendMessage`.
 
-```
-MV3 Service Worker
-══════════════════
-background.js  ←── importScripts() ──→  network-blocker.js
-     │                                   url-cleaner.js
-     │                                   stats-manager.js
-     │                                   privacy.js
-     │                                   filter-lists.js
-     │
-     │         Shared namespace: self.WebSuddhi = {}
-     │
-     ▼
-Messages ←──── browser.runtime.sendMessage ────→ Content Scripts
-                                                  (ad-blocker.js,
-                                                   cookie-consent.js,
-                                                   annoyance-blocker.js)
-```
+Safari iOS maintains standalone copies of background, content, and popup scripts under `safari-iOS/` that use the `browser.*` API directly.
 
 ### DNR Rule ID Ranges
 
@@ -628,7 +602,20 @@ Make sure you're loading the correct manifest:
 
 ## Changelog
 
-### v2.0.0 (Current)
+### v2.1.0 (Current)
+- Fixed XSS vulnerability in phishing warning overlay (safe DOM construction)
+- Added Content Security Policy to both MV3 and MV2 manifests
+- Fixed LRU cache eviction (O(1) using Map delete+re-insert)
+- Fixed pick-element "Block" button not clickable (pointer-events)
+- Fixed punycode false positives in phishing detector
+- Added message validation to background message handler
+- Safe tab messaging (graceful handling of closed/navigated tabs)
+- Configurable toast notification duration
+- Deduplicated storage helpers into shared/utils.js
+- Added ARIA labels to popup UI
+- Network-blocker polling now stops when window is unfocused
+
+### v2.0.0
 - Network-level request blocking (223 declarativeNetRequest rules)
 - URL tracking parameter stripping (60+ params)
 - Cookie consent auto-dismiss (9 CMP frameworks + generic fallback)
