@@ -1,0 +1,4 @@
+/* WebSuddhi - iOS Content Styles */
+.websuddhi-hidden { display: none !important; }
+.websuddhi-pick-mode { cursor: crosshair !important; }
+.websuddhi-pick-highlight { outline: 3px solid #0ea5e9 !important; }

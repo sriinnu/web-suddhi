@@ -1,0 +1,55 @@
+name: WebSuddhi
+options:
+  bundleIdPrefix: com.websuddhi
+  deploymentTarget:
+    iOS: "15.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  WebSuddhi:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        excludes:
+          - "**/.DS_Store"
+      - path: WebSuddhi Extension
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        INFOPLIST_FILE: App/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.websuddhi.app
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: YES
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    dependencies:
+      - target: WebSuddhi Extension
+        embed: true
+        codeSign: true
+
+  WebSuddhi Extension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: WebSuddhi Extension
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        INFOPLIST_FILE: WebSuddhi Extension/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.websuddhi.app.extension
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        SKIP_INSTALL: YES
+        GENERATE_INFOPLIST_FILE: NO

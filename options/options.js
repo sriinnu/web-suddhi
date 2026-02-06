@@ -1,0 +1,1319 @@
+// WebSuddhi - Options Page Script
+// Universal: Chrome, Edge, Firefox, Safari
+
+(function() {
+  'use strict';
+
+  // Logging helpers
+  const logError = (...args) => {
+    if (self.WebSuddhi && self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
+      self.WebSuddhi.utils.error(...args);
+    } else {
+      console.error('[WebSuddhi]', ...args);
+    }
+  };
+
+  // DOM helpers
+  const clearElement = (el) => {
+    if (!el) return;
+    while (el.firstChild) {
+      el.removeChild(el.firstChild);
+    }
+  };
+
+  // Cross-browser API
+  const api = (typeof browser !== 'undefined' && browser.runtime) ? browser : chrome;
+
+  const elements = {
+    // Settings toggles
+    enableProtection: document.getElementById('enableProtection'),
+    enablePaywall: document.getElementById('enablePaywall'),
+    enableNetworkBlocking: document.getElementById('enableNetworkBlocking'),
+    enableUrlCleaning: document.getElementById('enableUrlCleaning'),
+    enableCookieConsent: document.getElementById('enableCookieConsent'),
+    enableAnnoyanceBlocking: document.getElementById('enableAnnoyanceBlocking'),
+    enablePingProtection: document.getElementById('enablePingProtection'),
+    enableReferrerStripping: document.getElementById('enableReferrerStripping'),
+    enableWebRTCProtection: document.getElementById('enableWebRTCProtection'),
+    enablePhishingProtection: document.getElementById('enablePhishingProtection'),
+    enableTelemetryBlocking: document.getElementById('enableTelemetryBlocking'),
+    enableThirdPartyCookieBlocking: document.getElementById('enableThirdPartyCookieBlocking'),
+    enableSync: document.getElementById('enableSync'),
+    languageFilters: document.getElementById('languageFilters'),
+    // Rules
+    rulesList: document.getElementById('rulesList'),
+    rulesCount: document.getElementById('rulesCount'),
+    navRulesCount: document.getElementById('navRulesCount'),
+    emptyState: document.getElementById('emptyState'),
+    siteInput: document.getElementById('siteInput'),
+    addSiteBtn: document.getElementById('addSiteBtn'),
+    whitelistList: document.getElementById('whitelistList'),
+    // Stats
+    networkBlocked: document.getElementById('networkBlocked'),
+    cosmeticBlocked: document.getElementById('cosmeticBlocked'),
+    totalBlocked: document.getElementById('totalBlocked'),
+    dataSavedTotal: document.getElementById('dataSavedTotal'),
+    topDomainsChart: document.getElementById('topDomainsChart'),
+    topSitesChart: document.getElementById('topSitesChart'),
+    resetStatsBtn: document.getElementById('resetStatsBtn'),
+    // Import/Export
+    exportBtn: document.getElementById('exportBtn'),
+    importBtn: document.getElementById('importBtn'),
+    importFile: document.getElementById('importFile'),
+    importExportStatus: document.getElementById('importExportStatus'),
+    // Filter lists
+    filterListItems: document.getElementById('filterListItems'),
+    subscriptionNameInput: document.getElementById('subscriptionNameInput'),
+    subscriptionUrlInput: document.getElementById('subscriptionUrlInput'),
+    addSubscriptionBtn: document.getElementById('addSubscriptionBtn'),
+    updateAllFiltersBtn: document.getElementById('updateAllFiltersBtn'),
+    // About links
+    rateExtension: document.getElementById('rateExtension'),
+    viewSource: document.getElementById('viewSource'),
+    // Request log
+    requestLog: document.getElementById('requestLog'),
+    logCount: document.getElementById('logCount'),
+    clearLogBtn: document.getElementById('clearLogBtn'),
+    enableLogging: document.getElementById('enableLogging'),
+    // Toast duration
+    toastDuration: document.getElementById('toastDuration'),
+    toastDurationValue: document.getElementById('toastDurationValue'),
+    // Toast container
+    toastContainer: document.getElementById('toastContainer')
+  };
+
+  // ============================================
+  // CROSS-BROWSER API
+  // ============================================
+  function getStorage(keys) {
+    return new Promise((resolve, reject) => {
+      if (api.storage) {
+        const result = api.storage.local.get(keys);
+        if (result && typeof result.then === 'function') {
+          result.then(resolve).catch(reject);
+        } else {
+          api.storage.local.get(keys, (data) => {
+            if (api.runtime.lastError) reject(api.runtime.lastError);
+            else resolve(data);
+          });
+        }
+        return;
+      }
+      reject(new Error('No storage API'));
+    });
+  }
+
+  function setStorage(data) {
+    return new Promise((resolve, reject) => {
+      if (api.storage) {
+        const result = api.storage.local.set(data);
+        if (result && typeof result.then === 'function') {
+          result.then(resolve).catch(reject);
+        } else {
+          api.storage.local.set(data, () => {
+            if (api.runtime.lastError) reject(api.runtime.lastError);
+            else resolve();
+          });
+        }
+        return;
+      }
+      reject(new Error('No storage API'));
+    });
+  }
+
+  function sendMessage(message) {
+    return new Promise((resolve, reject) => {
+      const result = api.runtime.sendMessage(message);
+      if (result && typeof result.then === 'function') {
+        result.then(resolve).catch(reject);
+      } else {
+        api.runtime.sendMessage(message, (response) => {
+          if (api.runtime.lastError) reject(api.runtime.lastError);
+          else resolve(response);
+        });
+      }
+    });
+  }
+
+  // ============================================
+  // INITIALIZATION
+  // ============================================
+  let loggingEnabled = true;
+  let logPollInterval = null;
+
+  async function init() {
+    try {
+      await Promise.all([
+        loadSettings(),
+        loadTheme(),
+        loadRules(),
+        loadWhitelist(),
+        loadStats(),
+        loadFilterLists(),
+        loadRequestLog(),
+        loadPerformanceStats()
+      ]);
+      setupEventListeners();
+      // Only start polling if logging is enabled
+      if (loggingEnabled) {
+        startLogPolling();
+      }
+    } catch (err) {
+      logError('Options init error:', err);
+    }
+  }
+
+  // ============================================
+  // LOAD FUNCTIONS
+  // ============================================
+  async function loadSettings() {
+    const storage = await getStorage([
+      'enabled', 'paywallEnabled', 'networkBlockingEnabled', 'urlCleaningEnabled',
+      'cookieConsentEnabled', 'annoyanceBlockingEnabled',
+      'pingProtectionEnabled', 'referrerStrippingEnabled', 'webrtcProtectionEnabled',
+      'phishingProtectionEnabled', 'telemetryBlockingEnabled', 'thirdPartyCookieBlockingEnabled',
+      'syncEnabled', 'enabledLanguageFilters', 'loggingEnabled', 'toastDuration'
+    ]);
+
+    // Load logging setting (default true if not set)
+    loggingEnabled = storage.loggingEnabled !== false;
+    if (elements.enableLogging) {
+      elements.enableLogging.checked = loggingEnabled;
+    }
+    elements.enableProtection.checked = storage.enabled !== false;
+    elements.enablePaywall.checked = storage.paywallEnabled !== false;
+    elements.enableNetworkBlocking.checked = storage.networkBlockingEnabled !== false;
+    elements.enableUrlCleaning.checked = storage.urlCleaningEnabled !== false;
+    elements.enableCookieConsent.checked = storage.cookieConsentEnabled !== false;
+    elements.enableAnnoyanceBlocking.checked = storage.annoyanceBlockingEnabled !== false;
+    elements.enablePingProtection.checked = storage.pingProtectionEnabled !== false;
+    elements.enableReferrerStripping.checked = storage.referrerStrippingEnabled === true;
+    elements.enableWebRTCProtection.checked = storage.webrtcProtectionEnabled === true;
+    if (elements.enablePhishingProtection) {
+      elements.enablePhishingProtection.checked = storage.phishingProtectionEnabled !== false;
+    }
+    if (elements.enableTelemetryBlocking) {
+      elements.enableTelemetryBlocking.checked = storage.telemetryBlockingEnabled === true;
+    }
+    if (elements.enableThirdPartyCookieBlocking) {
+      elements.enableThirdPartyCookieBlocking.checked = storage.thirdPartyCookieBlockingEnabled === true;
+    }
+    if (elements.enableSync) {
+      elements.enableSync.checked = storage.syncEnabled === true;
+    }
+
+    // Toast duration
+    if (elements.toastDuration) {
+      const duration = storage.toastDuration || 3;
+      elements.toastDuration.value = duration;
+      if (elements.toastDurationValue) {
+        elements.toastDurationValue.textContent = duration + 's';
+      }
+    }
+
+    // Load language filter states based on actual subscriptions
+    await loadLanguageFilterStates();
+  }
+
+  // Load language filter checkbox states by checking actual subscriptions
+  async function loadLanguageFilterStates() {
+    if (!elements.languageFilters) return;
+
+    try {
+      const response = await sendMessage({ type: 'GET_FILTER_SUBSCRIPTIONS' });
+      if (response?.success && response.subscriptions) {
+        const subscribedUrls = new Set(response.subscriptions.map(s => s.url));
+
+        elements.languageFilters.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+          const url = cb.dataset.url;
+          cb.checked = subscribedUrls.has(url);
+        });
+
+        // Update enabledLanguageFilters storage to stay in sync
+        const enabledLangFilters = [];
+        elements.languageFilters.querySelectorAll('input[type="checkbox"]:checked').forEach(c => {
+          enabledLangFilters.push(c.dataset.lang);
+        });
+        await setStorage({ enabledLanguageFilters: enabledLangFilters });
+      }
+    } catch (err) {
+      // Fallback to storage-based state
+      const storage = await getStorage(['enabledLanguageFilters']);
+      const enabledLangFilters = storage.enabledLanguageFilters || [];
+      elements.languageFilters.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.checked = enabledLangFilters.includes(cb.dataset.lang);
+      });
+    }
+  }
+
+  async function loadTheme() {
+    const storage = await getStorage(['theme']);
+    const theme = storage.theme || 'system';
+    applyTheme(theme);
+    updateThemeButtons(theme);
+  }
+
+  function applyTheme(theme) {
+    if (theme === 'system') {
+      document.documentElement.removeAttribute('data-theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+  }
+
+  function updateThemeButtons(activeTheme) {
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.theme === activeTheme);
+    });
+  }
+
+  async function loadRequestLog() {
+    try {
+      const response = await sendMessage({ type: 'GET_REQUEST_LOG' });
+      if (response?.success && response.log) {
+        renderRequestLog(response.log);
+      }
+    } catch (err) {
+      logError('Failed to load request log:', err);
+    }
+  }
+
+  function renderRequestLog(log) {
+    if (!elements.requestLog) return;
+
+    elements.logCount.textContent = log.length;
+
+    // Clear container using safe method
+    while (elements.requestLog.firstChild) {
+      elements.requestLog.removeChild(elements.requestLog.firstChild);
+    }
+
+    if (log.length === 0) {
+      const emptyDiv = document.createElement('div');
+      emptyDiv.className = 'log-empty';
+      emptyDiv.textContent = 'No blocked requests logged yet';
+      elements.requestLog.appendChild(emptyDiv);
+      return;
+    }
+
+    // Show most recent first
+    const sortedLog = [...log].reverse();
+
+    for (const entry of sortedLog) {
+      const div = document.createElement('div');
+      div.className = 'log-entry ' + entry.type;
+
+      const relativeTime = getRelativeTime(entry.timestamp);
+      const displayText = entry.type === 'network' ? entry.url : entry.selector;
+
+      // Type badge
+      const typeSpan = document.createElement('span');
+      typeSpan.className = 'log-type';
+      typeSpan.textContent = entry.type;
+      div.appendChild(typeSpan);
+
+      // Category badge for network blocks
+      if (entry.type === 'network' && entry.category) {
+        const categorySpan = document.createElement('span');
+        categorySpan.className = 'log-category ' + (entry.severity || 'low');
+        categorySpan.textContent = entry.category;
+        categorySpan.title = entry.trackerDesc || entry.category;
+        div.appendChild(categorySpan);
+      }
+
+      // Details section
+      const detailsDiv = document.createElement('div');
+      detailsDiv.className = 'log-details';
+
+      const urlDiv = document.createElement('div');
+      urlDiv.className = 'log-url';
+      urlDiv.textContent = displayText || 'Unknown';
+      detailsDiv.appendChild(urlDiv);
+
+      const metaDiv = document.createElement('div');
+      metaDiv.className = 'log-meta';
+      metaDiv.textContent = entry.site || 'Unknown site';
+      detailsDiv.appendChild(metaDiv);
+
+      div.appendChild(detailsDiv);
+
+      // Time
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'log-time';
+      timeSpan.textContent = relativeTime;
+      div.appendChild(timeSpan);
+
+      elements.requestLog.appendChild(div);
+    }
+  }
+
+  function getRelativeTime(timestamp) {
+    if (!timestamp) return '';
+    const now = Date.now();
+    const diff = now - timestamp;
+
+    if (diff < 1000) return 'just now';
+    if (diff < 60000) return Math.floor(diff / 1000) + 's ago';
+    if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+    return new Date(timestamp).toLocaleDateString();
+  }
+
+  function startLogPolling() {
+    // Poll every 2 seconds for new log entries
+    logPollInterval = setInterval(async () => {
+      if (loggingEnabled) {
+        await loadRequestLog();
+      }
+    }, 2000);
+  }
+
+  function stopLogPolling() {
+    if (logPollInterval) {
+      clearInterval(logPollInterval);
+      logPollInterval = null;
+    }
+  }
+
+  async function loadRules() {
+    const storage = await getStorage(['blockedSelectors']);
+    const selectors = storage.blockedSelectors || [];
+    elements.rulesCount.textContent = selectors.length;
+    if (elements.navRulesCount) {
+      elements.navRulesCount.textContent = selectors.length;
+    }
+
+    // Clear existing rules
+    const existingRules = elements.rulesList.querySelectorAll('.rule-item');
+    existingRules.forEach(el => el.remove());
+
+    if (selectors.length === 0) {
+      elements.emptyState.style.display = 'block';
+      return;
+    }
+
+    elements.emptyState.style.display = 'none';
+
+    selectors.forEach(item => {
+      const ruleEl = createRuleElement(item);
+      elements.rulesList.appendChild(ruleEl);
+    });
+  }
+
+  async function loadWhitelist() {
+    const storage = await getStorage(['whitelistedSites']);
+    const sites = storage.whitelistedSites || [];
+    clearElement(elements.whitelistList);
+
+    sites.forEach(site => {
+      const item = createWhitelistItem(site);
+      elements.whitelistList.appendChild(item);
+    });
+  }
+
+  async function loadStats(period) {
+    try {
+      const response = await sendMessage({ type: 'GET_ENHANCED_STATS' });
+      if (response?.success && response.stats) {
+        const stats = response.stats;
+
+        if (!period || period === 'all') {
+          elements.networkBlocked.textContent = formatNumber(stats.totalNetworkBlocked || 0);
+          elements.cosmeticBlocked.textContent = formatNumber(stats.totalCosmeticBlocked || 0);
+          elements.totalBlocked.textContent = formatNumber(stats.totalBlocked || 0);
+        } else if (period === 'today') {
+          const today = stats.today || {};
+          elements.networkBlocked.textContent = formatNumber(today.networkBlocked || 0);
+          elements.cosmeticBlocked.textContent = formatNumber(today.cosmeticBlocked || 0);
+          elements.totalBlocked.textContent = formatNumber((today.networkBlocked || 0) + (today.cosmeticBlocked || 0));
+        } else {
+          const days = parseInt(period);
+          const periodResponse = await sendMessage({ type: 'GET_STATS_FOR_PERIOD', days });
+          if (periodResponse?.success) {
+            const ps = periodResponse.stats;
+            elements.networkBlocked.textContent = formatNumber(ps.network || 0);
+            elements.cosmeticBlocked.textContent = formatNumber(ps.cosmetic || 0);
+            elements.totalBlocked.textContent = formatNumber((ps.network || 0) + (ps.cosmetic || 0));
+          }
+        }
+
+        // Render charts
+        renderBarChart(elements.topDomainsChart, stats.today?.topDomains || {}, 10);
+        renderBarChart(elements.topSitesChart, stats.today?.perSite || {}, 10, true);
+      }
+    } catch (err) {
+      elements.totalBlocked.textContent = '0';
+      elements.networkBlocked.textContent = '0';
+      elements.cosmeticBlocked.textContent = '0';
+    }
+  }
+
+  async function loadPerformanceStats() {
+    try {
+      const response = await sendMessage({ type: 'GET_PERFORMANCE_STATS' });
+      if (response?.success && response.performanceStats) {
+        const perfStats = response.performanceStats;
+        if (elements.dataSavedTotal) {
+          elements.dataSavedTotal.textContent = formatDataSize(perfStats.estimatedDataSaved || 0);
+        }
+        if (elements.timeSavedTotal) {
+          elements.timeSavedTotal.textContent = formatTimeSaved(perfStats.estimatedTimeSaved || 0);
+        }
+      }
+    } catch (err) {
+      if (elements.dataSavedTotal) elements.dataSavedTotal.textContent = '0 MB';
+      if (elements.timeSavedTotal) elements.timeSavedTotal.textContent = '0s';
+    }
+  }
+
+  // ============================================
+  // FILTER LISTS
+  // ============================================
+  async function loadFilterLists() {
+    try {
+      const response = await sendMessage({ type: 'GET_FILTER_SUBSCRIPTIONS' });
+      if (response?.success) {
+        renderFilterLists(response.subscriptions || []);
+      }
+    } catch (err) {
+      logError('Failed to load filter lists:', err);
+    }
+  }
+
+  function renderFilterLists(subscriptions) {
+    clearElement(elements.filterListItems);
+
+    for (const sub of subscriptions) {
+      const item = document.createElement('div');
+      item.className = 'filter-list-item';
+
+      const lastUpdated = sub.lastUpdated
+        ? new Date(sub.lastUpdated).toLocaleDateString()
+        : 'Never';
+
+      // Create label with toggle
+      const label = document.createElement('label');
+      label.className = 'toggle-label compact';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.dataset.subId = sub.id;
+      if (sub.enabled) checkbox.checked = true;
+
+      const toggleSwitch = document.createElement('span');
+      toggleSwitch.className = 'toggle-switch small';
+      const slider = document.createElement('span');
+      slider.className = 'slider';
+      toggleSwitch.appendChild(slider);
+
+      const settingText = document.createElement('span');
+      settingText.className = 'setting-text';
+
+      const title = document.createElement('span');
+      title.className = 'setting-title';
+      title.textContent = sub.name;
+
+      const desc = document.createElement('span');
+      desc.className = 'setting-desc';
+      desc.textContent = (sub.builtin ? 'Built-in' : (sub.url || '')) +
+        ' | ' + (sub.ruleCount || 0) + ' rules | Updated: ' + lastUpdated;
+
+      settingText.appendChild(title);
+      settingText.appendChild(desc);
+
+      label.appendChild(checkbox);
+      label.appendChild(toggleSwitch);
+      label.appendChild(settingText);
+      item.appendChild(label);
+
+      // Remove button (for custom subscriptions only)
+      if (!sub.builtin) {
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'rule-delete';
+        removeBtn.dataset.removeSub = sub.id;
+        removeBtn.title = 'Remove';
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('width', '18');
+        svg.setAttribute('height', '18');
+        svg.setAttribute('fill', 'currentColor');
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z');
+        svg.appendChild(path);
+        removeBtn.appendChild(svg);
+        item.appendChild(removeBtn);
+
+        // Remove button listener
+        removeBtn.addEventListener('click', async () => {
+          try {
+            await sendMessage({ type: 'REMOVE_FILTER_SUBSCRIPTION', subscriptionId: sub.id });
+            item.remove();
+          } catch (e) {}
+        });
+      }
+
+      // Toggle listener
+      checkbox.addEventListener('change', async () => {
+        try {
+          await sendMessage({
+            type: 'TOGGLE_FILTER_SUBSCRIPTION',
+            subscriptionId: sub.id,
+            enabled: checkbox.checked
+          });
+        } catch (e) {}
+      });
+
+      elements.filterListItems.appendChild(item);
+    }
+  }
+
+  // ============================================
+  // BAR CHARTS
+  // ============================================
+  function renderBarChart(container, data, limit, isSiteData) {
+    if (!container) return;
+    clearElement(container);
+
+    let entries;
+    if (isSiteData) {
+      entries = Object.entries(data)
+        .map(([key, val]) => [key, (val.network || 0) + (val.cosmetic || 0)])
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit);
+    } else {
+      entries = Object.entries(data)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit);
+    }
+
+    if (entries.length === 0) {
+      const emptyDiv = document.createElement('div');
+      emptyDiv.className = 'empty-chart';
+      emptyDiv.textContent = 'No data yet';
+      container.appendChild(emptyDiv);
+      return;
+    }
+
+    const maxVal = entries[0][1] || 1;
+
+    for (const [label, value] of entries) {
+      const row = document.createElement('div');
+      row.className = 'bar-row';
+
+      const pct = Math.round((value / maxVal) * 100);
+
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'bar-label';
+      labelSpan.textContent = label;
+
+      const trackDiv = document.createElement('div');
+      trackDiv.className = 'bar-track';
+      const fillDiv = document.createElement('div');
+      fillDiv.className = 'bar-fill';
+      fillDiv.style.width = pct + '%';
+      trackDiv.appendChild(fillDiv);
+
+      const valueSpan = document.createElement('span');
+      valueSpan.className = 'bar-value';
+      valueSpan.textContent = formatNumber(value);
+
+      row.appendChild(labelSpan);
+      row.appendChild(trackDiv);
+      row.appendChild(valueSpan);
+
+      container.appendChild(row);
+    }
+  }
+
+  // ============================================
+  // ELEMENT CREATION
+  // ============================================
+  function createRuleElement(item) {
+    const div = document.createElement('div');
+    div.className = 'rule-item';
+    div.dataset.selector = item.selector;
+
+    const date = item.date ? new Date(item.date).toLocaleDateString() : 'Unknown';
+
+    // Create rule info section
+    const ruleInfo = document.createElement('div');
+    ruleInfo.className = 'rule-info';
+
+    const selectorCode = document.createElement('code');
+    selectorCode.className = 'rule-selector';
+    selectorCode.textContent = item.selector;
+
+    const ruleMeta = document.createElement('div');
+    ruleMeta.className = 'rule-meta';
+    ruleMeta.textContent = (item.hostname || 'unknown') + ' - ' + date;
+
+    ruleInfo.appendChild(selectorCode);
+    ruleInfo.appendChild(ruleMeta);
+
+    // Create delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'rule-delete';
+    deleteBtn.title = 'Remove rule';
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', '18');
+    svg.setAttribute('height', '18');
+    svg.setAttribute('fill', 'currentColor');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z');
+    svg.appendChild(path);
+    deleteBtn.appendChild(svg);
+
+    div.appendChild(ruleInfo);
+    div.appendChild(deleteBtn);
+
+    deleteBtn.addEventListener('click', async () => {
+      try {
+        await sendMessage({ type: 'REMOVE_SELECTOR', selector: item.selector });
+        div.remove();
+        const count = parseInt(elements.rulesCount.textContent) - 1;
+        elements.rulesCount.textContent = count;
+        if (elements.navRulesCount) {
+          elements.navRulesCount.textContent = count;
+        }
+        if (count === 0) {
+          elements.emptyState.style.display = 'block';
+        }
+        showToast('Rule removed', 'success');
+      } catch (err) {
+        logError('Failed to remove selector:', err);
+        showToast('Failed to remove rule', 'error');
+      }
+    });
+
+    return div;
+  }
+
+  function createWhitelistItem(site) {
+    const div = document.createElement('div');
+    div.className = 'whitelist-item';
+    div.dataset.site = site;
+
+    const siteSpan = document.createElement('span');
+    siteSpan.textContent = site;
+
+    const removeBtn = document.createElement('button');
+    removeBtn.title = 'Remove';
+    removeBtn.textContent = '\u00D7'; // × character
+
+    div.appendChild(siteSpan);
+    div.appendChild(removeBtn);
+
+    removeBtn.addEventListener('click', async () => {
+      try {
+        await sendMessage({ type: 'UNWHITELIST_SITE', hostname: site });
+        div.remove();
+      } catch (err) {
+        logError('Failed to unwhitelist:', err);
+      }
+    });
+
+    return div;
+  }
+
+  // ============================================
+  // EVENT LISTENERS
+  // ============================================
+  function setupEventListeners() {
+    // Toggle protection
+    elements.enableProtection.addEventListener('change', async () => {
+      await setStorage({ enabled: elements.enableProtection.checked });
+    });
+
+    // Toggle paywall
+    elements.enablePaywall.addEventListener('change', async () => {
+      await setStorage({ paywallEnabled: elements.enablePaywall.checked });
+    });
+
+    // Toggle network blocking
+    elements.enableNetworkBlocking.addEventListener('change', async () => {
+      try {
+        await sendMessage({ type: 'TOGGLE_NETWORK_BLOCKING', enabled: elements.enableNetworkBlocking.checked });
+      } catch (e) {
+        await setStorage({ networkBlockingEnabled: elements.enableNetworkBlocking.checked });
+      }
+    });
+
+    // Toggle URL cleaning
+    elements.enableUrlCleaning.addEventListener('change', async () => {
+      try {
+        await sendMessage({ type: 'TOGGLE_URL_CLEANING', enabled: elements.enableUrlCleaning.checked });
+      } catch (e) {
+        await setStorage({ urlCleaningEnabled: elements.enableUrlCleaning.checked });
+      }
+    });
+
+    // Toggle cookie consent
+    elements.enableCookieConsent.addEventListener('change', async () => {
+      await sendMessage({ type: 'TOGGLE_COOKIE_CONSENT', enabled: elements.enableCookieConsent.checked });
+    });
+
+    // Toggle annoyance blocking
+    elements.enableAnnoyanceBlocking.addEventListener('change', async () => {
+      await sendMessage({ type: 'TOGGLE_ANNOYANCE_BLOCKING', enabled: elements.enableAnnoyanceBlocking.checked });
+    });
+
+    // Toggle ping protection
+    elements.enablePingProtection.addEventListener('change', async () => {
+      try {
+        await sendMessage({ type: 'TOGGLE_PING_PROTECTION', enabled: elements.enablePingProtection.checked });
+      } catch (e) {
+        await setStorage({ pingProtectionEnabled: elements.enablePingProtection.checked });
+      }
+    });
+
+    // Toggle referrer stripping
+    elements.enableReferrerStripping.addEventListener('change', async () => {
+      try {
+        await sendMessage({ type: 'TOGGLE_REFERRER_STRIPPING', enabled: elements.enableReferrerStripping.checked });
+      } catch (e) {
+        await setStorage({ referrerStrippingEnabled: elements.enableReferrerStripping.checked });
+      }
+    });
+
+    // Toggle WebRTC protection
+    elements.enableWebRTCProtection.addEventListener('change', async () => {
+      try {
+        await sendMessage({ type: 'TOGGLE_WEBRTC_PROTECTION', enabled: elements.enableWebRTCProtection.checked });
+      } catch (e) {
+        await setStorage({ webrtcProtectionEnabled: elements.enableWebRTCProtection.checked });
+      }
+    });
+
+    // Toggle phishing protection
+    if (elements.enablePhishingProtection) {
+      elements.enablePhishingProtection.addEventListener('change', async () => {
+        try {
+          await sendMessage({ type: 'TOGGLE_PHISHING_PROTECTION', enabled: elements.enablePhishingProtection.checked });
+        } catch (e) {
+          await setStorage({ phishingProtectionEnabled: elements.enablePhishingProtection.checked });
+        }
+      });
+    }
+
+    // Toggle telemetry blocking
+    if (elements.enableTelemetryBlocking) {
+      elements.enableTelemetryBlocking.addEventListener('change', async () => {
+        try {
+          await sendMessage({ type: 'TOGGLE_TELEMETRY_BLOCKING', enabled: elements.enableTelemetryBlocking.checked });
+          showToast(elements.enableTelemetryBlocking.checked ? 'Telemetry blocking enabled' : 'Telemetry blocking disabled', 'success');
+        } catch (e) {
+          await setStorage({ telemetryBlockingEnabled: elements.enableTelemetryBlocking.checked });
+        }
+      });
+    }
+
+    // Toggle third-party cookie blocking
+    if (elements.enableThirdPartyCookieBlocking) {
+      elements.enableThirdPartyCookieBlocking.addEventListener('change', async () => {
+        try {
+          await sendMessage({ type: 'TOGGLE_THIRD_PARTY_COOKIE_BLOCKING', enabled: elements.enableThirdPartyCookieBlocking.checked });
+          showToast(elements.enableThirdPartyCookieBlocking.checked ? 'Third-party cookies blocked' : 'Third-party cookies allowed', 'success');
+        } catch (e) {
+          await setStorage({ thirdPartyCookieBlockingEnabled: elements.enableThirdPartyCookieBlocking.checked });
+        }
+      });
+    }
+
+    // Language filters
+    if (elements.languageFilters) {
+      elements.languageFilters.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.addEventListener('change', async () => {
+          const lang = cb.dataset.lang;
+          const url = cb.dataset.url;
+          const name = cb.parentElement.querySelector('span').textContent;
+          const label = cb.parentElement;
+
+          if (cb.checked) {
+            // Add subscription with loading state
+            cb.disabled = true;
+            label.classList.add('loading');
+            try {
+              const response = await sendMessage({ type: 'ADD_FILTER_SUBSCRIPTION', name, url });
+              if (response?.success) {
+                const ruleCount = response.subscription?.ruleCount || 0;
+                showToast(name + ' filter added with ' + ruleCount + ' rules', 'success');
+              } else {
+                cb.checked = false;
+                showToast(response?.error || 'Failed to add filter', 'error');
+              }
+            } catch (e) {
+              cb.checked = false;
+              showToast('Failed to add filter', 'error');
+            } finally {
+              cb.disabled = false;
+              label.classList.remove('loading');
+            }
+          } else {
+            // Find and remove the subscription
+            cb.disabled = true;
+            label.classList.add('loading');
+            try {
+              const subsResponse = await sendMessage({ type: 'GET_FILTER_SUBSCRIPTIONS' });
+              if (subsResponse?.success) {
+                const sub = subsResponse.subscriptions.find(s => s.url === url);
+                if (sub) {
+                  await sendMessage({ type: 'REMOVE_FILTER_SUBSCRIPTION', subscriptionId: sub.id });
+                  showToast(name + ' filter removed', 'success');
+                }
+              }
+            } catch (e) {
+              showToast('Failed to remove filter', 'error');
+            } finally {
+              cb.disabled = false;
+              label.classList.remove('loading');
+            }
+          }
+
+          // Save enabled language filters
+          const enabledLangFilters = [];
+          elements.languageFilters.querySelectorAll('input[type="checkbox"]:checked').forEach(c => {
+            enabledLangFilters.push(c.dataset.lang);
+          });
+          await setStorage({ enabledLanguageFilters: enabledLangFilters });
+          // Refresh main filter list to show/hide the language filter
+          await loadFilterLists();
+        });
+      });
+    }
+
+    // Update language filters button
+    const updateLangFiltersBtn = document.getElementById('updateLangFiltersBtn');
+    if (updateLangFiltersBtn) {
+      updateLangFiltersBtn.addEventListener('click', async () => {
+        updateLangFiltersBtn.disabled = true;
+        updateLangFiltersBtn.textContent = 'Updating...';
+
+        try {
+          // Get all current subscriptions
+          const subsResponse = await sendMessage({ type: 'GET_FILTER_SUBSCRIPTIONS' });
+          if (subsResponse?.success && subsResponse.subscriptions) {
+            // Get the URLs of enabled language filters
+            const enabledUrls = new Set();
+            elements.languageFilters.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
+              enabledUrls.add(cb.dataset.url);
+            });
+
+            // Update each language filter subscription
+            let updatedCount = 0;
+            for (const sub of subsResponse.subscriptions) {
+              if (enabledUrls.has(sub.url)) {
+                try {
+                  await sendMessage({ type: 'UPDATE_FILTER_SUBSCRIPTION', subscriptionId: sub.id });
+                  updatedCount++;
+                } catch (e) {
+                  // Continue with other updates
+                }
+              }
+            }
+
+            if (updatedCount > 0) {
+              showToast(updatedCount + ' language filter(s) updated', 'success');
+              await loadFilterLists();
+            } else {
+              showToast('No language filters to update', 'info');
+            }
+          }
+        } catch (e) {
+          showToast('Failed to update language filters', 'error');
+        } finally {
+          updateLangFiltersBtn.disabled = false;
+          updateLangFiltersBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Update Language Filters';
+        }
+      });
+    }
+
+    // Toggle sync settings
+    if (elements.enableSync) {
+      elements.enableSync.addEventListener('change', async () => {
+        const enabled = elements.enableSync.checked;
+        try {
+          const response = await sendMessage({ type: 'TOGGLE_SYNC', enabled });
+          if (response?.success) {
+            showStatus(enabled ? 'Settings sync enabled. Data migrated to sync storage.' : 'Settings sync disabled. Data migrated to local storage.', 'success');
+          } else {
+            elements.enableSync.checked = !enabled;
+            showStatus(response?.error || 'Failed to toggle sync', 'error');
+          }
+        } catch (e) {
+          elements.enableSync.checked = !enabled;
+          showStatus('Sync storage not available in this browser', 'error');
+        }
+      });
+    }
+
+    // Toast duration slider
+    if (elements.toastDuration) {
+      elements.toastDuration.addEventListener('input', () => {
+        const val = elements.toastDuration.value;
+        if (elements.toastDurationValue) {
+          elements.toastDurationValue.textContent = val + 's';
+        }
+      });
+      elements.toastDuration.addEventListener('change', async () => {
+        const val = parseInt(elements.toastDuration.value, 10);
+        await setStorage({ toastDuration: val });
+      });
+    }
+
+    // Theme buttons
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const theme = btn.dataset.theme;
+        applyTheme(theme);
+        updateThemeButtons(theme);
+        await setStorage({ theme });
+      });
+    });
+
+    // Sidebar navigation
+    document.querySelectorAll('.nav-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.preventDefault();
+        const section = item.dataset.section;
+        if (!section) return;
+
+        // Update active state
+        document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+        item.classList.add('active');
+
+        // Scroll to section
+        const target = document.getElementById(section);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+
+    // Update active nav item on scroll
+    const sections = document.querySelectorAll('.section[id]');
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.getAttribute('id');
+          document.querySelectorAll('.nav-item').forEach(nav => {
+            nav.classList.toggle('active', nav.dataset.section === id);
+          });
+        }
+      });
+    }, { threshold: 0.3 });
+
+    sections.forEach(section => observer.observe(section));
+
+    // Request log controls
+    elements.enableLogging.addEventListener('change', async () => {
+      loggingEnabled = elements.enableLogging.checked;
+      // Persist the setting to storage
+      await setStorage({ loggingEnabled });
+      if (loggingEnabled) {
+        startLogPolling();
+      } else {
+        stopLogPolling();
+      }
+    });
+
+    elements.clearLogBtn.addEventListener('click', async () => {
+      try {
+        await sendMessage({ type: 'CLEAR_REQUEST_LOG' });
+        renderRequestLog([]);
+      } catch (err) {
+        logError('Failed to clear log:', err);
+      }
+    });
+
+    // Stats period selector
+    document.querySelectorAll('.period-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const period = btn.dataset.period;
+        if (period === 'today') {
+          loadStats('today');
+        } else if (period === 'all') {
+          loadStats('all');
+        } else {
+          loadStats(period);
+        }
+      });
+    });
+
+    // Add filter subscription
+    elements.addSubscriptionBtn.addEventListener('click', async () => {
+      const name = elements.subscriptionNameInput.value.trim();
+      const url = elements.subscriptionUrlInput.value.trim();
+      if (!url) {
+        showStatus('Please enter a filter list URL', 'error');
+        return;
+      }
+      try {
+        const response = await sendMessage({ type: 'ADD_FILTER_SUBSCRIPTION', name, url });
+        if (response?.success) {
+          elements.subscriptionNameInput.value = '';
+          elements.subscriptionUrlInput.value = '';
+          showStatus('Subscription added with ' + (response.subscription?.ruleCount || 0) + ' rules', 'success');
+          await loadFilterLists();
+        } else {
+          showStatus(response?.error || 'Failed to add subscription', 'error');
+        }
+      } catch (e) {
+        showStatus('Failed to add subscription', 'error');
+      }
+    });
+
+    // Update all filter lists
+    elements.updateAllFiltersBtn.addEventListener('click', async () => {
+      try {
+        await sendMessage({ type: 'UPDATE_ALL_FILTER_SUBSCRIPTIONS' });
+        showStatus('All filter lists updated', 'success');
+        await loadFilterLists();
+      } catch (e) {
+        showStatus('Failed to update filter lists', 'error');
+      }
+    });
+
+    // Add site to whitelist
+    elements.addSiteBtn.addEventListener('click', async () => {
+      const site = elements.siteInput.value.trim().toLowerCase();
+      if (!site) return;
+
+      // Validate domain
+      if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/i.test(site)) {
+        showStatus('Please enter a valid domain (e.g., example.com)', 'error');
+        return;
+      }
+
+      try {
+        const response = await sendMessage({ type: 'WHITELIST_SITE', hostname: site });
+        if (response?.success) {
+          const item = createWhitelistItem(site);
+          elements.whitelistList.appendChild(item);
+          elements.siteInput.value = '';
+        }
+      } catch (err) {
+        logError('Failed to whitelist site:', err);
+      }
+    });
+
+    // Enter key for adding site
+    elements.siteInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        elements.addSiteBtn.click();
+      }
+    });
+
+    // Reset stats
+    elements.resetStatsBtn.addEventListener('click', async () => {
+      if (confirm('Are you sure you want to reset all statistics?')) {
+        try {
+          await sendMessage({ type: 'RESET_STATS' });
+          elements.totalBlocked.textContent = '0';
+          elements.networkBlocked.textContent = '0';
+          elements.cosmeticBlocked.textContent = '0';
+          if (elements.dataSavedTotal) elements.dataSavedTotal.textContent = '0 MB';
+          if (elements.timeSavedTotal) elements.timeSavedTotal.textContent = '0s';
+          if (elements.topDomainsChart) clearElement(elements.topDomainsChart);
+          if (elements.topSitesChart) clearElement(elements.topSitesChart);
+        } catch (err) {
+          logError('Failed to reset stats:', err);
+        }
+      }
+    });
+
+    // Export rules
+    elements.exportBtn.addEventListener('click', async () => {
+      try {
+        const response = await sendMessage({ type: 'EXPORT_RULES' });
+        if (response?.success && response.data) {
+          const blob = new Blob([JSON.stringify(response.data, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'websuddhi-rules-' + new Date().toISOString().slice(0, 10) + '.json';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          showStatus('Rules exported successfully', 'success');
+        }
+      } catch (err) {
+        showStatus('Failed to export rules', 'error');
+      }
+    });
+
+    // Import rules - trigger file picker
+    elements.importBtn.addEventListener('click', () => {
+      elements.importFile.click();
+    });
+
+    // Handle file selection
+    elements.importFile.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+
+        if (!data.blockedSelectors || !Array.isArray(data.blockedSelectors)) {
+          showStatus('Invalid file format. Expected a WebSuddhi export file.', 'error');
+          return;
+        }
+
+        const response = await sendMessage({ type: 'IMPORT_RULES', data });
+        if (response?.success) {
+          showStatus('Imported ' + (data.blockedSelectors.length) + ' rules. Total: ' + response.totalRules, 'success');
+          await loadRules();
+          await loadWhitelist();
+        } else {
+          showStatus(response?.error || 'Import failed', 'error');
+        }
+      } catch (err) {
+        showStatus('Failed to parse import file', 'error');
+      }
+
+      // Reset file input
+      elements.importFile.value = '';
+    });
+
+    // External links - use GitHub for all browsers (no store-specific URLs)
+    const GITHUB_URL = 'https://github.com/sriinnu/web-suddhi';
+
+    elements.rateExtension?.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (api.tabs) {
+        api.tabs.create({ url: GITHUB_URL + '/issues' });
+      }
+    });
+
+    elements.viewSource?.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (api.tabs) {
+        api.tabs.create({ url: GITHUB_URL });
+      }
+    });
+  }
+
+  // ============================================
+  // UTILITIES
+  // ============================================
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function formatNumber(num) {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toString();
+  }
+
+  function formatDataSize(bytes) {
+    if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB';
+    if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+    if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return bytes + ' B';
+  }
+
+  function formatTimeSaved(ms) {
+    if (ms >= 3600000) return (ms / 3600000).toFixed(1) + 'h';
+    if (ms >= 60000) return (ms / 60000).toFixed(1) + 'm';
+    if (ms >= 1000) return (ms / 1000).toFixed(1) + 's';
+    return ms + 'ms';
+  }
+
+  function showStatus(message, type) {
+    // Update inline status if it exists
+    if (elements.importExportStatus) {
+      elements.importExportStatus.textContent = message;
+      elements.importExportStatus.className = 'status-message ' + type;
+      setTimeout(() => {
+        elements.importExportStatus.textContent = '';
+        elements.importExportStatus.className = 'status-message';
+      }, 4000);
+    }
+    // Also show toast
+    showToast(message, type);
+  }
+
+  function showToast(message, type = 'info', title = '') {
+    if (!elements.toastContainer) return;
+
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+
+    // Icon
+    const iconDiv = document.createElement('div');
+    iconDiv.className = 'toast-icon ' + type;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', '20');
+    svg.setAttribute('height', '20');
+    svg.setAttribute('fill', 'currentColor');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+
+    if (type === 'success') {
+      path.setAttribute('d', 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z');
+    } else if (type === 'error') {
+      path.setAttribute('d', 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z');
+    } else {
+      path.setAttribute('d', 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z');
+    }
+
+    svg.appendChild(path);
+    iconDiv.appendChild(svg);
+    toast.appendChild(iconDiv);
+
+    // Content
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'toast-content';
+
+    if (title) {
+      const titleDiv = document.createElement('div');
+      titleDiv.className = 'toast-title';
+      titleDiv.textContent = title;
+      contentDiv.appendChild(titleDiv);
+    }
+
+    const msgDiv = document.createElement('div');
+    msgDiv.className = title ? 'toast-message' : 'toast-title';
+    msgDiv.textContent = message;
+    contentDiv.appendChild(msgDiv);
+
+    toast.appendChild(contentDiv);
+
+    // Close button
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'toast-close';
+    closeBtn.textContent = '\u00D7';
+    closeBtn.addEventListener('click', () => removeToast(toast));
+    toast.appendChild(closeBtn);
+
+    elements.toastContainer.appendChild(toast);
+
+    // Auto-remove after 4 seconds
+    setTimeout(() => removeToast(toast), 4000);
+  }
+
+  function removeToast(toast) {
+    if (!toast || !toast.parentElement) return;
+    toast.classList.add('toast-out');
+    setTimeout(() => toast.remove(), 200);
+  }
+
+  // ============================================
+  // START
+  // ============================================
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();

@@ -1,0 +1,110 @@
+{
+  "manifest_version": 3,
+  "name": "WebSuddhi",
+  "version": "2.1.0",
+  "description": "Block ads, remove paywalls, strip trackers, and clean up any website. Privacy-first, no tracking.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs",
+    "declarativeNetRequest",
+    "alarms",
+    "webNavigation",
+    "contextMenus"
+  ],
+  "optional_permissions": [
+    "contentSettings",
+    "privacy",
+    "declarativeNetRequestFeedback"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ad_domains",
+        "enabled": true,
+        "path": "rules/ad-domains.json"
+      },
+      {
+        "id": "tracking_domains",
+        "enabled": true,
+        "path": "rules/tracking-domains.json"
+      },
+      {
+        "id": "tracking_params",
+        "enabled": true,
+        "path": "rules/tracking-params.json"
+      }
+    ]
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["shared/utils.js", "content/ad-blocker.js"],
+      "css": ["content/ad-blocker.css"],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["shared/utils.js", "content/cookie-consent.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["shared/utils.js", "content/annoyance-blocker.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "background": {
+    "service_worker": "background/background.js"
+  },
+  "options_page": "options/options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["content/ad-blocker.css"],
+      "matches": ["<all_urls>"]
+    },
+    {
+      "resources": ["icons/*.png"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "commands": {
+    "toggle-pick-mode": {
+      "suggested_key": { "default": "Alt+P" },
+      "description": "Toggle element picker"
+    },
+    "toggle-whitelist": {
+      "suggested_key": { "default": "Alt+W" },
+      "description": "Toggle whitelist for current site"
+    },
+    "open-settings": {
+      "suggested_key": { "default": "Alt+S" },
+      "description": "Open settings"
+    }
+  }
+}
