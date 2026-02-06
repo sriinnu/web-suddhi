@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebSuddhi</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(145deg, #0f172a, #1e293b);
+      color: #fff;
+      padding: 16px;
+      width: 300px;
+    }
+    h1 { font-size: 18px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .toggle {
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(255,255,255,0.1);
+      padding: 12px; border-radius: 8px; margin-bottom: 8px;
+    }
+    .toggle label { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+    .toggle input { display: none; }
+    .toggle .slider {
+      width: 44px; height: 24px; background: #334155; border-radius: 12px; position: relative;
+      flex-shrink: 0;
+    }
+    .toggle .slider::before {
+      content: ''; position: absolute; width: 18px; height: 18px;
+      background: #fff; border-radius: 50%; top: 3px; left: 3px; transition: 0.2s;
+    }
+    .toggle input:checked + .slider { background: #0ea5e9; }
+    .toggle input:checked + .slider::before { transform: translateX(20px); }
+    .toggle.whitelist { background: rgba(139, 92, 246, 0.2); border: 1px solid rgba(139, 92, 246, 0.4); }
+    .toggle.small { padding: 8px 12px; }
+    .toggle.small label { font-size: 13px; }
+    .toggle.small .slider { width: 36px; height: 20px; }
+    .toggle.small .slider::before { width: 14px; height: 14px; }
+    .toggle.small input:checked + .slider::before { transform: translateX(16px); }
+    .site-info { font-size: 12px; color: #c4b5fd; margin-bottom: 8px; word-break: break-all; }
+    .section-label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+      color: #94a3b8; margin: 12px 0 6px; font-weight: 600;
+    }
+    .stats-section {
+      display: flex; gap: 8px; margin-bottom: 12px;
+    }
+    .stat {
+      flex: 1; text-align: center; background: rgba(255,255,255,0.08);
+      border-radius: 8px; padding: 8px 4px;
+    }
+    .stat-value { display: block; font-size: 18px; font-weight: 700; color: #38bdf8; }
+    .stat-label { display: block; font-size: 10px; color: #94a3b8; margin-top: 2px; }
+    .btn {
+      width: 100%; padding: 12px; border: none; border-radius: 8px;
+      font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 8px;
+    }
+    .btn-purple { background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: white; }
+    .btn-green { background: linear-gradient(135deg, #10b981, #059669); color: white; }
+    .btn-amber { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; }
+    .btn-outline { background: transparent; border: 1px solid rgba(255,255,255,0.3); color: white; }
+    .footer {
+      display: flex; justify-content: center; margin-top: 8px;
+      font-size: 11px; color: #64748b;
+    }
+  </style>
+</head>
+<body>
+  <h1><img src="Resources/icon_48.png" width="24" height="24"> WebSuddhi</h1>
+
+  <div class="toggle">
+    <label>
+      <input type="checkbox" id="enableToggle" checked>
+      <span class="slider"></span>
+      <span>Block Ads</span>
+    </label>
+  </div>
+
+  <div class="toggle whitelist">
+    <div>
+      <div class="site-info" id="currentSite">loading...</div>
+      <label style="cursor: pointer;">
+        <input type="checkbox" id="whitelistToggle">
+        <span class="slider"></span>
+        <span style="font-size: 13px;">Disable on this site</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="toggle">
+    <label>
+      <input type="checkbox" id="paywallToggle" checked>
+      <span class="slider"></span>
+      <span>Remove Paywalls</span>
+    </label>
+  </div>
+
+  <div class="section-label">Features</div>
+
+  <div class="toggle small">
+    <label>
+      <input type="checkbox" id="cookieConsentToggle" checked>
+      <span class="slider"></span>
+      <span>Cookie Auto-Dismiss</span>
+    </label>
+  </div>
+
+  <div class="toggle small">
+    <label>
+      <input type="checkbox" id="annoyanceToggle" checked>
+      <span class="slider"></span>
+      <span>Annoyance Blocker</span>
+    </label>
+  </div>
+
+  <div class="section-label">This Page</div>
+
+  <div class="stats-section">
+    <div class="stat">
+      <span class="stat-value" id="blockedCount">0</span>
+      <span class="stat-label">Blocked</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="rulesCount">0</span>
+      <span class="stat-label">Rules</span>
+    </div>
+  </div>
+
+  <button class="btn btn-purple" id="removePaywall">Remove Paywall Now</button>
+  <button class="btn btn-amber" id="dismissCookies">Dismiss Cookies Now</button>
+  <button class="btn btn-green" id="pickElement">Pick Element</button>
+  <button class="btn btn-outline" id="openOptions">Manage Rules</button>
+
+  <div class="footer">v2.1.0</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+{
+  "CFBundleDevelopmentRegion": "en",
+  "CFBundleDisplayName": "WebSuddhi",
+  "CFBundleExecutable": "WebSuddhi",
+  "CFBundleIdentifier": "com.websuddhi.app",
+  "CFBundleInfoDictionaryVersion": "6.0",
+  "CFBundleName": "WebSuddhi",
+  "CFBundlePackageType": "APPL",
+  "CFBundleShortVersionString": "1.0",
+  "CFBundleVersion": "1",
+  "LSRequiresIPhoneOS": true,
+  "UILaunchStoryboardName": "LaunchScreen",
+  "UIRequiredDeviceCapabilities": [
+    "armv7"
+  ],
+  "UISupportedInterfaceOrientations": [
+    "UIInterfaceOrientationPortrait",
+    "UIInterfaceOrientationLandscapeLeft",
+    "UIInterfaceOrientationLandscapeRight"
+  ],
+  "UISupportedInterfaceOrientations~ipad": [
+    "UIInterfaceOrientationPortrait",
+    "UIInterfaceOrientationPortraitUpsideDown",
+    "UIInterfaceOrientationLandscapeLeft",
+    "UIInterfaceOrientationLandscapeRight"
+  ],
+  "NSExtension": {
+    "NSExtensionPointIdentifier": "com.apple.Safari.web-extension",
+    "NSExtensionPrincipalClass": "$(PRODUCT_MODULE_NAME).WebSuddhi Extension"
+  }
+}

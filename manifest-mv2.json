@@ -1,0 +1,88 @@
+{
+  "manifest_version": 2,
+  "name": "WebSuddhi",
+  "version": "2.1.0",
+  "description": "Block ads, remove paywalls, strip trackers, and clean up any website. Privacy-first, no tracking.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs",
+    "webRequest",
+    "webRequestBlocking",
+    "alarms",
+    "webNavigation",
+    "contextMenus",
+    "<all_urls>"
+  ],
+  "optional_permissions": [
+    "privacy"
+  ],
+  "content_security_policy": "script-src 'self'; object-src 'self'",
+  "background": {
+    "scripts": [
+      "shared/utils.js",
+      "background/background.js",
+      "background/network-blocker.js",
+      "background/url-cleaner.js",
+      "background/stats-manager.js",
+      "background/privacy.js",
+      "background/filter-lists.js",
+      "background/phishing-detector.js"
+    ],
+    "persistent": true
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["shared/utils.js", "content/ad-blocker.js"],
+      "css": ["content/ad-blocker.css"],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["shared/utils.js", "content/cookie-consent.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["shared/utils.js", "content/annoyance-blocker.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "browser_action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_page": "options/options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    "content/ad-blocker.css"
+  ],
+  "commands": {
+    "toggle-pick-mode": {
+      "suggested_key": { "default": "Alt+P" },
+      "description": "Toggle element picker"
+    },
+    "toggle-whitelist": {
+      "suggested_key": { "default": "Alt+W" },
+      "description": "Toggle whitelist for current site"
+    },
+    "open-settings": {
+      "suggested_key": { "default": "Alt+S" },
+      "description": "Open settings"
+    }
+  }
+}

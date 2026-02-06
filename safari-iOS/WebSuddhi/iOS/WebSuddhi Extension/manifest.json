@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "WebSuddhi",
+  "version": "2.1.0",
+  "description": "Block ads, remove paywalls, strip trackers, and clean up any website. Privacy-first.",
+  "default_locale": "en",
+  "display_name": "WebSuddhi",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "48": "Resources/icon_48.png"
+    }
+  },
+  "icons": {
+    "48": "Resources/icon_48.png",
+    "96": "Resources/icon_96.png",
+    "128": "Resources/icon_128.png",
+    "256": "Resources/icon_256.png"
+  }
+}

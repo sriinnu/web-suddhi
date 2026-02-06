@@ -1,0 +1,877 @@
+/* WebSuddhi - Ad Blocker Styles */
+/* Universal cross-browser CSS */
+
+/* ============================================
+   HIDDEN ELEMENTS
+   ============================================ */
+.websuddhi-hidden {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  position: absolute !important;
+  pointer-events: none !important;
+  z-index: -9999 !important;
+  max-width: 1px !important;
+  max-height: 1px !important;
+  overflow: hidden !important;
+}
+
+[data-websuddhi-blocked] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+[data-websuddhi-removed] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+/* ============================================
+   PICK MODE - Only highlight hovered element
+   ============================================ */
+body.websuddhi-pick-mode {
+  cursor: crosshair !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+}
+
+body.websuddhi-pick-mode .websuddhi-pick-highlight {
+  outline: 3px solid #2196F3 !important;
+  outline-offset: -1px !important;
+  background-color: rgba(33, 150, 243, 0.15) !important;
+  box-shadow: 0 0 0 4px rgba(33, 150, 243, 0.25) !important;
+}
+
+/* ============================================
+   ZAP MODE - Red highlight for instant removal
+   ============================================ */
+body.websuddhi-zap-mode {
+  cursor: crosshair !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+}
+
+body.websuddhi-zap-mode .websuddhi-pick-highlight {
+  outline: 3px solid #ef4444 !important;
+  outline-offset: -1px !important;
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.25) !important;
+}
+
+/* ============================================
+   PREVIEW DIALOG
+   ============================================ */
+.websuddhi-pick-preview {
+  position: fixed;
+  z-index: 2147483647;
+  background: linear-gradient(145deg, #1a1a2e, #16213e);
+  border: 2px solid #4CAF50;
+  border-radius: 12px;
+  padding: 14px 18px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  max-width: 350px;
+  min-width: 200px;
+  pointer-events: none;
+}
+
+.websuddhi-pick-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #fff;
+}
+
+.websuddhi-pick-info span:first-child {
+  font-size: 14px;
+  font-weight: 600;
+  color: #4CAF50;
+}
+
+.websuddhi-pick-info code {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', 'Menlo', monospace;
+  word-break: break-all;
+  color: #e0e0e0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.websuddhi-pick-hint {
+  font-size: 11px;
+  color: #888;
+  margin-top: 4px;
+}
+
+/* ============================================
+   CONFIRMATION DIALOG
+   ============================================ */
+.websuddhi-pick-dialog {
+  position: fixed !important;
+  z-index: 2147483647 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background: rgba(0, 0, 0, 0.7) !important;
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 20px !important;
+  pointer-events: auto !important;
+  cursor: default !important;
+}
+
+.websuddhi-pick-content {
+  background: linear-gradient(145deg, #1a1a2e, #16213e) !important;
+  border: 2px solid #4CAF50 !important;
+  border-radius: 16px !important;
+  padding: 24px !important;
+  box-shadow: 0 16px 64px rgba(0, 0, 0, 0.6) !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  max-width: 400px !important;
+  width: 100% !important;
+  text-align: center !important;
+  pointer-events: auto !important;
+}
+
+.websuddhi-pick-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 12px;
+}
+
+.websuddhi-pick-selector {
+  display: block;
+  background: rgba(76, 175, 80, 0.1);
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', 'Menlo', monospace;
+  word-break: break-all;
+  color: #4CAF50;
+  margin-bottom: 20px;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  max-height: 150px;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.websuddhi-pick-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.websuddhi-btn {
+  padding: 12px 24px !important;
+  border: none !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  transition: background 0.2s ease, box-shadow 0.2s ease !important;
+  min-width: 100px !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  pointer-events: auto !important;
+}
+
+.websuddhi-btn.confirm {
+  background: linear-gradient(135deg, #4CAF50, #45a049);
+  color: white;
+}
+
+.websuddhi-btn.confirm:hover {
+  background: linear-gradient(135deg, #45a049, #3d9141);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+}
+
+.websuddhi-btn.cancel {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.websuddhi-btn.cancel:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ============================================
+   TOAST NOTIFICATION
+   ============================================ */
+.websuddhi-toast {
+  position: fixed;
+  z-index: 2147483647;
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  color: white;
+  padding: 14px 28px;
+  border-radius: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 8px 24px rgba(14, 165, 233, 0.35);
+  max-width: 90vw;
+  text-align: center;
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+@keyframes websuddhi-fade-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes websuddhi-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -10px);
+  }
+}
+
+.websuddhi-pick-preview {
+  animation: websuddhi-fade-in 0.2s ease-out;
+}
+
+.websuddhi-pick-dialog {
+  animation: websuddhi-dialog-fade-in 0.2s ease-out;
+}
+
+@keyframes websuddhi-dialog-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 480px) {
+  .websuddhi-pick-preview {
+    max-width: calc(100vw - 40px);
+    padding: 12px 14px;
+  }
+
+  .websuddhi-pick-content {
+    padding: 20px;
+  }
+
+  .websuddhi-pick-buttons {
+    flex-direction: column;
+  }
+
+  .websuddhi-btn {
+    width: 100%;
+  }
+}
+
+/* ============================================
+   HIGH CONTRAST MODE
+   ============================================ */
+@media (prefers-contrast: high) {
+  .websuddhi-pick-preview,
+  .websuddhi-pick-content {
+    border-width: 3px;
+  }
+
+  .websuddhi-pick-highlight {
+    outline-width: 4px !important;
+  }
+}
+
+/* ============================================
+   REDUCED MOTION
+   ============================================ */
+@media (prefers-reduced-motion: reduce) {
+  .websuddhi-pick-preview,
+  .websuddhi-pick-dialog,
+  .websuddhi-btn,
+  .websuddhi-toast {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ============================================
+   ELEMENT PREVIEW PANEL
+   ============================================ */
+.websuddhi-preview-panel {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(145deg, #1e293b, #0f172a);
+  color: white;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  z-index: 2147483647;
+  min-width: 300px;
+  max-width: 500px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+  animation: websuddhi-slide-up 0.2s ease-out;
+}
+
+@keyframes websuddhi-slide-up {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.websuddhi-preview-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.websuddhi-preview-selector {
+  font-family: 'SF Mono', Consolas, Monaco, 'Courier New', monospace;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin: 8px 0;
+  word-break: break-all;
+  color: #38bdf8;
+  font-size: 12px;
+  line-height: 1.4;
+  max-height: 60px;
+  overflow-y: auto;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+.websuddhi-preview-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 10px 0;
+  font-size: 12px;
+}
+
+.websuddhi-preview-tag {
+  color: #a78bfa;
+  font-weight: 500;
+}
+
+.websuddhi-preview-tag::before {
+  content: '<';
+  color: #64748b;
+}
+
+.websuddhi-preview-tag::after {
+  content: '>';
+  color: #64748b;
+}
+
+.websuddhi-preview-matches {
+  color: #22c55e;
+  font-weight: 500;
+}
+
+.websuddhi-preview-matches.warning {
+  color: #f59e0b;
+}
+
+.websuddhi-preview-matches.danger {
+  color: #ef4444;
+}
+
+.websuddhi-preview-dimensions {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.websuddhi-preview-classes {
+  color: #94a3b8;
+  font-size: 11px;
+  word-break: break-all;
+  max-width: 100%;
+}
+
+.websuddhi-preview-id {
+  color: #fbbf24;
+  font-size: 11px;
+}
+
+.websuddhi-preview-warning {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fbbf24;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.websuddhi-preview-warning::before {
+  content: '!';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  background: #f59e0b;
+  color: #0f172a;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.websuddhi-preview-hint {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.websuddhi-preview-hint kbd {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  margin: 0 2px;
+}
+
+/* Preview panel position adjustments when near edges */
+.websuddhi-preview-panel.position-top {
+  bottom: auto;
+  top: 20px;
+}
+
+.websuddhi-preview-panel.position-top {
+  animation: websuddhi-slide-down 0.2s ease-out;
+}
+
+@keyframes websuddhi-slide-down {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* Responsive adjustments for preview panel */
+@media (max-width: 540px) {
+  .websuddhi-preview-panel {
+    min-width: auto;
+    max-width: calc(100vw - 40px);
+    left: 20px;
+    right: 20px;
+    transform: none;
+  }
+
+  .websuddhi-preview-panel.position-top {
+    animation: websuddhi-fade-in 0.2s ease-out;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .websuddhi-preview-panel {
+    animation: none !important;
+  }
+}
+
+/* ============================================
+   PHISHING WARNING OVERLAY
+   ============================================ */
+.websuddhi-phishing-overlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%) !important;
+  z-index: 2147483647 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif !important;
+  padding: 20px !important;
+  box-sizing: border-box !important;
+  overflow-y: auto !important;
+}
+
+.websuddhi-phishing-modal {
+  background: #ffffff !important;
+  border-radius: 16px !important;
+  padding: 40px !important;
+  max-width: 520px !important;
+  width: 100% !important;
+  text-align: center !important;
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5) !important;
+  animation: websuddhi-phishing-modal-in 0.3s ease-out !important;
+}
+
+@keyframes websuddhi-phishing-modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.websuddhi-phishing-icon {
+  margin-bottom: 16px !important;
+}
+
+.websuddhi-phishing-icon svg {
+  width: 80px !important;
+  height: 80px !important;
+  color: #ef4444 !important;
+}
+
+.websuddhi-phishing-title {
+  color: #ef4444 !important;
+  font-size: 24px !important;
+  font-weight: 700 !important;
+  margin: 0 0 24px 0 !important;
+  line-height: 1.3 !important;
+}
+
+.websuddhi-phishing-alert {
+  margin-bottom: 24px !important;
+}
+
+.websuddhi-phishing-alert p {
+  color: #374151 !important;
+  font-size: 15px !important;
+  margin: 0 0 12px 0 !important;
+  line-height: 1.5 !important;
+}
+
+.websuddhi-phishing-alert strong {
+  color: #1f2937 !important;
+  font-weight: 600 !important;
+}
+
+.websuddhi-phishing-brand {
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  color: #1e40af !important;
+  padding: 12px 16px !important;
+  background: #dbeafe !important;
+  border-radius: 8px !important;
+  display: inline-block !important;
+}
+
+.websuddhi-phishing-comparison {
+  background: #f9fafb !important;
+  border-radius: 12px !important;
+  padding: 16px !important;
+  margin-bottom: 24px !important;
+  border: 1px solid #e5e7eb !important;
+}
+
+.websuddhi-domain-fake,
+.websuddhi-domain-real {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  padding: 12px !important;
+  border-radius: 8px !important;
+}
+
+.websuddhi-domain-fake {
+  background: rgba(239, 68, 68, 0.08) !important;
+  margin-bottom: 8px !important;
+}
+
+.websuddhi-domain-real {
+  background: rgba(16, 185, 129, 0.08) !important;
+}
+
+.websuddhi-domain-label {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  color: #6b7280 !important;
+}
+
+.websuddhi-domain-fake .websuddhi-domain-value {
+  color: #dc2626 !important;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', 'Menlo', monospace !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  word-break: break-all !important;
+}
+
+.websuddhi-domain-real .websuddhi-domain-value {
+  color: #059669 !important;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', 'Menlo', monospace !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  word-break: break-all !important;
+}
+
+.websuddhi-suspicious-char {
+  background: #fef3c7 !important;
+  color: #d97706 !important;
+  padding: 0 3px !important;
+  border-radius: 3px !important;
+  font-weight: 700 !important;
+  border: 1px solid #fcd34d !important;
+}
+
+.websuddhi-phishing-info {
+  text-align: left !important;
+  margin-bottom: 28px !important;
+  padding: 16px !important;
+  background: #fff7ed !important;
+  border-radius: 10px !important;
+  border: 1px solid #fed7aa !important;
+}
+
+.websuddhi-phishing-info p {
+  color: #c2410c !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  margin: 0 0 12px 0 !important;
+}
+
+.websuddhi-phishing-info ul {
+  margin: 0 !important;
+  padding: 0 0 0 20px !important;
+  color: #9a3412 !important;
+  font-size: 14px !important;
+  line-height: 1.6 !important;
+}
+
+.websuddhi-phishing-info li {
+  margin-bottom: 4px !important;
+}
+
+.websuddhi-phishing-actions {
+  display: flex !important;
+  gap: 12px !important;
+  justify-content: center !important;
+  margin-bottom: 24px !important;
+  flex-wrap: wrap !important;
+}
+
+.websuddhi-btn-safe {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  color: white !important;
+  border: none !important;
+  padding: 14px 28px !important;
+  border-radius: 10px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35) !important;
+  font-family: inherit !important;
+}
+
+.websuddhi-btn-safe:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45) !important;
+}
+
+.websuddhi-btn-safe:active {
+  transform: translateY(0) !important;
+}
+
+.websuddhi-btn-report {
+  background: #f3f4f6 !important;
+  color: #374151 !important;
+  border: 1px solid #d1d5db !important;
+  padding: 14px 24px !important;
+  border-radius: 10px !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  transition: all 0.2s ease !important;
+  font-family: inherit !important;
+}
+
+.websuddhi-btn-report:hover {
+  background: #e5e7eb !important;
+  border-color: #9ca3af !important;
+}
+
+.websuddhi-btn-report:disabled {
+  cursor: default !important;
+}
+
+.websuddhi-phishing-advanced {
+  margin-top: 20px !important;
+  padding: 16px !important;
+  background: #fef2f2 !important;
+  border-radius: 10px !important;
+  border: 1px solid #fecaca !important;
+}
+
+.websuddhi-phishing-advanced summary {
+  color: #991b1b !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  list-style: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+}
+
+.websuddhi-phishing-advanced summary::-webkit-details-marker {
+  display: none !important;
+}
+
+.websuddhi-phishing-advanced summary::before {
+  content: '\25B6' !important;
+  font-size: 10px !important;
+  transition: transform 0.2s !important;
+}
+
+.websuddhi-phishing-advanced[open] summary::before {
+  transform: rotate(90deg) !important;
+}
+
+.websuddhi-phishing-advanced-warning {
+  color: #7f1d1d !important;
+  font-size: 13px !important;
+  margin: 12px 0 !important;
+  line-height: 1.5 !important;
+}
+
+.websuddhi-btn-danger {
+  background: #ef4444 !important;
+  color: white !important;
+  border: none !important;
+  padding: 10px 20px !important;
+  border-radius: 8px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  font-family: inherit !important;
+}
+
+.websuddhi-btn-danger:hover {
+  background: #dc2626 !important;
+}
+
+.websuddhi-phishing-footer {
+  margin-top: 24px !important;
+  padding-top: 16px !important;
+  border-top: 1px solid #e5e7eb !important;
+  color: #9ca3af !important;
+  font-size: 13px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+}
+
+.websuddhi-phishing-footer svg {
+  color: #10b981 !important;
+}
+
+/* Responsive adjustments for phishing modal */
+@media (max-width: 540px) {
+  .websuddhi-phishing-modal {
+    padding: 28px 20px !important;
+    margin: 10px !important;
+  }
+
+  .websuddhi-phishing-icon svg {
+    width: 64px !important;
+    height: 64px !important;
+  }
+
+  .websuddhi-phishing-title {
+    font-size: 20px !important;
+  }
+
+  .websuddhi-phishing-brand {
+    font-size: 16px !important;
+  }
+
+  .websuddhi-phishing-actions {
+    flex-direction: column !important;
+  }
+
+  .websuddhi-btn-safe,
+  .websuddhi-btn-report {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .websuddhi-phishing-modal {
+    animation: none !important;
+  }
+
+  .websuddhi-btn-safe:hover,
+  .websuddhi-btn-report:hover {
+    transform: none !important;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .websuddhi-phishing-modal {
+    border: 3px solid #ef4444 !important;
+  }
+
+  .websuddhi-suspicious-char {
+    border-width: 2px !important;
+  }
+}
