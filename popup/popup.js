@@ -626,7 +626,7 @@
   function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
-    return div.innerHTML;
+    return div.textContent;
   }
 
   function showToast(message) {

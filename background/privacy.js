@@ -50,7 +50,7 @@
     'scorecardresearch.com', 'sb.scorecardresearch.com',
     'comscore.com', 'b.scorecardresearch.com',
     'facebook.com/tr', 'connect.facebook.net',
-    'bat.bing.com', 'clarity.ms',
+    'bat.bing.com',
     'analytics.tiktok.com', 'analytics.twitter.com',
     'snap.licdn.com', 'px.ads.linkedin.com',
     'ct.pinterest.com', 'analytics.pinterest.com'

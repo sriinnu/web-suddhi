@@ -21,6 +21,10 @@
   const FILTER_RULE_ID_START = 40001;
   const MAX_FILTER_RULES = 30000;
 
+  // Rate limiting for subscription updates
+  let lastUpdateTime = 0;
+  const UPDATE_COOLDOWN = 5000; // 5 seconds between updates
+
   // Built-in filter lists
   const BUILTIN_LISTS = [
     {
@@ -51,8 +55,8 @@
     const storage = await getStorage(['filterSubscriptions']);
     let subscriptions = storage.filterSubscriptions;
 
-    // Initialize with built-in lists if first run
-    if (!subscriptions) {
+    // Initialize with built-in lists if first run or invalid format
+    if (!subscriptions || !Array.isArray(subscriptions)) {
       subscriptions = BUILTIN_LISTS.map(list => ({
         ...list,
         lastUpdated: null
@@ -220,6 +224,12 @@
 
     if (!sub || !sub.url || sub.builtin) return { success: false, error: 'Invalid subscription' };
 
+    // Rate limiting per subscription
+    const now = Date.now();
+    if (sub.lastUpdated && (now - new Date(sub.lastUpdated).getTime()) < UPDATE_COOLDOWN) {
+      return { success: false, error: 'Subscription updated recently, please wait' };
+    }
+
     // Re-validate URL before fetching (in case of stored legacy URLs)
     if (utils && utils.isValidFilterListURL) {
       if (!utils.isValidFilterListURL(sub.url)) {
@@ -290,14 +300,24 @@
   }
 
   async function updateAllSubscriptions() {
+    // Rate limiting: prevent rapid successive updates
+    const now = Date.now();
+    if (now - lastUpdateTime < UPDATE_COOLDOWN) {
+      return { success: false, error: 'Update in progress, please wait' };
+    }
+    lastUpdateTime = now;
+
     const storage = await getStorage(['filterSubscriptions']);
     const subscriptions = storage.filterSubscriptions || [];
 
     for (const sub of subscriptions) {
       if (!sub.builtin && sub.enabled && sub.url) {
         await updateSubscription(sub.id);
+        // Small delay between subscriptions to avoid rate limiting
+        await new Promise(r => setTimeout(r, 500));
       }
     }
+    return { success: true };
   }
 
   // ============================================

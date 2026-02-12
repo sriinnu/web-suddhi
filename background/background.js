@@ -2,9 +2,13 @@
 // Universal: Chrome, Edge, Firefox, Safari
 // v2.1.0 - Full ad blocker with network blocking, stats, privacy, filter lists
 
-// MV3: Import all modules via importScripts
+// MV3: Import DI container first, then modules in dependency order
 try {
   if (typeof importScripts === 'function') {
+    // Load DI container first
+    importScripts('di-container.js');
+
+    // Then load all modules (they'll register themselves with the container)
     importScripts(
       '../shared/utils.js',
       'network-blocker.js',
@@ -14,20 +18,44 @@ try {
       'filter-lists.js',
       'phishing-detector.js'
     );
+
+    // Initialize all registered modules after a short delay to ensure registration completes
+    setTimeout(() => {
+      if (self.WebSuddhi.Container) {
+        self.WebSuddhi.Container.initialize();
+      }
+    }, 100);
   }
 } catch (e) {
-  if (self.WebSuddhi && self.WebSuddhi.utils) {
-    self.WebSuddhi.utils.error('importScripts error:', e);
+  if (self.WebSuddhi && self.WebSuddhi.Logger) {
+    self.WebSuddhi.Logger.error('Import error:', e);
   } else {
-    console.error('WebSuddhi: importScripts error:', e);
+    console.error('WebSuddhi: Import error:', e);
   }
 }
 
 (function() {
   'use strict';
 
-  // Shared namespace
-  if (!self.WebSuddhi) self.WebSuddhi = {};
+  // Use DI container if available, fallback to legacy
+  const Container = self.WebSuddhi?.Container;
+  const Storage = self.WebSuddhi?.Storage;
+  const Events = self.WebSuddhi?.Events;
+  const Logger = self.WebSuddhi?.Logger;
+  const utils = self.WebSuddhi?.utils || {};
+
+  // Initialize logger from storage
+  (async function initLogger() {
+    try {
+      const api = (typeof browser !== 'undefined' && browser.runtime) ? browser : chrome;
+      const result = await new Promise(resolve => {
+        api.storage.local.get(['debugEnabled'], resolve);
+      });
+      if (result?.debugEnabled) {
+        Logger?.setLevel?.('debug');
+      }
+    } catch (e) {}
+  })();
 
   // Logging helpers (use utils if available, fallback to console)
   const log = (...args) => {
@@ -1327,34 +1355,45 @@ try {
   async function whitelistSite(hostnameOrUrl) {
     if (!hostnameOrUrl) return { success: false, error: 'No hostname provided' };
 
+    // Normalize hostname: remove www. prefix for consistent storage
+    let hostname;
     try {
-      let hostname;
-      try {
-        hostname = new URL(hostnameOrUrl).hostname;
-      } catch (e) {
-        hostname = hostnameOrUrl.replace(/^www\./, '');
-      }
-      const storage = await getStorage(['whitelistedSites']);
-      const whitelisted = storage.whitelistedSites || [];
-
-      if (!whitelisted.includes(hostname)) {
-        whitelisted.push(hostname);
-        await setStorage({ whitelistedSites: whitelisted });
-      }
-
-      return { success: true, message: 'Whitelisted ' + hostname };
-    } catch (err) {
-      return { success: false, error: err.message };
+      hostname = new URL(hostnameOrUrl).hostname.replace(/^www\./, '');
+    } catch (e) {
+      hostname = hostnameOrUrl.replace(/^www\./, '');
     }
+
+    const storage = await getStorage(['whitelistedSites']);
+    const whitelisted = storage.whitelistedSites || [];
+
+    // Normalize existing entries too
+    const normalizedWhitelisted = whitelisted.map(s => s.replace(/^www\./, ''));
+
+    if (!normalizedWhitelisted.includes(hostname)) {
+      normalizedWhitelisted.push(hostname);
+      await setStorage({ whitelistedSites: normalizedWhitelisted });
+    }
+
+    return { success: true, message: 'Whitelisted ' + hostname };
   }
 
   async function unwhitelistSite(hostname) {
+    if (!hostname) return { success: false, error: 'No hostname provided' };
+
+    // Normalize: remove www. prefix for consistent comparison
+    const normalizedHostname = hostname.replace(/^www\./, '');
+
     const storage = await getStorage(['whitelistedSites']);
-    const whitelisted = (storage.whitelistedSites || []).filter(s => s !== hostname);
+    const whitelisted = storage.whitelistedSites || [];
 
-    await setStorage({ whitelistedSites: whitelisted });
+    // Normalize and filter
+    const normalizedWhitelisted = whitelisted
+      .map(s => s.replace(/^www\./, ''))
+      .filter(s => s !== normalizedHostname);
 
-    return { success: true, message: 'Unwhitelisted ' + hostname };
+    await setStorage({ whitelistedSites: normalizedWhitelisted });
+
+    return { success: true, message: 'Unwhitelisted ' + normalizedHostname };
   }
 
   async function getWhitelist() {

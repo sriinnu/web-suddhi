@@ -91,9 +91,9 @@
       const topDomains = memStats.today.topDomains;
       topDomains[blockedDomain] = (topDomains[blockedDomain] || 0) + 1;
 
-      // Trim to top N
+      // Trim to top N (trim when over capacity)
       const entries = Object.entries(topDomains);
-      if (entries.length > MAX_TOP_DOMAINS + 10) {
+      if (entries.length > MAX_TOP_DOMAINS) {
         entries.sort((a, b) => b[1] - a[1]);
         memStats.today.topDomains = Object.fromEntries(entries.slice(0, MAX_TOP_DOMAINS));
       }
@@ -130,9 +130,9 @@
       }
       perSite[hostname].cosmetic += c;
 
-      // Trim to top N sites
+      // Trim to top N sites (trim when over capacity)
       const entries = Object.entries(perSite);
-      if (entries.length > MAX_PER_SITE + 10) {
+      if (entries.length > MAX_PER_SITE) {
         entries.sort((a, b) => (b[1].network + b[1].cosmetic) - (a[1].network + a[1].cosmetic));
         memStats.today.perSite = Object.fromEntries(entries.slice(0, MAX_PER_SITE));
       }
@@ -202,11 +202,22 @@
   // FLUSH TO STORAGE
   // ============================================
   function startFlushTimer() {
+    // Clear existing timer first to prevent duplicates
+    if (flushTimer) {
+      clearInterval(flushTimer);
+    }
     flushTimer = setInterval(() => {
       if (dirty) {
         flushStats();
       }
     }, 30000); // Every 30 seconds
+  }
+
+  function stopFlushTimer() {
+    if (flushTimer) {
+      clearInterval(flushTimer);
+      flushTimer = null;
+    }
   }
 
   async function flushStats() {
@@ -224,8 +235,10 @@
     // MV3: chrome.runtime.onSuspend (service worker about to be stopped)
     if (api.runtime && api.runtime.onSuspend) {
       api.runtime.onSuspend.addListener(() => {
+        // Clean up timer
+        stopFlushTimer();
+        // Flush any pending stats
         if (dirty && memStats) {
-          // Synchronous write attempt before suspension
           try {
             api.storage.local.set({ stats: memStats });
           } catch (e) {
@@ -238,6 +251,7 @@
     // MV2 / fallback: beforeunload event
     if (typeof self !== 'undefined' && self.addEventListener) {
       self.addEventListener('beforeunload', () => {
+        stopFlushTimer();
         if (dirty && memStats) {
           flushStats();
         }
@@ -293,7 +307,8 @@
     getStats,
     getStatsForPeriod,
     resetStats,
-    flushStats
+    flushStats,
+    stopFlushTimer
   };
 
   // Wire up network blocker callback

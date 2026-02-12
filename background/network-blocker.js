@@ -68,18 +68,12 @@
     'sortable.com', 'playwire.com', 'venatus.com', 'nitropay.com'
   ]);
 
-  // MV2 tracking domains
+  // MV2 tracking domains (unique - duplicates removed to avoid Set waste)
   const MV2_TRACKING_DOMAINS = new Set([
-    'fingerprintjs.com', 'fpjs.io', 'perimeterx.com', 'datadome.co',
-    'amplitude.com', 'posthog.com', 'pendo.io', 'walkme.com',
-    'appcues.com', 'logrocket.com', 'bugsnag.com', 'rollbar.com',
-    'trackjs.com', 'sessionstack.com', 'smartlook.com',
-    'contentsquare.com', 'newrelic.com', 'dynatrace.com',
-    'appdynamics.com', 'clearbit.com', 'zoominfo.com',
-    'apollo.io', 'lusha.com', 'leadiq.com',
-    'scorecardresearch.com', 'imrworldwide.com',
-    'agkn.com', 'adsrvr.org', 'krxd.net', 'bkrtx.com',
-    'tapad.com', 'liadm.com', 'semasio.net', 'weborama.com'
+    'fpjs.io', 'perimeterx.com', 'datadome.co',
+    'walkme.com', 'appcues.com', 'bugsnag.com', 'rollbar.com',
+    'trackjs.com', 'newrelic.com', 'dynatrace.com',
+    'appdynamics.com', 'apollo.io', 'lusha.com', 'leadiq.com'
   ]);
 
   // Resource types to block (exclude main_frame)
@@ -248,10 +242,11 @@
           const domain = url.hostname;
 
           // Check if initiator is whitelisted
+          let initiatorHost = null;
           if (details.initiator || details.documentUrl) {
             const initiatorUrl = details.initiator || details.documentUrl;
             try {
-              const initiatorHost = new URL(initiatorUrl).hostname.replace(/^www\./, '');
+              initiatorHost = new URL(initiatorUrl).hostname.replace(/^www\./, '');
               if (whitelistedSites.has(initiatorHost)) return {};
             } catch (e) {}
           }
@@ -268,13 +263,10 @@
               updateBadge(tabId, count);
 
               if (self.WebSuddhi.reportNetworkBlock) {
-                // Get initiator site for logging
-                let initiatorSite = 'Unknown';
-                if (details.initiator || details.documentUrl) {
-                  try {
-                    initiatorSite = new URL(details.initiator || details.documentUrl).hostname;
-                  } catch (e) {}
-                }
+                // Get initiator site for logging (reuse parsed value if available)
+                const initiatorSite = initiatorHost !== null
+                  ? (details.initiator || details.documentUrl || '').replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '')
+                  : 'Unknown';
                 self.WebSuddhi.reportNetworkBlock(tabId, domain, initiatorSite);
               }
             }
