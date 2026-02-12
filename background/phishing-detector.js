@@ -67,10 +67,7 @@
     '3': ['e', 'E'],
     '4': ['a', 'A'],
     '5': ['s', 'S'],
-    '6': ['b', 'G'],
     '7': ['t', 'T'],
-    '8': ['b', 'B'],
-    '9': ['g', 'q'],
 
     // Special characters to letters
     '@': ['a'],
@@ -447,21 +444,54 @@
     const parts = domain.toLowerCase().split('.');
     if (parts.length < 2) return domain;
 
-    // Common multi-part TLDs
-    const multiPartTLDs = [
-      'co.uk', 'co.jp', 'co.in', 'co.nz', 'co.za', 'co.kr',
-      'com.au', 'com.br', 'com.mx', 'com.ar', 'com.sg', 'com.hk',
-      'org.uk', 'org.au', 'net.au', 'gov.uk', 'gov.au', 'gov.in',
-      'ac.uk', 'edu.au', 'ne.jp', 'or.jp'
-    ];
+    // Comprehensive multi-part TLD list (eTLD+1 handling)
+    const multiPartTLDs = new Set([
+      // Country-code second-level domains
+      'co.uk', 'co.jp', 'co.in', 'co.nz', 'co.za', 'co.kr', 'co.th', 'co.id',
+      'co.il', 'co.ke', 'co.ma', 'co.tz', 'co.vi', 'co.zw',
+      'com.au', 'com.br', 'com.mx', 'com.ar', 'com.sg', 'com.hk', 'com.tw',
+      'com.ng', 'com.pe', 'com.ph', 'com.pk', 'com.tr', 'com.ua', 'com.ve',
+      'org.uk', 'org.au', 'org.nz', 'org.za', 'org.jp', 'org.br', 'org.mx',
+      'net.au', 'gov.uk', 'gov.au', 'gov.in', 'gov.cn', 'gov.tw',
+      'ac.uk', 'edu.au', 'edu.cn', 'edu.tw', 'edu.hk',
+      'ne.jp', 'or.jp', 'go.jp', 'gr.jp',
+      // Generic new TLDs that often have third-level
+      'cloudfront.net', 's3.amazonaws.com', 'herokuapp.com',
+      'azurewebsites.net', 'cloudapp.azure.com',
+      // Additional country TLDs
+      'co.at', 'or.at', 'ac.at', 'co.za', 'org.za'
+    ]);
 
     const lastTwo = parts.slice(-2).join('.');
     const lastThree = parts.slice(-3).join('.');
+    const lastFour = parts.slice(-4).join('.');
 
-    if (multiPartTLDs.includes(lastTwo) && parts.length >= 3) {
-      return parts.slice(-3).join('.');
+    // Check for 4-part eTLDs first
+    if (parts.length >= 4 && multiPartTLDs.has(lastFour)) {
+      return lastFour;
     }
 
+    // Check for 3-part eTLDs
+    if (multiPartTLDs.has(lastTwo) && parts.length >= 3) {
+      return lastThree;
+    }
+
+    // Single-character TLDs need special handling (comprehensive list)
+    const singleCharTLDs = new Set([
+      'aero', 'asia', 'biz', 'cat', 'com', 'coop', 'edu', 'gov',
+      'info', 'int', 'jobs', 'mil', 'mobi', 'museum', 'name',
+      'net', 'org', 'post', 'pro', 'tel', 'travel', 'xxx',
+      // Modern TLDs
+      'app', 'dev', 'io', 'co', 'xyz', 'online', 'site', 'store',
+      'cloud', 'space', 'tech', 'design', 'studio', 'web',
+      'agency', 'digital', 'network', 'software', 'platform'
+    ]);
+
+    if (singleCharTLDs.has(lastTwo)) {
+      return lastTwo;
+    }
+
+    // Default: last two parts
     return lastTwo;
   }
 
@@ -631,7 +661,7 @@
         const protectedBase = protectedDomain.split('.')[0];
         const normalizedProtected = normalizeDomain(protectedBase);
 
-        // Calculate similarity
+        // Calculate similarity ONCE
         const similarity = calculateSimilarity(normalizedDomainWithoutTLD, normalizedProtected);
 
         if (similarity > highestSimilarity) {
@@ -640,8 +670,8 @@
           matchedDomain = protectedDomain;
         }
 
+        // Very high similarity (>95%) is definite phishing
         if (similarity > 0.95) {
-          // Very high similarity, no need to check more
           return {
             isSuspicious: true,
             matchedBrand: brand.name,
@@ -654,22 +684,19 @@
           };
         }
 
-        // Also check if brand name appears in domain (e.g., amazon-support.com)
-        if (containsBrandName(domainWithoutTLD, protectedBase)) {
-          const nameSimilarity = calculateSimilarity(normalizedDomainWithoutTLD, normalizedProtected);
-          if (nameSimilarity > 0.6 && nameSimilarity < 1) {
-            // Brand name appears but domain isn't exact match
-            return {
-              isSuspicious: true,
-              matchedBrand: brand.name,
-              matchedDomain: protectedDomain,
-              similarity: nameSimilarity,
-              originalDomain: domain,
-              normalizedDomain: normalizedDomainWithoutTLD,
-              reason: `Domain contains "${brand.name}" but is not official`,
-              riskLevel: nameSimilarity > 0.8 ? 'high' : 'medium'
-            };
-          }
+        // Check if brand name appears in domain (e.g., amazon-support.com)
+        // Only flag if similarity is in the 60-95% range (not exact match)
+        if (similarity > 0.6 && similarity < 1 && containsBrandName(domainWithoutTLD, protectedBase)) {
+          return {
+            isSuspicious: true,
+            matchedBrand: brand.name,
+            matchedDomain: protectedDomain,
+            similarity,
+            originalDomain: domain,
+            normalizedDomain: normalizedDomainWithoutTLD,
+            reason: `Domain contains "${brand.name}" but is not official`,
+            riskLevel: similarity > 0.8 ? 'high' : 'medium'
+          };
         }
       }
     }
@@ -771,37 +798,74 @@
 
     // Check for punycode (xn--) which indicates IDN
     if (domain.includes('xn--')) {
+      // Any punycode domain is suspicious when it pretends to be a brand
+      // Extract the decoded domain base (remove punycode prefix)
+      let decoded;
       try {
-        // Decode punycode using the URL API to get the Unicode representation
-        const decoded = new URL('http://' + domain).hostname;
-        // Only flag if the decoded domain contains characters that match a known homoglyph
-        // or if the decoded domain looks similar to a protected brand
-        let hasHomoglyph = false;
-        for (const char of decoded) {
-          if (HOMOGRAPH_MAP[char]) {
-            hasHomoglyph = true;
-            break;
-          }
-        }
-        if (hasHomoglyph) {
-          return {
-            isSuspicious: true,
-            originalDomain: domain,
-            normalizedDomain: normalizeDomain(decoded),
-            reason: 'Punycode domain contains lookalike characters',
-            riskLevel: 'high'
-          };
-        }
-        // Not suspicious - legitimate internationalized domain
+        decoded = new URL('http://' + domain).hostname;
       } catch (e) {
-        // If decoding fails, flag as medium risk for safety
         return {
           isSuspicious: true,
           originalDomain: domain,
-          reason: 'Domain uses Punycode that could not be decoded',
-          riskLevel: 'medium'
+          reason: 'Domain uses unreadable Punycode',
+          riskLevel: 'high'
         };
       }
+
+      // Remove the punycode indicator and check for lookalike characters
+      const decodedNoPunycode = decoded.replace(/^xn--/, '');
+      let hasHomoglyph = false;
+      let homoglyphChars = [];
+
+      for (const char of decodedNoPunycode) {
+        if (HOMOGRAPH_MAP[char]) {
+          hasHomoglyph = true;
+          homoglyphChars.push(char);
+        }
+      }
+
+      // Flag if punycode was used AND contains lookalike characters
+      // OR if it imitates a protected brand name
+      const registrableDomain = getRegistrableDomain(decodedNoPunycode);
+
+      // Check if domain imitates any protected brand
+      for (const brand of PROTECTED_BRANDS) {
+        for (const protectedDomain of brand.domains) {
+          const protectedBase = protectedDomain.split('.')[0];
+          const normalizedProtected = normalizeDomain(protectedBase);
+          const normalizedDecoded = normalizeDomain(registrableDomain);
+
+          const similarity = calculateSimilarity(normalizedDecoded, normalizedProtected);
+          if (similarity > 0.7) {
+            return {
+              isSuspicious: true,
+              originalDomain: domain,
+              normalizedDomain: normalizedDecoded,
+              reason: `Punycode domain imitates ${brand.name}`,
+              riskLevel: 'high'
+            };
+          }
+        }
+      }
+
+      if (hasHomoglyph) {
+        return {
+          isSuspicious: true,
+          originalDomain: domain,
+          normalizedDomain: normalizeDomain(decodedNoPunycode),
+          reason: `Punycode contains lookalike characters (${homoglyphChars.join(', ')})`,
+          riskLevel: 'high'
+        };
+      }
+
+      // Punycode without homoglyphs might be legitimate, but still suspicious
+      return {
+        isSuspicious: true,
+        originalDomain: domain,
+        normalizedDomain: normalizeDomain(decodedNoPunycode),
+        reason: 'Domain uses internationalized characters (Punycode)',
+        riskLevel: 'medium'
+      };
     }
 
     // Check for non-ASCII characters that look like ASCII

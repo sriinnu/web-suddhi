@@ -53,7 +53,7 @@
   function escapeHtmlPhishing(text) {
     const div = document.createElement('div');
     div.textContent = text || '';
-    return div.innerHTML;
+    return div.textContent;  // Return textContent, not innerHTML
   }
 
   // Highlight suspicious characters (homoglyphs) in domain
@@ -2727,7 +2727,7 @@
   function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
-    return div.innerHTML;
+    return div.textContent;
   }
 
   // ============================================

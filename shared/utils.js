@@ -491,7 +491,7 @@
     if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
-    return div.innerHTML;
+    return div.textContent;  // Return textContent, not innerHTML
   };
 
   // Format large numbers with K/M suffix
@@ -597,5 +597,16 @@
       resolve();
     });
   };
+
+  // ============================================
+  // MODULE REGISTRATION (DI Container)
+  // ============================================
+  if (self.WebSuddhi && self.WebSuddhi.Container) {
+    self.WebSuddhi.Container.register(
+      'utils',
+      () => utils,
+      []
+    );
+  }
 
 })();

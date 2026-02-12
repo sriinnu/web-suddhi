@@ -54,7 +54,7 @@
     // Kommunicate
     '#kommunicate-widget-iframe', '[class*="kommunicate"]',
     // Chatwoot
-    '.woot-widget-holder', '#cw-widget-holder',
+    '.chatwoot-widget-holder', '#chatwoot-widget-holder', '[class*="chatwoot"]',
     // Customerly
     '#customerly-container', '[class*="customerly"]',
     // Help Scout
