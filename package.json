@@ -1,4 +1,36 @@
 {
+  "name": "websuddhi",
+  "version": "2.1.0",
+  "description": "Block ads, remove paywalls, strip trackers, and clean up any website",
+  "main": "background/background.js",
+  "scripts": {
+    "build": "rollup -c",
+    "build:watch": "rollup -c -w",
+    "lint": "eslint . --ext .js",
+    "lint:fix": "eslint . --ext .js --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "ad-blocker",
+    "privacy",
+    "browser-extension",
+    "chrome-extension",
+    "firefox-addon"
+  ],
+  "author": "Srinivas Pendela",
+  "license": "MIT",
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^0.4.4",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "rollup": "^4.13.0",
+    "rollup-plugin-copy": "^3.5.0",
+    "typescript": "^5.4.3",
+    "vitest": "^1.4.0"
+  },
   "dependencies": {
     "acorn": "^8.15.0"
   }
