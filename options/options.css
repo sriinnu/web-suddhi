@@ -210,6 +210,50 @@ body {
   border: 1px solid rgba(14, 165, 233, 0.2);
 }
 
+.theme-toggle {
+  margin-left: auto;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.theme-toggle .sun-icon {
+  display: none;
+}
+
+.theme-toggle .moon-icon {
+  display: block;
+}
+
+[data-theme="dark"] .theme-toggle .sun-icon {
+  display: block;
+}
+
+[data-theme="dark"] .theme-toggle .moon-icon {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .theme-toggle .sun-icon {
+    display: block;
+  }
+  .theme-toggle .moon-icon {
+    display: none;
+  }
+}
+
 .sidebar-nav {
   flex: 1;
   padding: 16px 12px;
@@ -1485,6 +1529,117 @@ body {
   font-size: 13px;
   background: var(--bg-tertiary);
   border-radius: var(--radius-md);
+}
+
+/* ============================================
+   Stats Row
+   ============================================ */
+.stats-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.stats-row .card {
+  margin-bottom: 0;
+}
+
+/* ============================================
+   Pie Chart
+   ============================================ */
+.pie-chart {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+.pie-container {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.pie-svg {
+  width: 150px;
+  height: 150px;
+  transform: rotate(-90deg);
+}
+
+.pie-slice {
+  fill: none;
+  stroke-width: 32;
+  transition: stroke-dasharray 0.6s var(--transition-bounce);
+}
+
+.pie-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pie-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.pie-legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.pie-legend-label {
+  color: var(--text-secondary);
+}
+
+.pie-legend-value {
+  font-weight: 600;
+  margin-left: auto;
+}
+
+/* ============================================
+   Trend Chart
+   ============================================ */
+.trend-chart {
+  min-height: 200px;
+  padding: 16px;
+}
+
+.trend-svg {
+  width: 100%;
+  height: 150px;
+}
+
+.trend-line {
+  fill: none;
+  stroke: var(--accent-color);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.trend-area {
+  fill: var(--accent-color);
+  opacity: 0.1;
+}
+
+.trend-dot {
+  fill: var(--accent-color);
+}
+
+.trend-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.trend-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
 }
 
 /* ============================================

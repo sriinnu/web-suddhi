@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Keyboard Shortcuts - WebSuddhi</title>
+  <link rel="stylesheet" href="options.css">
+  <style>
+    .shortcuts-container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .shortcut-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .shortcut-info h3 {
+      margin: 0 0 4px 0;
+      font-size: 16px;
+    }
+    .shortcut-info p {
+      margin: 0;
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+    .shortcut-key {
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 8px 16px;
+      font-family: monospace;
+      font-size: 14px;
+      min-width: 100px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .shortcut-key:hover {
+      background: var(--accent-color);
+      color: white;
+    }
+    .shortcut-key.recording {
+      background: #ef4444;
+      color: white;
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    .shortcut-key.empty {
+      color: var(--text-secondary);
+      font-style: italic;
+    }
+    .reset-btn {
+      background: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      margin-left: 8px;
+    }
+    .reset-btn:hover {
+      background: #ef4444;
+      color: white;
+      border-color: #ef4444;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    .header h1 {
+      margin: 0;
+    }
+    .back-link {
+      color: var(--accent-color);
+      text-decoration: none;
+    }
+    .back-link:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="shortcuts-container">
+    <div class="header">
+      <a href="options.html" class="back-link">&larr; Back to Settings</a>
+      <h1>Keyboard Shortcuts</h1>
+    </div>
+
+    <div id="shortcuts-list">
+      <!-- Shortcuts will be populated here -->
+    </div>
+
+    <div class="info-box" style="margin-top: 24px;">
+      <p><strong>Note:</strong> Some shortcuts may conflict with browser or website shortcuts. Click on a shortcut key to record a new combination.</p>
+    </div>
+  </div>
+
+  <script src="shortcuts.js"></script>
+</body>
+</html>

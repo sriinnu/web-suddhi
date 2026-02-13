@@ -55,8 +55,11 @@
     dataSavedTotal: document.getElementById('dataSavedTotal'),
     topDomainsChart: document.getElementById('topDomainsChart'),
     topSitesChart: document.getElementById('topSitesChart'),
+    categoryChart: document.getElementById('categoryChart'),
+    trendChart: document.getElementById('trendChart'),
     resetStatsBtn: document.getElementById('resetStatsBtn'),
     // Import/Export
+    themeToggle: document.getElementById('themeToggle'),
     exportBtn: document.getElementById('exportBtn'),
     importBtn: document.getElementById('importBtn'),
     importFile: document.getElementById('importFile'),
@@ -440,6 +443,14 @@
         // Render charts
         renderBarChart(elements.topDomainsChart, stats.today?.topDomains || {}, 10);
         renderBarChart(elements.topSitesChart, stats.today?.perSite || {}, 10, true);
+
+        // Render category pie chart
+        const byCategory = stats.today?.byCategory || stats.byCategory || {};
+        renderPieChart(elements.categoryChart, byCategory);
+
+        // Render trend chart
+        const history = stats.history || [];
+        renderTrendChart(elements.trendChart, history);
       }
     } catch (err) {
       elements.totalBlocked.textContent = '0';
@@ -627,6 +638,186 @@
   }
 
   // ============================================
+  // PIE CHART
+  // ============================================
+  const CATEGORY_COLORS = {
+    ads: '#ef4444',
+    trackers: '#f59e0b',
+    annoyances: '#8b5cf6',
+    paywall: '#ec4899',
+    other: '#6b7280'
+  };
+
+  function renderPieChart(container, byCategory) {
+    if (!container) return;
+    clearElement(container);
+
+    const entries = Object.entries(byCategory || {})
+      .filter(([, val]) => val > 0)
+      .sort((a, b) => b[1] - a[1]);
+
+    if (entries.length === 0) {
+      const emptyDiv = document.createElement('div');
+      emptyDiv.className = 'empty-chart';
+      emptyDiv.textContent = 'No data yet';
+      container.appendChild(emptyDiv);
+      return;
+    }
+
+    const total = entries.reduce((sum, [, v]) => sum + v, 0);
+    const radius = 50;
+    const circumference = 2 * Math.PI * radius;
+
+    let cumulativePercent = 0;
+    const slices = entries.map(([label, value]) => {
+      const percent = value / total;
+      const startPercent = cumulativePercent;
+      cumulativePercent += percent;
+
+      const dashArray = percent * circumference;
+      const dashOffset = (1 - startPercent) * circumference;
+
+      return {
+        label,
+        value,
+        percent: Math.round(percent * 100),
+        dashArray,
+        dashOffset,
+        color: CATEGORY_COLORS[label] || CATEGORY_COLORS.other
+      };
+    });
+
+    // Create SVG
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.classList.add('pie-svg');
+    svg.setAttribute('viewBox', '0 0 120 120');
+
+    slices.forEach(slice => {
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.classList.add('pie-slice');
+      circle.setAttribute('cx', '60');
+      circle.setAttribute('cy', '60');
+      circle.setAttribute('r', String(radius));
+      circle.setAttribute('stroke', slice.color);
+      circle.setAttribute('stroke-dasharray', `${slice.dashArray} ${circumference}`);
+      circle.setAttribute('stroke-dashoffset', String(-slice.dashOffset));
+      svg.appendChild(circle);
+    });
+
+    // Legend
+    const legend = document.createElement('div');
+    legend.className = 'pie-legend';
+
+    slices.forEach(slice => {
+      const item = document.createElement('div');
+      item.className = 'pie-legend-item';
+
+      const color = document.createElement('span');
+      color.className = 'pie-legend-color';
+      color.style.backgroundColor = slice.color;
+
+      const label = document.createElement('span');
+      label.className = 'pie-legend-label';
+      label.textContent = slice.label.charAt(0).toUpperCase() + slice.label.slice(1);
+
+      const value = document.createElement('span');
+      value.className = 'pie-legend-value';
+      value.textContent = slice.percent + '%';
+
+      item.appendChild(color);
+      item.appendChild(label);
+      item.appendChild(value);
+      legend.appendChild(item);
+    });
+
+    const containerDiv = document.createElement('div');
+    containerDiv.className = 'pie-container';
+    containerDiv.appendChild(svg);
+    containerDiv.appendChild(legend);
+
+    container.appendChild(containerDiv);
+  }
+
+  // ============================================
+  // TREND CHART
+  // ============================================
+  function renderTrendChart(container, history) {
+    if (!container) return;
+    clearElement(container);
+
+    if (!history || history.length === 0) {
+      const emptyDiv = document.createElement('div');
+      emptyDiv.className = 'empty-chart';
+      emptyDiv.textContent = 'No data yet';
+      container.appendChild(emptyDiv);
+      return;
+    }
+
+    const last7 = history.slice(-7);
+    const maxVal = Math.max(...last7.map(d => d.blocked || 0), 1);
+
+    const width = 300;
+    const height = 120;
+    const padding = 10;
+
+    const points = last7.map((d, i) => {
+      const x = padding + (i / (last7.length - 1)) * (width - 2 * padding);
+      const y = height - padding - ((d.blocked || 0) / maxVal) * (height - 2 * padding);
+      return { x, y, date: d.date };
+    });
+
+    const linePath = points.map((p, i) => (i === 0 ? 'M' : 'L') + `${p.x},${p.y}`).join(' ');
+    const areaPath = linePath + ` L${points[points.length - 1].x},${height - padding} L${points[0].x},${height - padding} Z`;
+
+    // Create SVG
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.classList.add('trend-svg');
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('preserveAspectRatio', 'none');
+
+    // Area
+    const area = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    area.classList.add('trend-area');
+    area.setAttribute('d', areaPath);
+    svg.appendChild(area);
+
+    // Line
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    line.classList.add('trend-line');
+    line.setAttribute('d', linePath);
+    svg.appendChild(line);
+
+    // Dots
+    points.forEach(p => {
+      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot.classList.add('trend-dot');
+      dot.setAttribute('cx', String(p.x));
+      dot.setAttribute('cy', String(p.y));
+      dot.setAttribute('r', '4');
+      svg.appendChild(dot);
+    });
+
+    // Labels
+    const labels = document.createElement('div');
+    labels.className = 'trend-labels';
+
+    const dates = last7.map(d => {
+      const date = new Date(d.date);
+      return date.toLocaleDateString('en-US', { weekday: 'short' });
+    });
+
+    dates.forEach(dateText => {
+      const label = document.createElement('span');
+      label.className = 'trend-label';
+      label.textContent = dateText;
+      labels.appendChild(label);
+    });
+
+    container.appendChild(svg);
+    container.appendChild(labels);
+  }
+
+  // ============================================
   // ELEMENT CREATION
   // ============================================
   function createRuleElement(item) {
@@ -722,6 +913,16 @@
   // EVENT LISTENERS
   // ============================================
   function setupEventListeners() {
+    // Theme toggle
+    if (elements.themeToggle) {
+      elements.themeToggle.addEventListener('click', async () => {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const newTheme = isDark ? 'light' : 'dark';
+        applyTheme(newTheme);
+        await setStorage({ theme: newTheme });
+      });
+    }
+
     // Toggle protection
     elements.enableProtection.addEventListener('change', async () => {
       await setStorage({ enabled: elements.enableProtection.checked });

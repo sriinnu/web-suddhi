@@ -59,13 +59,7 @@
     },
     {
       "matches": ["<all_urls>"],
-      "js": ["shared/utils.js", "content/cookie-consent.js"],
-      "run_at": "document_idle",
-      "all_frames": false
-    },
-    {
-      "matches": ["<all_urls>"],
-      "js": ["shared/utils.js", "content/annoyance-blocker.js"],
+      "js": ["shared/utils.js", "content/cookie-consent.js", "content/annoyance-blocker.js"],
       "run_at": "document_idle",
       "all_frames": false
     }
@@ -74,8 +68,7 @@
     "extension_pages": "script-src 'self'; object-src 'self'"
   },
   "background": {
-    "service_worker": "background/background.js",
-    "type": "module"
+    "service_worker": "background/background.js"
   },
   "options_page": "options/options.html",
   "icons": {

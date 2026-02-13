@@ -767,34 +767,11 @@
     }
   }
 
-  // Cross-browser storage API
+  // Cross-browser storage API - use shared utils
+  const STORAGE_KEYS = ['enabled', 'paywallEnabled', 'socialBlockingEnabled', 'blockedSelectors', 'whitelistedSites', 'toastDuration'];
+
   function getStorage() {
-    return new Promise((resolve, reject) => {
-      if (typeof browser !== 'undefined' && browser.storage) {
-        browser.storage.local.get(['enabled', 'paywallEnabled', 'socialBlockingEnabled', 'blockedSelectors', 'whitelistedSites', 'toastDuration']).then(resolve).catch(reject);
-        return;
-      }
-      if (typeof chrome !== 'undefined' && chrome.storage) {
-        chrome.storage.local.get(['enabled', 'paywallEnabled', 'socialBlockingEnabled', 'blockedSelectors', 'whitelistedSites', 'toastDuration'], (result) => {
-          if (chrome.runtime.lastError) reject(chrome.runtime.lastError);
-          else resolve(result);
-        });
-        return;
-      }
-      try {
-        const result = {};
-        result.enabled = localStorage.getItem('websuddhi_enabled') !== 'false';
-        result.paywallEnabled = localStorage.getItem('websuddhi_paywall') !== 'false';
-        result.socialBlockingEnabled = localStorage.getItem('websuddhi_social') === 'true';
-        const selectors = localStorage.getItem('websuddhi_selectors');
-        result.blockedSelectors = selectors ? JSON.parse(selectors) : [];
-        const whitelist = localStorage.getItem('websuddhi_whitelist');
-        result.whitelistedSites = whitelist ? JSON.parse(whitelist) : [];
-        resolve(result);
-      } catch (err) {
-        reject(err);
-      }
-    });
+    return self.WebSuddhi.utils.getStorage(STORAGE_KEYS);
   }
 
   function setStorage(data) {
@@ -1675,7 +1652,7 @@
       try {
         const elements = document.querySelectorAll(selector);
         elements.forEach(el => {
-          if (isVisible(el) && !el.hasAttribute('data-websuddhi-blocked')) {
+          if (self.WebSuddhi.utils.isVisible(el) && !el.hasAttribute('data-websuddhi-blocked')) {
             hideSocialElement(el);
           }
         });
@@ -1725,7 +1702,7 @@
     try {
       const elements = document.querySelectorAll(selector);
       elements.forEach(el => {
-        if (isVisible(el) && !el.hasAttribute('data-websuddhi-blocked')) {
+        if (self.WebSuddhi.utils.isVisible(el) && !el.hasAttribute('data-websuddhi-blocked')) {
           hideElement(el, selector);
         }
       });
@@ -1784,7 +1761,7 @@
           const attrValues = Array.from(el.attributes).map(a => (a.name + '=' + a.value).toLowerCase());
           const combined = attrNames.concat(attrValues).join(' ');
           const hasAdAttr = attrs.some(adAttr => combined.includes(adAttr.toLowerCase()));
-          if (hasAdAttr && isVisible(el)) {
+          if (hasAdAttr && self.WebSuddhi.utils.isVisible(el)) {
             hideElement(el);
           }
         });
@@ -1793,7 +1770,7 @@
 
     try {
       document.querySelectorAll('[data-ad], [data-ads], [data-advertisement]').forEach(el => {
-        if (isVisible(el) && !el.hasAttribute('data-websuddhi-blocked')) hideElement(el);
+        if (self.WebSuddhi.utils.isVisible(el) && !el.hasAttribute('data-websuddhi-blocked')) hideElement(el);
       });
     } catch (err) {}
   }
@@ -1851,39 +1828,8 @@
   }
 
   // ============================================
-  // VISIBILITY CHECK
+  // VISIBILITY CHECK - use shared utils
   // ============================================
-  function isVisible(el) {
-    if (!el || !el.parentElement) return false;
-
-    try {
-      const style = window.getComputedStyle(el);
-      if (style.display === 'none') return false;
-      if (style.visibility === 'hidden') return false;
-      if (style.opacity === '0') return false;
-      if (style.position === 'fixed' && style.left === '-9999px') return false;
-
-      // Check if element has layout
-      if (el.offsetParent === null && style.position !== 'fixed') return false;
-
-      const rect = el.getBoundingClientRect();
-      if (rect.width < 1 && rect.height < 1) return false;
-
-      let parent = el.parentElement;
-      let depth = 0;
-      while (parent && depth < 5) {
-        if (parent === document.body) break;
-        const parentStyle = window.getComputedStyle(parent);
-        if (parentStyle.display === 'none') return false;
-        parent = parent.parentElement;
-        depth++;
-      }
-
-      return true;
-    } catch (err) {
-      return false;
-    }
-  }
 
   // ============================================
   // SHADOW DOM SUPPORT
@@ -1898,7 +1844,7 @@
       for (const selector of ALL_SELECTORS) {
         try {
           root.querySelectorAll(selector).forEach(el => {
-            if (isVisible(el) && !el.hasAttribute('data-websuddhi-blocked')) {
+            if (self.WebSuddhi.utils.isVisible(el) && !el.hasAttribute('data-websuddhi-blocked')) {
               hideElement(el);
             }
           });

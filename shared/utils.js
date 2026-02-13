@@ -598,15 +598,86 @@
     });
   };
 
+  // Get storage with sync support (for settings that can sync across devices)
+  utils.getSyncStorage = function(keys) {
+    return new Promise((resolve, reject) => {
+      if (storageApi && storageApi.storage && storageApi.storage.sync) {
+        const result = storageApi.storage.sync.get(keys);
+        if (result && typeof result.then === 'function') {
+          result.then(resolve).catch(reject);
+        } else {
+          storageApi.storage.sync.get(keys, (data) => {
+            if (storageApi.runtime.lastError) reject(storageApi.runtime.lastError);
+            else resolve(data);
+          });
+        }
+        return;
+      }
+      resolve({});
+    });
+  };
+
+  // Set storage with sync support
+  utils.setSyncStorage = function(data) {
+    return new Promise((resolve, reject) => {
+      if (storageApi && storageApi.storage && storageApi.storage.sync) {
+        const result = storageApi.storage.sync.set(data);
+        if (result && typeof result.then === 'function') {
+          result.then(resolve).catch(reject);
+        } else {
+          storageApi.storage.sync.set(data, () => {
+            if (storageApi.runtime.lastError) reject(storageApi.runtime.lastError);
+            else resolve();
+          });
+        }
+        return;
+      }
+      resolve();
+    });
+  };
+
   // ============================================
-  // MODULE REGISTRATION (DI Container)
+  // DOM UTILITIES (for content scripts)
   // ============================================
-  if (self.WebSuddhi && self.WebSuddhi.Container) {
-    self.WebSuddhi.Container.register(
-      'utils',
-      () => utils,
-      []
-    );
-  }
+
+  // Check if element is visible (works in DOM context)
+  utils.isVisible = function(el) {
+    if (!el || !el.parentElement) return false;
+
+    try {
+      const style = window.getComputedStyle(el);
+      if (style.display === 'none') return false;
+      if (style.visibility === 'hidden') return false;
+      if (style.opacity === '0') return false;
+      if (style.position === 'fixed' && style.left === '-9999px') return false;
+
+      // Check if element has layout
+      if (el.offsetParent === null && style.position !== 'fixed') return false;
+
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 1 && rect.height < 1) return false;
+
+      let parent = el.parentElement;
+      let depth = 0;
+      const maxDepth = 50; // Prevent infinite loops
+
+      while (parent && depth < maxDepth) {
+        try {
+          const parentStyle = window.getComputedStyle(parent);
+          if (parentStyle.display === 'none' || parentStyle.visibility === 'hidden' || parentStyle.opacity === '0') {
+            return false;
+          }
+        } catch (e) {
+          // Cross-origin iframe - assume visible
+        }
+        parent = parent.parentElement;
+        depth++;
+      }
+
+      return true;
+    } catch (e) {
+      return true; // Default to visible for safety
+    }
+  };
 
 })();

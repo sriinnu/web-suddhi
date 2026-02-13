@@ -91,7 +91,7 @@
   function tryOneTrust() {
     // Try reject button
     const rejectBtn = document.querySelector('#onetrust-reject-all-handler');
-    if (rejectBtn && isVisible(rejectBtn)) {
+    if (rejectBtn && self.WebSuddhi.utils.isVisible(rejectBtn)) {
       rejectBtn.click();
       return true;
     }
@@ -108,7 +108,7 @@
   // Cookiebot
   function tryCookiebot() {
     const declineBtn = document.querySelector('#CybotCookiebotDialogBodyButtonDecline');
-    if (declineBtn && isVisible(declineBtn)) {
+    if (declineBtn && self.WebSuddhi.utils.isVisible(declineBtn)) {
       declineBtn.click();
       return true;
     }
@@ -116,7 +116,7 @@
     // Alternative selectors
     const altBtn = document.querySelector('[data-cookiebanner="reject_all"]') ||
                    document.querySelector('.CybotCookiebotDialogBodyButton[id*="Decline"]');
-    if (altBtn && isVisible(altBtn)) {
+    if (altBtn && self.WebSuddhi.utils.isVisible(altBtn)) {
       altBtn.click();
       return true;
     }
@@ -133,7 +133,7 @@
   function tryTrustArc() {
     const requiredBtn = document.querySelector('#truste-consent-required') ||
                         document.querySelector('.truste-consent-required');
-    if (requiredBtn && isVisible(requiredBtn)) {
+    if (requiredBtn && self.WebSuddhi.utils.isVisible(requiredBtn)) {
       requiredBtn.click();
       return true;
     }
@@ -148,7 +148,7 @@
     if (container) {
       const buttons = container.querySelectorAll('button');
       const rejectBtn = buttons[buttons.length - 1];
-      if (rejectBtn && isVisible(rejectBtn)) {
+      if (rejectBtn && self.WebSuddhi.utils.isVisible(rejectBtn)) {
         rejectBtn.click();
         return true;
       }
@@ -157,7 +157,7 @@
     // Alternative: look for disagree button
     const disagreeBtn = document.querySelector('[class*="qc-cmp2"][class*="disagree"]') ||
                         document.querySelector('.qc-cmp-button[mode="secondary"]');
-    if (disagreeBtn && isVisible(disagreeBtn)) {
+    if (disagreeBtn && self.WebSuddhi.utils.isVisible(disagreeBtn)) {
       disagreeBtn.click();
       return true;
     }
@@ -168,7 +168,7 @@
   // Didomi
   function tryDidomi() {
     const disagreeBtn = document.querySelector('#didomi-notice-disagree-button');
-    if (disagreeBtn && isVisible(disagreeBtn)) {
+    if (disagreeBtn && self.WebSuddhi.utils.isVisible(disagreeBtn)) {
       disagreeBtn.click();
       return true;
     }
@@ -184,7 +184,7 @@
   // CookieYes
   function tryCookieYes() {
     const rejectBtn = document.querySelector('.cky-btn-reject');
-    if (rejectBtn && isVisible(rejectBtn)) {
+    if (rejectBtn && self.WebSuddhi.utils.isVisible(rejectBtn)) {
       rejectBtn.click();
       return true;
     }
@@ -195,7 +195,7 @@
   // Complianz
   function tryComplianz() {
     const denyBtn = document.querySelector('.cmplz-deny');
-    if (denyBtn && isVisible(denyBtn)) {
+    if (denyBtn && self.WebSuddhi.utils.isVisible(denyBtn)) {
       denyBtn.click();
       return true;
     }
@@ -206,7 +206,7 @@
   // Osano
   function tryOsano() {
     const denyBtn = document.querySelector('.osano-cm-deny');
-    if (denyBtn && isVisible(denyBtn)) {
+    if (denyBtn && self.WebSuddhi.utils.isVisible(denyBtn)) {
       denyBtn.click();
       return true;
     }
@@ -218,7 +218,7 @@
   function tryCookieNotice() {
     const rejectBtn = document.querySelector('#cookie-notice .cn-decline') ||
                       document.querySelector('.cookie-notice-container .cn-decline');
-    if (rejectBtn && isVisible(rejectBtn)) {
+    if (rejectBtn && self.WebSuddhi.utils.isVisible(rejectBtn)) {
       rejectBtn.click();
       return true;
     }
@@ -263,7 +263,7 @@
 
         for (const pattern of rejectPatterns) {
           if (pattern.test(text)) {
-            if (isVisible(btn)) {
+            if (self.WebSuddhi.utils.isVisible(btn)) {
               btn.click();
               return true;
             }
@@ -299,7 +299,7 @@
       try {
         const els = document.querySelectorAll(sel);
         for (const el of els) {
-          if (isVisible(el)) containers.push(el);
+          if (self.WebSuddhi.utils.isVisible(el)) containers.push(el);
         }
       } catch (e) {}
     }
@@ -336,17 +336,6 @@
   // ============================================
   // UTILITIES
   // ============================================
-  function isVisible(el) {
-    if (!el) return false;
-    try {
-      const style = window.getComputedStyle(el);
-      if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
-      const rect = el.getBoundingClientRect();
-      return rect.width > 0 && rect.height > 0;
-    } catch (e) {
-      return false;
-    }
-  }
 
   function injectPageScript(code) {
     try {
@@ -358,20 +347,7 @@
   }
 
   function getStorage(keys) {
-    return new Promise((resolve, reject) => {
-      if (typeof browser !== 'undefined' && browser.storage) {
-        browser.storage.local.get(keys).then(resolve).catch(reject);
-        return;
-      }
-      if (typeof chrome !== 'undefined' && chrome.storage) {
-        chrome.storage.local.get(keys, (result) => {
-          if (chrome.runtime.lastError) reject(chrome.runtime.lastError);
-          else resolve(result);
-        });
-        return;
-      }
-      resolve({});
-    });
+    return self.WebSuddhi.utils.getStorage(keys);
   }
 
   // ============================================

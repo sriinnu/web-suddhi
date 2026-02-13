@@ -20,7 +20,11 @@
     svg.setAttribute('viewBox', '0 0 24 24');
     svg.setAttribute('width', '18');
     svg.setAttribute('height', '18');
-    svg.setAttribute('fill', 'currentColor');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', svgPath);
     svg.appendChild(path);
@@ -30,17 +34,17 @@
 
   const SVG_PATHS = {
     pick: 'M7 2l12 11.5-5.5 1.2 3.3 6.8-2.2 1-3.2-7L7 20V2z',
-    cancel: 'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
-    zap: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z'
+    cancel: 'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19z',
+    zap: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
+    check: 'M9 12l2 2 4-4',
+    settings: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z'
   };
 
+  // Elements
   const elements = {
     enableToggle: document.getElementById('enableToggle'),
-    whitelistToggle: document.getElementById('whitelistToggle'),
     currentSite: document.getElementById('currentSite'),
     paywallToggle: document.getElementById('paywallToggle'),
-    jsToggle: document.getElementById('jsToggle'),
-    jsHint: document.getElementById('jsHint'),
     networkBlockedCount: document.getElementById('networkBlockedCount'),
     cosmeticBlockedCount: document.getElementById('cosmeticBlockedCount'),
     rulesCount: document.getElementById('rulesCount'),
@@ -79,7 +83,12 @@
     blockedTitle: document.getElementById('blockedTitle'),
     blockedClose: document.getElementById('blockedClose'),
     blockedList: document.getElementById('blockedList'),
-    viewAllBlocked: document.getElementById('viewAllBlocked')
+    viewAllBlocked: document.getElementById('viewAllBlocked'),
+    // Header action buttons
+    whitelistBtn: document.getElementById('whitelistBtn'),
+    blacklistBtn: document.getElementById('blacklistBtn'),
+    statusBadge: document.getElementById('statusBadge'),
+    whitelistToggleBtn: document.getElementById('whitelistToggleBtn')
   };
 
   // Cross-browser API
@@ -88,6 +97,8 @@
   let currentTab = null;
   let isPickMode = false;
   let isZapMode = false;
+  let currentSettings = {};
+  let isWhitelisted = false;
 
   // ============================================
   // CROSS-BROWSER API
@@ -148,558 +159,473 @@
         reject(new Error('No active tab'));
         return;
       }
-      if (api.tabs) {
-        const result = api.tabs.sendMessage(currentTab.id, message);
-        if (result && typeof result.then === 'function') {
-          result.then(resolve).catch(reject);
-        } else {
-          api.tabs.sendMessage(currentTab.id, message, (response) => {
-            if (api.runtime.lastError) reject(api.runtime.lastError);
-            else resolve(response);
-          });
-        }
-        return;
+
+      const result = api.tabs.sendMessage(currentTab.id, message);
+      if (result && typeof result.then === 'function') {
+        result.then(resolve).catch(reject);
+      } else {
+        api.tabs.sendMessage(currentTab.id, message, (response) => {
+          if (api.runtime.lastError) reject(api.runtime.lastError);
+          else resolve(response);
+        });
       }
-      reject(new Error('No tabs API'));
     });
   }
 
-  function getCurrentTab() {
-    return new Promise((resolve, reject) => {
-      if (api.tabs) {
-        const result = api.tabs.query({ active: true, currentWindow: true });
-        if (result && typeof result.then === 'function') {
-          result.then(tabs => resolve(tabs[0] || null)).catch(reject);
-        } else {
-          api.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            resolve(tabs[0] || null);
-          });
+  // ============================================
+  // UI STATE MANAGEMENT
+  // ============================================
+
+  // Update UI based on settings
+  async function updateUI(settings, tabId) {
+    // Update main toggle
+    if (elements.enableToggle) {
+      elements.enableToggle.checked = settings.enabled !== false;
+      elements.enableToggle.parentElement.classList.toggle('disabled', settings.enabled === false);
+    }
+
+    // Update feature toggles
+    if (elements.networkBlockingToggle) elements.networkBlockingToggle.checked = settings.networkBlockingEnabled !== false;
+    if (elements.urlCleaningToggle) elements.urlCleaningToggle.checked = settings.urlCleaningEnabled !== false;
+    if (elements.cookieConsentToggle) elements.cookieConsentToggle.checked = settings.cookieConsentEnabled !== false;
+    if (elements.annoyanceToggle) elements.annoyanceToggle.checked = settings.annoyanceBlockingEnabled !== false;
+    if (elements.paywallToggle) elements.paywallToggle.checked = settings.paywallEnabled !== false;
+
+    // Update blocked count
+    if (elements.networkBlockedCount) {
+      if (tabId) {
+        try {
+          const blockedCount = await sendToBackground({ type: 'GET_BLOCKED_COUNT', tabId });
+          elements.networkBlockedCount.textContent = blockedCount.count || 0;
+        } catch (e) {
+          elements.networkBlockedCount.textContent = '0';
         }
-        return;
+      } else {
+        elements.networkBlockedCount.textContent = '0';
       }
-      reject(new Error('No tabs API'));
-    });
-  }
-
-  function openOptionsPage(hash) {
-    const url = 'options/options.html' + (hash || '');
-    if (api.tabs) {
-      api.tabs.create({ url });
-    } else if (api.runtime && api.runtime.openOptionsPage) {
-      api.runtime.openOptionsPage();
     }
-  }
 
-  // Reload the active tab so toggled settings take effect on the page
-  function reloadActiveTab() {
-    if (currentTab && currentTab.id && api.tabs) {
-      api.tabs.reload(currentTab.id).catch(() => {});
-    }
-  }
-
-  // ============================================
-  // INITIALIZATION
-  // ============================================
-  async function init() {
-    try {
-      currentTab = await getCurrentTab();
-
-      const storage = await getStorage([
-        'enabled', 'paywallEnabled', 'blockedSelectors', 'whitelistedSites',
-        'networkBlockingEnabled', 'urlCleaningEnabled', 'cookieConsentEnabled', 'annoyanceBlockingEnabled'
-      ]);
-      const enabled = storage.enabled !== false;
-      const paywallEnabled = storage.paywallEnabled !== false;
-      const rulesCount = storage.blockedSelectors?.length || 0;
-      const whitelistedSites = storage.whitelistedSites || [];
-
-      elements.enableToggle.checked = enabled;
-      elements.paywallToggle.checked = paywallEnabled;
+    // Update rules count
+    if (elements.rulesCount) {
+      const rulesCount = 100 + (settings.blockedDomains?.length || 0) + (settings.blockedSelectors?.length || 0);
       elements.rulesCount.textContent = rulesCount;
+    }
 
-      // Set feature toggles
-      elements.networkBlockingToggle.checked = storage.networkBlockingEnabled !== false;
-      elements.urlCleaningToggle.checked = storage.urlCleaningEnabled !== false;
-      elements.cookieConsentToggle.checked = storage.cookieConsentEnabled !== false;
-      elements.annoyanceToggle.checked = storage.annoyanceBlockingEnabled !== false;
-
-      // Set current site and check whitelist status
-      if (currentTab && currentTab.url) {
-        try {
-          const url = new URL(currentTab.url);
-          const hostname = url.hostname.replace(/^www\./, '');
-          elements.currentSite.textContent = hostname;
-
-          // Update security info based on protocol
-          updateSecurityInfo(url);
-
-          const isWhitelisted = whitelistedSites.some(site => {
-            const normalized = site.replace(/^www\./, '');
-            return hostname === normalized || hostname.endsWith('.' + normalized);
-          });
-          elements.whitelistToggle.checked = isWhitelisted;
-
-          // Check JS status
-          try {
-            const jsStatus = await sendToBackground({ type: 'GET_JS_STATUS', url: currentTab.url });
-            if (jsStatus && jsStatus.success) {
-              elements.jsToggle.checked = (jsStatus.setting === 'block');
-              if (jsStatus.setting === 'block') {
-                elements.jsHint.textContent = 'Reload page to apply';
-              }
-            }
-          } catch (e) {
-            elements.jsToggle.checked = false;
-          }
-        } catch (e) {
-          elements.currentSite.textContent = 'Unknown site';
-          updateSecurityInfo(null);
-        }
-      } else {
-        elements.currentSite.textContent = 'N/A';
-        updateSecurityInfo(null);
-      }
-
-      // Get blocked counts
-      if (currentTab && currentTab.id) {
-        // Network blocked count from background
-        try {
-          const netResponse = await sendToBackground({ type: 'GET_NETWORK_BLOCKED_COUNT', tabId: currentTab.id });
-          if (netResponse && netResponse.success) {
-            animateStatUpdate(elements.networkBlockedCount, String(netResponse.count || 0));
-          }
-        } catch (err) {
-          animateStatUpdate(elements.networkBlockedCount, '0');
-        }
-
-        // Cosmetic blocked count from content script
-        try {
-          const response = await sendToContentScript({ type: 'GET_STATUS' });
-          if (response && response.success) {
-            animateStatUpdate(elements.cosmeticBlockedCount, String(response.blockedCount || 0));
-          }
-        } catch (err) {
-          animateStatUpdate(elements.cosmeticBlockedCount, '0');
-        }
-      }
-
-      // Load performance stats (data saved)
+    // Update data saved estimate
+    if (elements.dataSaved && tabId) {
       try {
-        const perfResponse = await sendToBackground({ type: 'GET_PERFORMANCE_STATS' });
-        if (perfResponse && perfResponse.success && perfResponse.performanceStats) {
-          if (elements.dataSaved) {
-            animateStatUpdate(elements.dataSaved, formatDataSize(perfResponse.performanceStats.estimatedDataSaved || 0));
-          }
+        const blockedCount = await sendToBackground({ type: 'GET_BLOCKED_COUNT', tabId });
+        const dataSaved = (blockedCount.count || 0) * 2.5; // Rough estimate: 2.5 KB per request
+        if (dataSaved >= 1024) {
+          elements.dataSaved.textContent = (dataSaved / 1024).toFixed(1) + ' MB';
+        } else {
+          elements.dataSaved.textContent = Math.round(dataSaved) + ' KB';
         }
-      } catch (err) {
-        if (elements.dataSaved) animateStatUpdate(elements.dataSaved, '0 MB');
+      } catch (e) {
+        elements.dataSaved.textContent = '0 KB';
       }
+    }
 
-      // Load tracker category breakdown
-      await loadTrackerSummary();
-
-      // Load certificate and frame info
-      await loadSecurityDetails();
-
-      setupEventListeners();
-
-      // Initialize micro-interactions
-      ensureRippleStyles();
-      [elements.removePaywallBtn, elements.pickModeBtn, elements.zapModeBtn, elements.openOptionsBtn].forEach(addRippleEffect);
-
-    } catch (err) {
-      logError('Popup init error:', err);
+    // Update status badge
+    if (elements.statusBadge) {
+      if (settings.enabled === false) {
+        elements.statusBadge.textContent = 'Disabled';
+        elements.statusBadge.style.background = 'rgba(239, 68, 68, 0.2)';
+        elements.statusBadge.style.color = '#ef4444';
+      } else {
+        elements.statusBadge.textContent = 'Active';
+        elements.statusBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+        elements.statusBadge.style.color = '#10b981';
+      }
     }
   }
 
   // ============================================
-  // EVENT LISTENERS
+  // EVENT HANDLERS
   // ============================================
-  function setupEventListeners() {
-    // Toggle protection
-    elements.enableToggle.addEventListener('change', async () => {
-      const enabled = elements.enableToggle.checked;
-      await setStorage({ enabled });
 
-      try {
-        await sendToContentScript({ type: 'TOGGLE', enabled });
-      } catch (err) {}
+  // Toggle main protection
+  async function toggleEnabled() {
+    // Click on label fires before browser toggles checkbox, so invert the state
+    const enabled = !elements.enableToggle.checked;
 
-      reloadActiveTab();
-    });
+    await sendToBackground({ type: 'TOGGLE_ENABLED', enabled });
 
-    // Toggle site whitelist
-    elements.whitelistToggle.addEventListener('change', async () => {
-      const whitelist = elements.whitelistToggle.checked;
-      const hostname = elements.currentSite.textContent;
-
-      if (hostname && hostname !== 'loading...' && hostname !== 'Unknown site' && hostname !== 'N/A') {
-        // Save to background FIRST (this persists the setting)
-        try {
-          await sendToBackground({
-            type: whitelist ? 'WHITELIST_SITE' : 'UNWHITELIST_SITE',
-            hostname: hostname
-          });
-        } catch (e) {
-          // Fallback: save directly to storage
-          const storage = await getStorage(['whitelistedSites']);
-          let whitelisted = storage.whitelistedSites || [];
-          if (whitelist) {
-            if (!whitelisted.includes(hostname)) {
-              whitelisted.push(hostname);
-            }
-          } else {
-            whitelisted = whitelisted.filter(s => s !== hostname);
-          }
-          await setStorage({ whitelistedSites: whitelisted });
-        }
-
-        // Then notify content script (optional, may fail on some pages)
-        try {
-          await sendToContentScript({
-            type: whitelist ? 'WHITELIST_SITE' : 'UNWHITELIST_SITE',
-            hostname: hostname
-          });
-        } catch (err) {}
-
-        showToast(whitelist ? 'Protection disabled on ' + hostname : 'Protection enabled on ' + hostname);
-        reloadActiveTab();
+    // Update status badge
+    if (elements.statusBadge) {
+      const textEl = elements.statusBadge.querySelector('span:last-child');
+      if (textEl) {
+        textEl.textContent = enabled ? 'Active' : 'Disabled';
       }
-    });
+      elements.statusBadge.classList.toggle('disabled', !enabled);
+    }
 
-    // Toggle paywall removal
-    elements.paywallToggle.addEventListener('change', async () => {
-      const enabled = elements.paywallToggle.checked;
-      await setStorage({ paywallEnabled: enabled });
+    // Notify content script IMMEDIATELY
+    try {
+      await sendToContentScript({ type: 'TOGGLE', enabled });
+    } catch (e) {
+      console.log('Content script not available');
+    }
 
-      try {
-        await sendToContentScript({ type: 'TOGGLE_PAYWALL', enabled });
-      } catch (err) {}
-      reloadActiveTab();
-    });
+    showToast(enabled ? 'Protection enabled' : 'Protection disabled');
+  }
 
-    // Toggle JavaScript for this site
-    elements.jsToggle.addEventListener('change', async () => {
-      const block = elements.jsToggle.checked;
-      const hostname = elements.currentSite.textContent;
+  // Toggle features - change event fires after checkbox toggled, so use checked directly
+  async function toggleNetworkBlocking() {
+    const enabled = elements.networkBlockingToggle.checked;
+    await sendToBackground({ type: 'TOGGLE_NETWORK_BLOCKING', enabled });
+    showToast(`Network blocking ${enabled ? 'enabled' : 'disabled'}`);
+  }
 
-      if (hostname && hostname !== 'loading...' && hostname !== 'Unknown site' && hostname !== 'N/A') {
-        try {
-          const response = await sendToBackground({
-            type: 'TOGGLE_JS',
-            hostname: hostname,
-            block: block
-          });
-          if (response && response.success) {
-            elements.jsHint.textContent = 'Reload page to apply';
-            showToast(block ? 'JavaScript disabled on ' + hostname : 'JavaScript enabled on ' + hostname);
-          } else {
-            elements.jsToggle.checked = !block;
-            showToast('JS control not available in this browser');
-          }
-        } catch (err) {
-          elements.jsToggle.checked = !block;
-          showToast('JS control not available in this browser');
-        }
-      }
-    });
+  async function toggleUrlCleaning() {
+    const enabled = elements.urlCleaningToggle.checked;
+    await sendToBackground({ type: 'TOGGLE_URL_CLEANING', enabled });
+    showToast(`URL cleaning ${enabled ? 'enabled' : 'disabled'}`);
+  }
 
-    // Network blocking toggle
-    elements.networkBlockingToggle.addEventListener('change', async () => {
-      const enabled = elements.networkBlockingToggle.checked;
-      // Persist to storage.local FIRST (ensures setting survives even if background message fails)
-      await setStorage({ networkBlockingEnabled: enabled });
-      try {
-        await sendToBackground({ type: 'TOGGLE_NETWORK_BLOCKING', enabled });
-      } catch (err) {}
-      reloadActiveTab();
-    });
+  async function toggleCookieConsent() {
+    const enabled = elements.cookieConsentToggle.checked;
+    await setStorage({ cookieConsentEnabled: enabled });
+    try {
+      await sendToContentScript({ type: 'TOGGLE_COOKIE_CONSENT', enabled });
+    } catch (e) {}
+    showToast(`Cookie blocking ${enabled ? 'enabled' : 'disabled'}`);
+  }
 
-    // URL cleaning toggle
-    elements.urlCleaningToggle.addEventListener('change', async () => {
-      const enabled = elements.urlCleaningToggle.checked;
-      await setStorage({ urlCleaningEnabled: enabled });
-      try {
-        await sendToBackground({ type: 'TOGGLE_URL_CLEANING', enabled });
-      } catch (err) {}
-      reloadActiveTab();
-    });
+  async function toggleAnnoyanceBlocking() {
+    const enabled = elements.annoyanceToggle.checked;
+    await setStorage({ annoyanceBlockingEnabled: enabled });
+    try {
+      await sendToContentScript({ type: 'TOGGLE_ANNOYANCE_BLOCKING', enabled });
+    } catch (e) {}
+    showToast(`Annoyance blocking ${enabled ? 'enabled' : 'disabled'}`);
+  }
 
-    // Cookie consent toggle
-    elements.cookieConsentToggle.addEventListener('change', async () => {
-      const enabled = elements.cookieConsentToggle.checked;
-      await setStorage({ cookieConsentEnabled: enabled });
-      try {
-        await sendToBackground({ type: 'TOGGLE_COOKIE_CONSENT', enabled });
-        await sendToContentScript({ type: 'TOGGLE_COOKIE_CONSENT', enabled });
-      } catch (err) {}
-      reloadActiveTab();
-    });
+  async function togglePaywall() {
+    const enabled = elements.paywallToggle.checked;
+    await sendToBackground({ type: 'TOGGLE_PAYWALL', enabled });
+    await sendToContentScript({ type: 'TOGGLE_PAYWALL', enabled });
+  }
 
-    // Annoyance blocker toggle
-    elements.annoyanceToggle.addEventListener('change', async () => {
-      const enabled = elements.annoyanceToggle.checked;
-      await setStorage({ annoyanceBlockingEnabled: enabled });
-      try {
-        await sendToBackground({ type: 'TOGGLE_ANNOYANCE_BLOCKING', enabled });
-        await sendToContentScript({ type: 'TOGGLE_ANNOYANCE_BLOCKING', enabled });
-      } catch (err) {}
-      reloadActiveTab();
-    });
+  async function toggleWhitelist() {
+    if (!currentTab?.url) return;
 
-    // Remove paywall button
-    elements.removePaywallBtn.addEventListener('click', async () => {
-      try {
-        const response = await sendToContentScript({ type: 'REMOVE_PAYWALL' });
-        if (response && response.success) {
-          showToast('Paywall removal triggered');
-        }
-      } catch (err) {}
-    });
+    const hostname = new URL(currentTab.url).hostname;
+    const response = await sendToBackground({ type: 'TOGGLE_WHITELIST' });
+    isWhitelisted = response.whitelisted;
 
-    // Pick mode button
-    elements.pickModeBtn.addEventListener('click', async () => {
-      if (isZapMode) {
-        try { await sendToContentScript({ type: 'STOP_ZAP_MODE' }); } catch (e) {}
-        isZapMode = false;
-        updateZapModeButton(false);
-      }
+    // Update UI - update button text
+    const btnText = elements.whitelistToggleBtn?.querySelector('#whitelistBtnText');
+    if (btnText) {
+      btnText.textContent = isWhitelisted ? 'Allowed' : 'Whitelist';
+    }
 
-      if (isPickMode) {
-        try {
-          await sendToContentScript({ type: 'STOP_PICK_MODE' });
-        } catch (err) {}
-        isPickMode = false;
-        updatePickModeButton(false);
+    // Show toast notification
+    showToast(isWhitelisted ? `Whitelisted: ${hostname}` : `Removed from whitelist: ${hostname}`);
+
+    // Notify content script IMMEDIATELY with correct message type
+    try {
+      if (isWhitelisted) {
+        await sendToContentScript({ type: 'WHITELIST_SITE', hostname });
       } else {
-        try {
-          await sendToContentScript({ type: 'START_PICK_MODE' });
-          isPickMode = true;
-          updatePickModeButton(true);
-          window.close();
-        } catch (err) {}
+        await sendToContentScript({ type: 'UNWHITELIST_SITE', hostname });
       }
-    });
-
-    // Zap mode button
-    elements.zapModeBtn.addEventListener('click', async () => {
-      if (isPickMode) {
-        try { await sendToContentScript({ type: 'STOP_PICK_MODE' }); } catch (e) {}
-        isPickMode = false;
-        updatePickModeButton(false);
-      }
-
-      if (isZapMode) {
-        try {
-          await sendToContentScript({ type: 'STOP_ZAP_MODE' });
-        } catch (err) {}
-        isZapMode = false;
-        updateZapModeButton(false);
-      } else {
-        try {
-          await sendToContentScript({ type: 'START_ZAP_MODE' });
-          isZapMode = true;
-          updateZapModeButton(true);
-          window.close();
-        } catch (err) {}
-      }
-    });
-
-    // Open options
-    elements.openOptionsBtn.addEventListener('click', () => {
-      openOptionsPage();
-    });
-
-    // Report issue
-    elements.reportIssue.addEventListener('click', (e) => {
-      e.preventDefault();
-      showToast('Visit GitHub to report issues');
-    });
-
-    // Blocked panel - Network stats click
-    if (elements.networkStatBtn) {
-      elements.networkStatBtn.addEventListener('click', () => {
-        showBlockedPanel('network');
-      });
-    }
-
-    // Blocked panel - Cosmetic stats click
-    if (elements.cosmeticStatBtn) {
-      elements.cosmeticStatBtn.addEventListener('click', () => {
-        showBlockedPanel('cosmetic');
-      });
-    }
-
-    // Blocked panel - Close button
-    if (elements.blockedClose) {
-      elements.blockedClose.addEventListener('click', () => {
-        hideBlockedPanel();
-      });
-    }
-
-    // Blocked panel - View All button
-    if (elements.viewAllBlocked) {
-      elements.viewAllBlocked.addEventListener('click', () => {
-        openOptionsPage('#activity');
-      });
+    } catch (e) {
+      console.log('Content script not available');
     }
   }
 
-  function updatePickModeButton(active) {
-    if (active) {
-      setButtonContent(elements.pickModeBtn, SVG_PATHS.cancel, 'Cancel Selection');
+  // Quick whitelist from header button
+  async function quickWhitelist() {
+    if (!currentTab?.url) return;
+
+    const hostname = new URL(currentTab.url).hostname;
+    const response = await sendToBackground({ type: 'WHITELIST_SITE', hostname });
+
+    if (response.success) {
+      isWhitelisted = true;
+      // Update button text
+      const btnText = elements.whitelistToggleBtn?.querySelector('#whitelistBtnText');
+      if (btnText) {
+        btnText.textContent = 'Allowed';
+      }
+      showToast(`Whitelisted: ${hostname}`);
+      // Notify content script IMMEDIATELY using correct message type
+      try {
+        await sendToContentScript({ type: 'WHITELIST_SITE', hostname });
+      } catch (e) {
+        console.log('Content script not available');
+      }
+    } else {
+      showToast(response.error || 'Failed to whitelist');
+    }
+  }
+
+  // Quick blacklist from header button
+  async function quickBlacklist() {
+    if (!currentTab?.url) return;
+
+    const hostname = new URL(currentTab.url).hostname;
+    const response = await sendToBackground({ type: 'ADD_DOMAIN_BLOCK', domain: hostname });
+
+    if (response.success) {
+      showToast(`Blocked: ${hostname}`);
+      // Blacklisting doesn't need immediate content script update
+      // DNR rules will handle network blocking
+      // Cosmetic blocking can be refreshed by reloading
+    } else {
+      showToast(response.error || 'Failed to block');
+    }
+  }
+
+  // ============================================
+  // PICK MODE (Element Picker)
+  // ============================================
+  async function togglePickMode() {
+    if (!currentTab?.id) return;
+
+    isPickMode = !isPickMode;
+
+    if (isPickMode) {
+      setButtonContent(elements.pickModeBtn, SVG_PATHS.cancel, 'Cancel Pick');
       elements.pickModeBtn.classList.add('active');
+      showToast('Pick mode: Click an element to block');
+      await sendToContentScript({ type: 'START_PICK_MODE' });
     } else {
-      setButtonContent(elements.pickModeBtn, SVG_PATHS.pick, 'Pick Element to Block');
+      setButtonContent(elements.pickModeBtn, SVG_PATHS.pick, 'Pick Element');
       elements.pickModeBtn.classList.remove('active');
+      await sendToContentScript({ type: 'STOP_PICK_MODE' });
     }
   }
 
-  function updateZapModeButton(active) {
-    if (active) {
-      setButtonContent(elements.zapModeBtn, SVG_PATHS.cancel, 'Exit Zap Mode');
+  // ============================================
+  // ZAP MODE (Quick Hide)
+  // ============================================
+  async function toggleZapMode() {
+    if (!currentTab?.id) return;
+
+    isZapMode = !isZapMode;
+
+    if (isZapMode) {
+      setButtonContent(elements.zapModeBtn, SVG_PATHS.cancel, 'Cancel Zap');
       elements.zapModeBtn.classList.add('active');
+      showToast('Zap mode: Click an element to hide');
+      await sendToContentScript({ type: 'START_ZAP_MODE' });
     } else {
-      setButtonContent(elements.zapModeBtn, SVG_PATHS.zap, 'Zap Element (Quick Hide)');
+      setButtonContent(elements.zapModeBtn, SVG_PATHS.zap, 'Zap Element');
       elements.zapModeBtn.classList.remove('active');
+      await sendToContentScript({ type: 'STOP_ZAP_MODE' });
     }
   }
 
   // ============================================
-  // BLOCKED PANEL - View/Manage Blocked Items
+  // PAYWALL REMOVAL
   // ============================================
-  async function showBlockedPanel(type) {
-    if (!elements.blockedPanel) return;
+  async function removePaywall() {
+    if (!currentTab?.id) return;
 
-    elements.blockedPanel.style.display = 'block';
-    elements.blockedTitle.textContent = type === 'network' ? 'Blocked Requests' : 'Blocked Elements';
+    try {
+      const response = await sendToContentScript({ type: 'REMOVE_PAYWALL' });
 
-    // Load blocked items
+      if (response && response.success) {
+        showToast('Paywall removed');
+      } else {
+        showToast('Could not remove paywall');
+      }
+    } catch (e) {
+      showToast('Error removing paywall');
+    }
+  }
+
+  // ============================================
+  // OPTIONS & REPORTING
+  // ============================================
+  function openOptions(anchor) {
+    if (api.runtime.openOptionsPage) {
+      api.runtime.openOptionsPage();
+    } else {
+      const url = api.runtime.getURL('options/options.html');
+      if (anchor) {
+        window.open(url + '#' + anchor, '_blank');
+      } else {
+        window.open(url, '_blank');
+      }
+    }
+  }
+
+  function openGitHubIssues() {
+    api.tabs.create({ url: 'https://github.com/sriinnu/web-suddhi/issues' });
+  }
+
+  // ============================================
+  // STATS & BLOCKED ITEMS
+  // ============================================
+  let showingNetworkStats = false;
+  let showingCosmeticStats = false;
+
+  async function showNetworkStats() {
+    if (!elements.blockedPanel || !elements.blockedList || !elements.blockedTitle) return;
+
+    showingNetworkStats = true;
+    showingCosmeticStats = false;
+    elements.blockedTitle.textContent = 'Network Requests';
+
     try {
       const response = await sendToBackground({ type: 'GET_REQUEST_LOG' });
-      const items = response?.log || [];
 
-      // Filter by type and get recent items (limit to 10)
-      const filtered = items
-        .filter(item => item.type === type)
-        .slice(0, 10);
+      if (response && response.success && response.log && response.log.length > 0) {
+        renderBlockedItems(response.log, 'network');
+      } else {
+        elements.blockedList.innerHTML = '<div class="blocked-empty">No network requests blocked yet</div>';
+      }
 
-      renderBlockedItems(filtered, type);
-    } catch (err) {
-      elements.blockedList.innerHTML = '<div class="blocked-empty">Could not load blocked items</div>';
+      elements.blockedPanel.style.display = 'block';
+    } catch (e) {
+      elements.blockedList.innerHTML = '<div class="blocked-empty">Error loading stats</div>';
+      elements.blockedPanel.style.display = 'block';
+    }
+  }
+
+  async function showCosmeticStats() {
+    if (!elements.blockedPanel || !elements.blockedList || !elements.blockedTitle) return;
+
+    showingCosmeticStats = true;
+    showingNetworkStats = false;
+    elements.blockedTitle.textContent = 'Blocked Elements';
+
+    try {
+      const response = await sendToBackground({ type: 'GET_SELECTORS' });
+
+      if (response && response.success && response.selectors && response.selectors.length > 0) {
+        renderBlockedItems(response.selectors, 'cosmetic');
+      } else {
+        elements.blockedList.innerHTML = '<div class="blocked-empty">No elements blocked yet</div>';
+      }
+
+      elements.blockedPanel.style.display = 'block';
+    } catch (e) {
+      elements.blockedList.innerHTML = '<div class="blocked-empty">Error loading stats</div>';
+      elements.blockedPanel.style.display = 'block';
     }
   }
 
   function hideBlockedPanel() {
     if (elements.blockedPanel) {
       elements.blockedPanel.style.display = 'none';
+      showingNetworkStats = false;
+      showingCosmeticStats = false;
     }
   }
 
-  function renderBlockedItems(items, type) {
+  async function renderBlockedItems(items, type) {
     if (!elements.blockedList) return;
 
-    if (!items || items.length === 0) {
-      elements.blockedList.innerHTML = '<div class="blocked-empty">No ' + type + ' items blocked yet on this page</div>';
-      return;
-    }
+    const html = items.slice(-20).reverse().map(item => {
+      if (type === 'network') {
+        const url = item.url || 'Unknown';
+        const shortUrl = url.length > 50 ? url.substring(0, 50) + '...' : url;
+        const site = item.site || 'Unknown';
+        const domain = extractDomain(site);
+        const category = item.category || 'Unknown';
+        const severity = item.severity || 'low';
 
-    let html = '';
-    for (const item of items) {
-      const displayUrl = item.url || item.selector || 'Unknown';
-      const shortUrl = displayUrl.length > 35 ? displayUrl.substring(0, 35) + '...' : displayUrl;
-      const site = item.site || '';
-
-      html += `
-        <div class="blocked-item" data-url="${escapeHtml(displayUrl)}" data-type="${type}">
-          <div class="blocked-item-info">
-            <div class="blocked-item-url" title="${escapeHtml(displayUrl)}">${escapeHtml(shortUrl)}</div>
-            <div class="blocked-item-type ${type}">${type}${site ? ' • ' + site : ''}</div>
+        return `
+          <div class="blocked-item" title="${escapeHtml(url)}">
+            <div class="blocked-item-info">
+              <div class="blocked-item-url">${escapeHtml(shortUrl)}</div>
+              <div class="blocked-item-type ${type}">${escapeHtml(domain)} • ${category}</div>
+            </div>
+            <button class="blocked-unblock" data-url="${escapeHtml(url)}">Unblock</button>
           </div>
-        </div>
-      `;
-    }
+        `;
+      } else {
+        const selector = item.selector || 'Unknown';
+        const site = item.hostname || 'Unknown';
+        const date = item.date ? new Date(item.date).toLocaleDateString() : '';
+
+        return `
+          <div class="blocked-item" title="${escapeHtml(selector)}">
+            <div class="blocked-item-info">
+              <div class="blocked-item-url">${escapeHtml(selector.length > 40 ? selector.substring(0, 40) + '...' : selector)}</div>
+              <div class="blocked-item-type ${type}">${escapeHtml(site)} ${date ? '• ' + date : ''}</div>
+            </div>
+            <button class="blocked-unblock" data-selector="${escapeHtml(selector)}">Unblock</button>
+          </div>
+        `;
+      }
+    }).join('');
 
     elements.blockedList.innerHTML = html;
+
+    // Add event listeners to unblock buttons
+    elements.blockedList.querySelectorAll('.blocked-unblock').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const url = btn.dataset.url;
+        const selector = btn.dataset.selector;
+
+        if (url) {
+          await unblockRequest(url);
+        } else if (selector) {
+          await unblockSelector(selector);
+        }
+      });
+    });
   }
 
+  async function unblockRequest(url) {
+    try {
+      await sendToBackground({ type: 'UNBLOCK_REQUEST', url });
+      showToast('Request unblocked');
+
+      // Refresh the list
+      if (showingNetworkStats) {
+        showNetworkStats();
+      }
+    } catch (e) {
+      showToast('Failed to unblock');
+    }
+  }
+
+  async function unblockSelector(selector) {
+    try {
+      await sendToBackground({ type: 'REMOVE_SELECTOR', selector });
+      showToast('Element unblocked');
+
+      // Refresh the list
+      if (showingCosmeticStats) {
+        showCosmeticStats();
+      }
+    } catch (e) {
+      showToast('Failed to unblock');
+    }
+  }
+
+  // ============================================
+  // TOAST NOTIFICATIONS
+  // ============================================
+  function showToast(message) {
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2000);
+  }
+
+  // ============================================
+  // UTILITY FUNCTIONS
+  // ============================================
   function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.textContent;
   }
 
-  function showToast(message) {
-    const existing = document.querySelector('.websuddhi-toast');
-    if (existing) existing.remove();
-
-    const toast = document.createElement('div');
-    toast.className = 'websuddhi-toast';
-    toast.textContent = message;
-    document.body.appendChild(toast);
-
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      setTimeout(() => toast.remove(), 300);
-    }, 2000);
-  }
-
-  // Animate stat value updates with a subtle pulse effect
-  function animateStatUpdate(element, newValue) {
-    if (!element) return;
-    const currentValue = element.textContent;
-    if (currentValue !== newValue) {
-      element.style.transform = 'scale(1.15)';
-      element.style.transition = 'transform 0.15s ease-out';
-      element.textContent = newValue;
-      setTimeout(() => {
-        element.style.transform = 'scale(1)';
-      }, 150);
-    }
-  }
-
-  // Add ripple effect to buttons
-  function addRippleEffect(button) {
-    if (!button) return;
-    button.addEventListener('click', function(e) {
-      const ripple = document.createElement('span');
-      const rect = button.getBoundingClientRect();
-      const size = Math.max(rect.width, rect.height);
-      const x = e.clientX - rect.left - size / 2;
-      const y = e.clientY - rect.top - size / 2;
-
-      ripple.style.cssText = `
-        position: absolute;
-        width: ${size}px;
-        height: ${size}px;
-        left: ${x}px;
-        top: ${y}px;
-        background: rgba(255, 255, 255, 0.3);
-        border-radius: 50%;
-        transform: scale(0);
-        animation: ripple-effect 0.6s ease-out;
-        pointer-events: none;
-      `;
-
-      button.appendChild(ripple);
-      setTimeout(() => ripple.remove(), 600);
-    });
-  }
-
-  // Add ripple keyframes to document if not present
-  function ensureRippleStyles() {
-    if (!document.getElementById('websuddhi-ripple-styles')) {
-      const style = document.createElement('style');
-      style.id = 'websuddhi-ripple-styles';
-      style.textContent = `
-        @keyframes ripple-effect {
-          to {
-            transform: scale(2.5);
-            opacity: 0;
-          }
-        }
-      `;
-      document.head.appendChild(style);
+  function extractDomain(url) {
+    try {
+      return new URL(url).hostname;
+    } catch (e) {
+      return url;
     }
   }
 
@@ -847,105 +773,52 @@
 
     try {
       // Get security info from background
-      const response = await sendToBackground({
+      const securityInfo = await sendToBackground({
         type: 'GET_SECURITY_INFO',
-        tabId: currentTab.id,
-        url: currentTab.url
-      });
-
-      if (response && response.success && response.securityInfo) {
-        const secInfo = response.securityInfo;
-
-        // Show certificate owner if available
-        if (secInfo.certificate && elements.certOwnerSection) {
-          const cert = secInfo.certificate;
-          elements.certOwnerSection.style.display = 'block';
-
-          if (elements.certOwnerName) {
-            elements.certOwnerName.textContent = cert.organization || cert.subject || 'Unknown Organization';
-          }
-
-          if (elements.certOwnerDetails) {
-            const details = [];
-            if (cert.issuer) details.push('Issued by: ' + extractIssuerName(cert.issuer));
-            if (cert.validTo) details.push('Valid until: ' + cert.validTo);
-            elements.certOwnerDetails.textContent = details.join(' • ') || '';
-          }
-        } else if (elements.certOwnerSection) {
-          // No cert details available (Chrome limitation) - show domain-based info
-          if (currentTab.url) {
-            try {
-              const url = new URL(currentTab.url);
-              if (url.protocol === 'https:') {
-                elements.certOwnerSection.style.display = 'block';
-                if (elements.certOwnerName) {
-                  elements.certOwnerName.textContent = getOrganizationHint(url.hostname);
-                }
-                if (elements.certOwnerDetails) {
-                  elements.certOwnerDetails.textContent = 'Certificate details require Firefox';
-                }
-              }
-            } catch (e) {}
-          }
-        }
-      }
-
-      // Get frame info
-      const frameResponse = await sendToBackground({
-        type: 'GET_FRAME_INFO',
         tabId: currentTab.id
       });
 
-      if (frameResponse && frameResponse.success) {
-        const allFrames = [
-          ...(frameResponse.thirdPartyDomains || []),
-          ...(frameResponse.blockedFrames || [])
-        ];
+      // Update certificate owner section
+      if (elements.certOwnerSection && securityInfo?.certificate) {
+        const cert = securityInfo.certificate;
+        elements.certOwnerName.textContent = cert.organization || 'Unknown';
 
-        if (allFrames.length > 0 && elements.framesSection) {
-          elements.framesSection.style.display = 'block';
-          if (elements.framesCount) {
-            elements.framesCount.textContent = allFrames.length;
-          }
-          renderFramesList(frameResponse.thirdPartyDomains || [], frameResponse.blockedFrames || []);
+        // Format certificate details
+        const details = [];
+        if (cert.issuer && cert.issuer !== cert.organization) {
+          details.push('Issuer: ' + cert.issuer);
         }
+        if (cert.validFrom) {
+          details.push('From: ' + cert.validFrom);
+        }
+        if (cert.validTo) {
+          details.push('Until: ' + cert.validTo);
+        }
+        elements.certOwnerDetails.textContent = details.join(' | ');
+
+        // Show the section
+        elements.certOwnerSection.style.display = 'block';
+      } else if (elements.certOwnerSection) {
+        elements.certOwnerSection.style.display = 'none';
       }
 
-      // Also ask content script for detected frames
-      try {
-        const contentFrames = await sendToContentScript({ type: 'GET_FRAMES' });
-        if (contentFrames && contentFrames.frames && contentFrames.frames.length > 0) {
-          if (elements.framesSection) {
-            elements.framesSection.style.display = 'block';
-          }
-          // Merge with existing frames
-          updateFramesFromContent(contentFrames.frames);
-        }
-      } catch (e) {
-        // Content script may not be available
+      // Update frames section
+      if (elements.framesSection && (securityInfo?.thirdPartyDomains?.length > 0 || securityInfo?.blockedFrames?.length > 0)) {
+        renderFramesList(securityInfo.thirdPartyDomains, securityInfo.blockedFrames);
+        elements.framesSection.style.display = 'block';
+      } else if (elements.framesSection) {
+        elements.framesSection.style.display = 'none';
       }
-
     } catch (err) {
-      // Silently fail - security details are nice-to-have
+      // Silently fail - security info is not critical
     }
   }
 
-  // Extract issuer name from certificate issuer string
-  function extractIssuerName(issuer) {
-    if (!issuer) return 'Unknown';
-    // Try to extract O= (Organization) or CN= (Common Name)
-    const orgMatch = issuer.match(/O=([^,]+)/);
-    if (orgMatch) return orgMatch[1];
-    const cnMatch = issuer.match(/CN=([^,]+)/);
-    if (cnMatch) return cnMatch[1];
-    return issuer.substring(0, 30);
-  }
-
-  // Get organization hint from domain for common sites
-  function getOrganizationHint(hostname) {
+  // Get organization from hostname
+  function getCertOrganization(hostname) {
     const knownOrgs = {
       'google.com': 'Google LLC',
-      'youtube.com': 'Google LLC',
+      'accounts.google.com': 'Google LLC',
       'facebook.com': 'Meta Platforms, Inc.',
       'instagram.com': 'Meta Platforms, Inc.',
       'twitter.com': 'X Corp.',
@@ -1110,5 +983,110 @@
     document.addEventListener('DOMContentLoaded', init);
   } else {
     init();
+  }
+
+  async function init() {
+    try {
+      // Get current tab
+      const tabs = await new Promise((resolve) => {
+        api.tabs.query({ active: true, currentWindow: true }, resolve);
+      });
+      currentTab = tabs[0];
+
+      // Update site display
+      if (currentTab?.url) {
+        try {
+          const url = new URL(currentTab.url);
+          if (elements.currentSite) {
+            elements.currentSite.textContent = url.hostname;
+          }
+
+          // Update security info
+          updateSecurityInfo(url);
+
+          // Get security details
+          await loadSecurityDetails();
+
+          // Load tracker summary
+          await loadTrackerSummary();
+        } catch (e) {
+          if (elements.currentSite) {
+            elements.currentSite.textContent = 'Unknown site';
+          }
+        }
+      } else {
+        if (elements.currentSite) {
+          elements.currentSite.textContent = 'No active tab';
+        }
+      }
+
+      // Load settings
+      const settingsResponse = await sendToBackground({ type: 'GET_ALL_SETTINGS' });
+      const settings = settingsResponse?.settings || {};
+      currentSettings = settings;
+
+      // Update UI
+      await updateUI(settings, currentTab?.id);
+
+      // Check whitelist status
+      if (currentTab?.url) {
+        try {
+          const hostname = new URL(currentTab.url).hostname;
+          const whitelistResponse = await sendToBackground({ type: 'IS_WHITELISTED', hostname });
+          isWhitelisted = whitelistResponse?.whitelisted || false;
+
+          // Update button text for whitelist status
+          const btnText = elements.whitelistToggleBtn?.querySelector('#whitelistBtnText');
+          if (btnText) {
+            btnText.textContent = isWhitelisted ? 'Allowed' : 'Whitelist';
+          }
+        } catch (e) {
+          console.error('Whitelist check failed:', e);
+        }
+      }
+
+      // Set up event listeners
+      // Main protection toggle
+      elements.enableToggle?.parentElement?.addEventListener('click', (e) => {
+        e.preventDefault();
+        toggleEnabled();
+      });
+
+      // Feature toggles - listen on the label wrapper
+      elements.networkBlockingToggle?.parentElement?.addEventListener('click', toggleNetworkBlocking);
+      elements.urlCleaningToggle?.parentElement?.addEventListener('click', toggleUrlCleaning);
+      elements.cookieConsentToggle?.parentElement?.addEventListener('click', toggleCookieConsent);
+      elements.annoyanceToggle?.parentElement?.addEventListener('click', toggleAnnoyanceBlocking);
+      elements.paywallToggle?.addEventListener('change', togglePaywall);
+      elements.removePaywallBtn?.addEventListener('click', removePaywall);
+      elements.pickModeBtn?.addEventListener('click', togglePickMode);
+      elements.zapModeBtn?.addEventListener('click', toggleZapMode);
+      elements.openOptionsBtn?.addEventListener('click', () => openOptions());
+      elements.reportIssue?.addEventListener('click', (e) => {
+        e.preventDefault();
+        openGitHubIssues();
+      });
+      elements.blockedClose?.addEventListener('click', hideBlockedPanel);
+      elements.viewAllBlocked?.addEventListener('click', () => openOptions('stats'));
+      elements.networkStatBtn?.addEventListener('click', showNetworkStats);
+      elements.cosmeticStatBtn?.addEventListener('click', showCosmeticStats);
+      // Header action buttons
+      elements.whitelistBtn?.addEventListener('click', quickWhitelist);
+      elements.blacklistBtn?.addEventListener('click', quickBlacklist);
+      elements.whitelistToggleBtn?.addEventListener('click', toggleWhitelist);
+
+      // Listen for messages from content script or background
+      api.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        // Handle incoming messages
+        if (message.type === 'FRAMES_DETECTED') {
+          updateFramesFromContent(message.frames || []);
+        }
+
+        // Return true to indicate async response
+        return false;
+      });
+    } catch (e) {
+      logError('Init error:', e);
+    }
   }
 })();

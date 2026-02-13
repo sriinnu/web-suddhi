@@ -190,7 +190,7 @@
       try {
         const elements = document.querySelectorAll(selector);
         for (const el of elements) {
-          if (!el.hasAttribute('data-websuddhi-annoyance-blocked') && isVisible(el)) {
+          if (!el.hasAttribute('data-websuddhi-annoyance-blocked') && self.WebSuddhi.utils.isVisible(el)) {
             hideElement(el);
           }
         }
@@ -206,18 +206,6 @@
     el.style.setProperty('position', 'absolute', 'important');
     el.style.setProperty('z-index', '-9999', 'important');
     el.setAttribute('data-websuddhi-annoyance-blocked', 'true');
-  }
-
-  function isVisible(el) {
-    if (!el) return false;
-    try {
-      const style = window.getComputedStyle(el);
-      if (style.display === 'none' || style.visibility === 'hidden') return false;
-      const rect = el.getBoundingClientRect();
-      return rect.width > 0 || rect.height > 0;
-    } catch (e) {
-      return true; // Default to visible for safety
-    }
   }
 
   // ============================================
@@ -253,20 +241,7 @@
   // STORAGE
   // ============================================
   function getStorage(keys) {
-    return new Promise((resolve, reject) => {
-      if (typeof browser !== 'undefined' && browser.storage) {
-        browser.storage.local.get(keys).then(resolve).catch(reject);
-        return;
-      }
-      if (typeof chrome !== 'undefined' && chrome.storage) {
-        chrome.storage.local.get(keys, (result) => {
-          if (chrome.runtime.lastError) reject(chrome.runtime.lastError);
-          else resolve(result);
-        });
-        return;
-      }
-      resolve({});
-    });
+    return self.WebSuddhi.utils.getStorage(keys);
   }
 
   // ============================================

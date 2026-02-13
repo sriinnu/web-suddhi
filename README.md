@@ -635,6 +635,20 @@ Make sure you're loading the correct manifest:
 
 ---
 
+## Keyboard Shortcuts
+
+Customize your experience with keyboard shortcuts:
+
+| Shortcut | Action |
+|----------|--------|
+| `Alt+P` | Toggle element picker mode |
+| `Alt+W` | Toggle whitelist for current site |
+| `Alt+S` | Open settings |
+
+You can customize these in the Options page under Keyboard Shortcuts.
+
+---
+
 ## License
 
 [MIT License](LICENSE) — Free to use, modify, and distribute.

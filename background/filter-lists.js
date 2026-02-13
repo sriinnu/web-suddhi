@@ -9,6 +9,14 @@
   if (!self.WebSuddhi) self.WebSuddhi = {};
 
   // Logging helpers
+  const log = (...args) => {
+    if (self.WebSuddhi.utils && self.WebSuddhi.utils.log) {
+      self.WebSuddhi.utils.log(...args);
+    } else {
+      console.log('[WebSuddhi]', ...args);
+    }
+  };
+
   const logError = (...args) => {
     if (self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
       self.WebSuddhi.utils.error(...args);
@@ -20,6 +28,10 @@
   // Dynamic rule ID range for filter list rules: 40001-69999
   const FILTER_RULE_ID_START = 40001;
   const MAX_FILTER_RULES = 30000;
+
+  // Cache for filter lists with TTL (1 hour default)
+  const FILTER_CACHE_TTL = 60 * 60 * 1000; // 1 hour in milliseconds
+  const filterCache = new Map(); // url -> { data, timestamp }
 
   // Rate limiting for subscription updates
   let lastUpdateTime = 0;
@@ -230,6 +242,16 @@
       return { success: false, error: 'Subscription updated recently, please wait' };
     }
 
+    // Check cache first
+    const cached = filterCache.get(sub.url);
+    if (cached && (now - cached.timestamp) < FILTER_CACHE_TTL) {
+      log('Using cached filter list for:', sub.url);
+      sub.ruleCount = cached.data.length;
+      sub.lastUpdated = new Date(cached.timestamp).toISOString();
+      await setStorage({ filterSubscriptions: subscriptions });
+      return { success: true, cached: true, ruleCount: cached.data.length };
+    }
+
     // Re-validate URL before fetching (in case of stored legacy URLs)
     if (utils && utils.isValidFilterListURL) {
       if (!utils.isValidFilterListURL(sub.url)) {
@@ -286,6 +308,12 @@
       sub.ruleCount = domains.length;
       sub.lastUpdated = new Date().toISOString();
       await setStorage({ filterSubscriptions: subscriptions });
+
+      // Store in cache
+      filterCache.set(sub.url, {
+        data: domains,
+        timestamp: Date.now()
+      });
 
       // Apply rules
       if (sub.enabled) {
