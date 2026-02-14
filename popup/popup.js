@@ -153,6 +153,65 @@
     });
   }
 
+  function isUnknownMessageType(response) {
+    return response && response.success === false &&
+      typeof response.error === 'string' &&
+      response.error.startsWith('Unknown message type');
+  }
+
+  async function sendToBackgroundWithFallback(types, payload = {}) {
+    const typeList = Array.isArray(types) ? types : [types];
+    let lastError = null;
+
+    for (const type of typeList) {
+      try {
+        const response = await sendToBackground({ ...payload, type });
+        if (!isUnknownMessageType(response)) {
+          return response;
+        }
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (lastError) throw lastError;
+    return null;
+  }
+
+  function extractRequestLog(response) {
+    if (Array.isArray(response)) return response;
+    if (Array.isArray(response?.log)) return response.log;
+    if (Array.isArray(response?.entries)) return response.entries;
+    return [];
+  }
+
+  function normalizeFrameList(frames, blocked) {
+    if (!Array.isArray(frames)) return [];
+    return frames.map((frame) => {
+      if (!frame) return null;
+      if (typeof frame === 'string') {
+        return { host: frame, url: frame, blocked };
+      }
+
+      const host = frame.host || frame.hostname || frame.domain;
+      if (!host) return null;
+
+      return {
+        host,
+        url: frame.url || frame.src || frame.frameUrl || host,
+        blocked: frame.blocked === true || blocked
+      };
+    }).filter(Boolean);
+  }
+
+  function extractCertificate(securityInfo) {
+    return securityInfo?.certificate ||
+      securityInfo?.cert ||
+      securityInfo?.tlsCertificate ||
+      securityInfo?.security?.certificate ||
+      null;
+  }
+
   function sendToContentScript(message) {
     return new Promise((resolve, reject) => {
       if (!currentTab || !currentTab.id) {
@@ -471,10 +530,11 @@
     elements.blockedTitle.textContent = 'Network Requests';
 
     try {
-      const response = await sendToBackground({ type: 'GET_REQUEST_LOG' });
+      const response = await sendToBackgroundWithFallback(['GET_REQUEST_LOG', 'REQUEST_LOG']);
+      const requestLog = extractRequestLog(response).filter(entry => entry?.type === 'network');
 
-      if (response && response.success && response.log && response.log.length > 0) {
-        renderBlockedItems(response.log, 'network');
+      if (requestLog.length > 0) {
+        renderBlockedItems(requestLog, 'network');
       } else {
         elements.blockedList.innerHTML = '<div class="blocked-empty">No network requests blocked yet</div>';
       }
@@ -717,14 +777,18 @@
     if (!elements.trackerSummary || !elements.trackerCategories) return;
 
     try {
-      const response = await sendToBackground({ type: 'GET_REQUEST_LOG' });
-      if (!response || !response.success || !response.log) return;
+      const response = await sendToBackgroundWithFallback(['GET_REQUEST_LOG', 'REQUEST_LOG']);
+      const requestLog = extractRequestLog(response);
+      if (requestLog.length === 0) {
+        elements.trackerSummary.style.display = 'none';
+        return;
+      }
 
       // Count by category and severity
       const categoryCounts = {};
       const categorySeverity = {};
 
-      for (const entry of response.log) {
+      for (const entry of requestLog) {
         if (entry.type === 'network' && entry.category && entry.category !== 'Unknown') {
           categoryCounts[entry.category] = (categoryCounts[entry.category] || 0) + 1;
           categorySeverity[entry.category] = entry.severity || 'low';
@@ -773,38 +837,69 @@
 
     try {
       // Get security info from background
-      const securityInfo = await sendToBackground({
-        type: 'GET_SECURITY_INFO',
-        tabId: currentTab.id
-      });
+      const securityInfo = await sendToBackgroundWithFallback(
+        ['GET_SECURITY_INFO', 'GET_TAB_SECURITY_INFO', 'GET_TAB_SECURITY'],
+        { tabId: currentTab.id }
+      ) || {};
 
       // Update certificate owner section
-      if (elements.certOwnerSection && securityInfo?.certificate) {
-        const cert = securityInfo.certificate;
-        elements.certOwnerName.textContent = cert.organization || 'Unknown';
+      if (elements.certOwnerSection) {
+        const cert = extractCertificate(securityInfo);
+        const org = cert?.organization || cert?.org || securityInfo?.organization || '';
 
-        // Format certificate details
-        const details = [];
-        if (cert.issuer && cert.issuer !== cert.organization) {
-          details.push('Issuer: ' + cert.issuer);
-        }
-        if (cert.validFrom) {
-          details.push('From: ' + cert.validFrom);
-        }
-        if (cert.validTo) {
-          details.push('Until: ' + cert.validTo);
-        }
-        elements.certOwnerDetails.textContent = details.join(' | ');
+        if (org) {
+          elements.certOwnerName.textContent = org;
 
-        // Show the section
-        elements.certOwnerSection.style.display = 'block';
-      } else if (elements.certOwnerSection) {
-        elements.certOwnerSection.style.display = 'none';
+          // Format certificate details
+          const details = [];
+          const issuer = cert?.issuer || cert?.issuedBy || securityInfo?.issuer;
+          if (issuer && issuer !== org) {
+            details.push('Issuer: ' + issuer);
+          }
+          const validFrom = cert?.validFrom || cert?.notBefore;
+          if (validFrom) {
+            details.push('From: ' + validFrom);
+          }
+          const validTo = cert?.validTo || cert?.notAfter;
+          if (validTo) {
+            details.push('Until: ' + validTo);
+          }
+          elements.certOwnerDetails.textContent = details.join(' | ');
+
+          // Show the section
+          elements.certOwnerSection.style.display = 'block';
+        } else {
+          elements.certOwnerSection.style.display = 'none';
+        }
+      }
+
+      let allowedFrames = normalizeFrameList(
+        securityInfo?.thirdPartyDomains ||
+        securityInfo?.allowedFrames ||
+        securityInfo?.frames?.allowed ||
+        securityInfo?.frameInfo?.allowed,
+        false
+      );
+      let blockedFrames = normalizeFrameList(
+        securityInfo?.blockedFrames ||
+        securityInfo?.frames?.blocked ||
+        securityInfo?.frameInfo?.blocked,
+        true
+      );
+
+      // Fallback to content script frame detection for older/newer handlers.
+      if (allowedFrames.length === 0 && blockedFrames.length === 0) {
+        try {
+          const frameResponse = await sendToContentScript({ type: 'GET_FRAMES' });
+          const frames = Array.isArray(frameResponse?.frames) ? frameResponse.frames : [];
+          allowedFrames = normalizeFrameList(frames.filter(frame => frame?.blocked !== true), false);
+          blockedFrames = normalizeFrameList(frames.filter(frame => frame?.blocked === true), true);
+        } catch (e) {}
       }
 
       // Update frames section
-      if (elements.framesSection && (securityInfo?.thirdPartyDomains?.length > 0 || securityInfo?.blockedFrames?.length > 0)) {
-        renderFramesList(securityInfo.thirdPartyDomains, securityInfo.blockedFrames);
+      if (elements.framesSection && (allowedFrames.length > 0 || blockedFrames.length > 0)) {
+        renderFramesList(allowedFrames, blockedFrames);
         elements.framesSection.style.display = 'block';
       } else if (elements.framesSection) {
         elements.framesSection.style.display = 'none';
@@ -954,12 +1049,18 @@
   // Allow a blocked frame
   async function allowFrame(host, url) {
     try {
-      await sendToBackground({
-        type: 'ALLOW_FRAME',
-        tabId: currentTab.id,
-        frameHost: host,
-        frameUrl: url
-      });
+      try {
+        await sendToBackgroundWithFallback(
+          ['ALLOW_FRAME', 'ALLOW_THIRD_PARTY_FRAME', 'UNBLOCK_FRAME'],
+          {
+            tabId: currentTab.id,
+            frameHost: host,
+            frameUrl: url,
+            host,
+            url
+          }
+        );
+      } catch (e) {}
 
       // Notify content script to unblock
       await sendToContentScript({
@@ -1052,11 +1153,11 @@
         toggleEnabled();
       });
 
-      // Feature toggles - listen on the label wrapper
-      elements.networkBlockingToggle?.parentElement?.addEventListener('click', toggleNetworkBlocking);
-      elements.urlCleaningToggle?.parentElement?.addEventListener('click', toggleUrlCleaning);
-      elements.cookieConsentToggle?.parentElement?.addEventListener('click', toggleCookieConsent);
-      elements.annoyanceToggle?.parentElement?.addEventListener('click', toggleAnnoyanceBlocking);
+      // Feature toggles - use checkbox state after the browser updates it.
+      elements.networkBlockingToggle?.addEventListener('change', toggleNetworkBlocking);
+      elements.urlCleaningToggle?.addEventListener('change', toggleUrlCleaning);
+      elements.cookieConsentToggle?.addEventListener('change', toggleCookieConsent);
+      elements.annoyanceToggle?.addEventListener('change', toggleAnnoyanceBlocking);
       elements.paywallToggle?.addEventListener('change', togglePaywall);
       elements.removePaywallBtn?.addEventListener('click', removePaywall);
       elements.pickModeBtn?.addEventListener('click', togglePickMode);
@@ -1078,7 +1179,7 @@
       // Listen for messages from content script or background
       api.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Handle incoming messages
-        if (message.type === 'FRAMES_DETECTED') {
+        if (message.type === 'FRAMES_DETECTED' || message.type === 'FRAME_INFO_UPDATED') {
           updateFramesFromContent(message.frames || []);
         }
 

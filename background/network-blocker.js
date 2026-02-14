@@ -81,6 +81,8 @@
     'script', 'image', 'xmlhttprequest', 'sub_frame',
     'stylesheet', 'font', 'media', 'websocket', 'ping', 'other'
   ];
+  const NETWORK_DYNAMIC_RULE_ID_START = 20001;
+  const NETWORK_DYNAMIC_RULE_ID_END = 29999;
 
   // ============================================
   // INITIALIZATION
@@ -89,7 +91,12 @@
     const storage = await getStorage(['networkBlockingEnabled', 'whitelistedSites', 'blockedDomains', 'allowedDomains']);
     const enabled = storage.networkBlockingEnabled !== false;
 
-    if (!enabled) return;
+    if (!enabled) {
+      if (api.declarativeNetRequest) {
+        await clearManagedDynamicRules();
+      }
+      return;
+    }
 
     if (api.declarativeNetRequest) {
       // MV3: Static rules are auto-loaded from manifest
@@ -108,47 +115,74 @@
   // ============================================
   // MV3: DYNAMIC RULES & FEEDBACK
   // ============================================
-  async function setupDynamicRules(storage) {
-    const blockedDomains = storage.blockedDomains || [];
-    const allowedDomains = storage.allowedDomains || [];
-    const whitelistedSites = storage.whitelistedSites || [];
+  function normalizeDomain(value, stripWww = false) {
+    if (!value || typeof value !== 'string') return null;
 
-    // Build dynamic rules
-    const rules = [];
-    let ruleId = 20001; // Dynamic rules start at 20001
+    let host = value.trim().toLowerCase();
+    if (!host) return null;
 
-    // User-blocked domains
-    for (const domain of blockedDomains) {
-      rules.push({
-        id: ruleId++,
-        priority: 1,
-        action: { type: 'block' },
-        condition: {
-          urlFilter: '||' + domain,
-          resourceTypes: BLOCKED_RESOURCE_TYPES
-        }
-      });
+    try {
+      const parsed = new URL(host.includes('://') ? host : ('https://' + host));
+      host = parsed.hostname.toLowerCase();
+    } catch (e) {
+      host = host.split('/')[0].split('?')[0].split('#')[0];
+      host = host.split(':')[0];
     }
 
-    // Whitelist: allow rules with higher priority
-    const allAllowed = [...allowedDomains, ...whitelistedSites];
-    for (const domain of allAllowed) {
-      rules.push({
-        id: ruleId++,
-        priority: 2,
-        action: { type: 'allow' },
-        condition: {
-          urlFilter: '||' + domain,
-          resourceTypes: BLOCKED_RESOURCE_TYPES,
-          initiatorDomains: [domain]
-        }
-      });
+    host = host.replace(/^\.+/, '').replace(/\.+$/, '');
+    if (stripWww) host = host.replace(/^www\./, '');
+    if (!host || host.includes(' ')) return null;
+
+    return host;
+  }
+
+  function normalizeDomainList(domains, stripWww = false) {
+    const normalized = [];
+    const seen = new Set();
+
+    for (const domain of domains || []) {
+      const host = normalizeDomain(domain, stripWww);
+      if (!host || seen.has(host)) continue;
+      seen.add(host);
+      normalized.push(host);
     }
 
-    // Clear existing dynamic rules and add new ones
+    return normalized;
+  }
+
+  function isManagedDynamicRuleId(ruleId) {
+    return Number.isInteger(ruleId) &&
+      ruleId >= NETWORK_DYNAMIC_RULE_ID_START &&
+      ruleId <= NETWORK_DYNAMIC_RULE_ID_END;
+  }
+
+  async function clearManagedDynamicRules() {
+    if (!api.declarativeNetRequest) return;
+
     try {
       const existingRules = await api.declarativeNetRequest.getDynamicRules();
-      const removeIds = existingRules.map(r => r.id);
+      const removeIds = existingRules
+        .filter(rule => isManagedDynamicRuleId(rule.id))
+        .map(rule => rule.id);
+
+      if (removeIds.length === 0) return;
+      await api.declarativeNetRequest.updateDynamicRules({ removeRuleIds: removeIds });
+    } catch (err) {
+      logError('Failed to clear managed dynamic rules:', err);
+    }
+  }
+
+  async function applyManagedDynamicRules(rules) {
+    if (!api.declarativeNetRequest) return;
+
+    try {
+      const existingRules = await api.declarativeNetRequest.getDynamicRules();
+      const removeIds = existingRules
+        .filter(rule => isManagedDynamicRuleId(rule.id))
+        .map(rule => rule.id);
+
+      // Avoid no-op API calls.
+      if (removeIds.length === 0 && rules.length === 0) return;
 
       await api.declarativeNetRequest.updateDynamicRules({
         removeRuleIds: removeIds,
@@ -157,6 +191,85 @@
     } catch (err) {
       logError('Failed to update dynamic rules:', err);
     }
+  }
+
+  async function setupDynamicRules(storage) {
+    const blockedDomains = normalizeDomainList(storage.blockedDomains || []);
+    const allowedDomains = normalizeDomainList(storage.allowedDomains || []);
+    const whitelistedSites = normalizeDomainList(storage.whitelistedSites || [], true);
+
+    // Build dynamic rules
+    const rules = [];
+    let ruleId = NETWORK_DYNAMIC_RULE_ID_START;
+    let exhaustedIdRange = false;
+
+    function pushManagedRule(rule) {
+      if (ruleId > NETWORK_DYNAMIC_RULE_ID_END) {
+        exhaustedIdRange = true;
+        return false;
+      }
+      rules.push({ ...rule, id: ruleId++ });
+      return true;
+    }
+
+    // User-blocked domains
+    for (const domain of blockedDomains) {
+      if (!pushManagedRule({
+        priority: 1,
+        action: { type: 'block' },
+        condition: {
+          urlFilter: '||' + domain,
+          resourceTypes: BLOCKED_RESOURCE_TYPES
+        }
+      })) break;
+    }
+
+    // Explicit allowed domains preserve previous behavior (allow matching URL domain).
+    for (const domain of allowedDomains) {
+      if (!pushManagedRule({
+        priority: 2,
+        action: { type: 'allow' },
+        condition: {
+          urlFilter: '||' + domain,
+          resourceTypes: BLOCKED_RESOURCE_TYPES
+        }
+      })) break;
+    }
+
+    // Whitelisted sites: full-site exemption by initiator domain.
+    for (const domain of whitelistedSites) {
+      if (!pushManagedRule({
+        priority: 3,
+        action: { type: 'allow' },
+        condition: {
+          resourceTypes: BLOCKED_RESOURCE_TYPES,
+          initiatorDomains: [domain]
+        }
+      })) break;
+    }
+
+    if (exhaustedIdRange) {
+      logError('Managed dynamic rule range exhausted; some rules were not applied.');
+    }
+
+    await applyManagedDynamicRules(rules);
+  }
+
+  async function refreshDynamicRules() {
+    if (!api.declarativeNetRequest) {
+      return { success: true, refreshed: false, reason: 'dnr_unavailable' };
+    }
+
+    const storage = await getStorage(['networkBlockingEnabled', 'blockedDomains', 'allowedDomains', 'whitelistedSites']);
+    const enabled = storage.networkBlockingEnabled !== false;
+
+    if (!enabled) {
+      await clearManagedDynamicRules();
+      return { success: true, refreshed: false, reason: 'network_blocking_disabled' };
+    }
+
+    await setupDynamicRules(storage);
+    return { success: true, refreshed: true };
   }
 
   function setupDNRFeedback() {
@@ -348,7 +461,7 @@
       await setStorage({ blockedDomains: domains });
 
       if (api.declarativeNetRequest) {
-        await setupDynamicRules(await getStorage(['blockedDomains', 'allowedDomains', 'whitelistedSites']));
+        await refreshDynamicRules();
       }
     }
     return { success: true };
@@ -360,7 +473,7 @@
     await setStorage({ blockedDomains: domains });
 
     if (api.declarativeNetRequest) {
-      await setupDynamicRules(await getStorage(['blockedDomains', 'allowedDomains', 'whitelistedSites']));
+      await refreshDynamicRules();
     }
     return { success: true };
   }
@@ -381,6 +494,8 @@
       } catch (e) {
         logError('Failed to toggle rulesets:', e);
       }
+
+      await refreshDynamicRules();
     }
 
     return { success: true, enabled };
@@ -405,6 +520,8 @@
     addDomainBlock,
     removeDomainBlock,
     getNetworkBlockedCount,
+    refreshDynamicRules,
+    rebuildDynamicRules: refreshDynamicRules,
     toggleNetworkBlocking,
     getTabBlockedCounts: () => tabBlockedCounts
   };

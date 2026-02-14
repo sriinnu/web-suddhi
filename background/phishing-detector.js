@@ -393,6 +393,31 @@
     BRAND_DOMAINS.set(brand.name, brand.domains.map(d => d.toLowerCase()));
   }
 
+  // Known private suffixes where tenant boundary is one label before the suffix.
+  const PRIVATE_SUFFIXES = new Set([
+    'herokuapp.com',
+    'cloudfront.net',
+    'pages.dev',
+    'workers.dev',
+    'vercel.app',
+    'netlify.app',
+    'appspot.com',
+    'firebaseapp.com',
+    'web.app',
+    'azurewebsites.net',
+    'amazonaws.com',
+    'github.io'
+  ]);
+
+  // Common SLD labels used under ccTLDs (heuristic PSL-style handling).
+  const COMMON_CCTLD_SLD = new Set([
+    'ac', 'co', 'com', 'edu', 'gov', 'mil', 'net', 'org', 'nom',
+    'or', 'ne', 'go', 'gr', 'gen', 'gob', 'id', 'asn', 'sch'
+  ]);
+
+  const ASCII_LABEL_RE = /^[a-z0-9-]+$/;
+  const UNICODE_LABEL_RE = /^[\p{L}\p{N}-]+$/u;
+
   // ============================================
   // NORMALIZATION FUNCTIONS
   // ============================================
@@ -433,66 +458,137 @@
   }
 
   /**
+   * Normalize and validate hostname input.
+   * Accepts plain hostnames, URL-like strings, and host:port forms.
+   * @param {string} input - User/domain input
+   * @returns {string} Normalized hostname or empty string if invalid
+   */
+  function sanitizeHostname(input) {
+    if (!input || typeof input !== 'string') return '';
+
+    let value = input.trim();
+    if (!value) return '';
+
+    // Normalize alternate Unicode dot forms to ASCII dot.
+    value = value.replace(/[\u3002\uFF0E\uFF61]/g, '.');
+
+    if (value.includes('://')) {
+      try {
+        value = new URL(value).hostname || '';
+      } catch (error) {
+        return '';
+      }
+    } else {
+      value = value.split(/[/?#]/, 1)[0];
+      const atIndex = value.lastIndexOf('@');
+      if (atIndex !== -1) {
+        value = value.slice(atIndex + 1);
+      }
+    }
+
+    value = value.toLowerCase().replace(/\.+$/, '');
+    if (!value) return '';
+
+    const colonCount = (value.match(/:/g) || []).length;
+    if (colonCount > 1) {
+      // IPv6 literals / malformed host: not a registrable hostname.
+      return '';
+    }
+
+    if (colonCount === 1) {
+      const portSeparator = value.lastIndexOf(':');
+      const portPart = value.slice(portSeparator + 1);
+      if (!/^\d+$/.test(portPart)) return '';
+      value = value.slice(0, portSeparator);
+    }
+
+    value = value
+      .replace(/^\.+/, '')
+      .replace(/\.+$/, '')
+      .replace(/\.{2,}/g, '.');
+
+    if (!value) return '';
+    if (value.length > 253) return '';
+    if (value.includes('[') || value.includes(']')) return '';
+
+    const labels = value.split('.');
+    for (const label of labels) {
+      if (!label || label.length > 63) return '';
+      if (label.startsWith('-') || label.endsWith('-')) return '';
+
+      if (ASCII_LABEL_RE.test(label)) continue;
+      if (!UNICODE_LABEL_RE.test(label)) return '';
+    }
+
+    return value;
+  }
+
+  function isIPv4Address(hostname) {
+    if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)) return false;
+
+    const octets = hostname.split('.').map(Number);
+    return octets.length === 4 && octets.every((octet) => octet >= 0 && octet <= 255);
+  }
+
+  function isPrivateOrLocalIPv4(hostname) {
+    if (!isIPv4Address(hostname)) return false;
+
+    const [a, b] = hostname.split('.').map(Number);
+
+    if (a === 10 || a === 127 || a === 0) return true;
+    if (a === 169 && b === 254) return true; // Link-local
+    if (a === 192 && b === 168) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true; // Carrier-grade NAT
+
+    return false;
+  }
+
+  function hasSuffix(parts, suffixParts) {
+    if (parts.length < suffixParts.length) return false;
+
+    for (let i = 0; i < suffixParts.length; i++) {
+      if (parts[parts.length - suffixParts.length + i] !== suffixParts[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
    * Extract the registrable domain (eTLD+1) from a full domain
-   * Simplified version - handles common TLDs
+   * Heuristic PSL-aware extraction with private suffix support.
    * @param {string} domain - Full domain name
    * @returns {string} Registrable domain
    */
   function getRegistrableDomain(domain) {
-    if (!domain) return '';
+    const hostname = sanitizeHostname(domain);
+    if (!hostname) return '';
 
-    const parts = domain.toLowerCase().split('.');
-    if (parts.length < 2) return domain;
+    const parts = hostname.split('.');
+    if (parts.length < 2) return hostname;
 
-    // Comprehensive multi-part TLD list (eTLD+1 handling)
-    const multiPartTLDs = new Set([
-      // Country-code second-level domains
-      'co.uk', 'co.jp', 'co.in', 'co.nz', 'co.za', 'co.kr', 'co.th', 'co.id',
-      'co.il', 'co.ke', 'co.ma', 'co.tz', 'co.vi', 'co.zw',
-      'com.au', 'com.br', 'com.mx', 'com.ar', 'com.sg', 'com.hk', 'com.tw',
-      'com.ng', 'com.pe', 'com.ph', 'com.pk', 'com.tr', 'com.ua', 'com.ve',
-      'org.uk', 'org.au', 'org.nz', 'org.za', 'org.jp', 'org.br', 'org.mx',
-      'net.au', 'gov.uk', 'gov.au', 'gov.in', 'gov.cn', 'gov.tw',
-      'ac.uk', 'edu.au', 'edu.cn', 'edu.tw', 'edu.hk',
-      'ne.jp', 'or.jp', 'go.jp', 'gr.jp',
-      // Generic new TLDs that often have third-level
-      'cloudfront.net', 's3.amazonaws.com', 'herokuapp.com',
-      'azurewebsites.net', 'cloudapp.azure.com',
-      // Additional country TLDs
-      'co.at', 'or.at', 'ac.at', 'co.za', 'org.za'
-    ]);
-
-    const lastTwo = parts.slice(-2).join('.');
-    const lastThree = parts.slice(-3).join('.');
-    const lastFour = parts.slice(-4).join('.');
-
-    // Check for 4-part eTLDs first
-    if (parts.length >= 4 && multiPartTLDs.has(lastFour)) {
-      return lastFour;
+    // Known private suffix handling (tenant.example.private-suffix)
+    for (const privateSuffix of PRIVATE_SUFFIXES) {
+      const suffixParts = privateSuffix.split('.');
+      if (hasSuffix(parts, suffixParts)) {
+        if (parts.length > suffixParts.length) {
+          return parts.slice(-(suffixParts.length + 1)).join('.');
+        }
+        return hostname;
+      }
     }
 
-    // Check for 3-part eTLDs
-    if (multiPartTLDs.has(lastTwo) && parts.length >= 3) {
-      return lastThree;
+    // Generic ccTLD 2-level public suffix heuristic (e.g., *.co.uk).
+    const tld = parts[parts.length - 1];
+    const sld = parts[parts.length - 2];
+    const likelyTwoLevelCcTld = tld.length === 2 && COMMON_CCTLD_SLD.has(sld) && parts.length >= 3;
+
+    if (likelyTwoLevelCcTld) {
+      return parts.slice(-3).join('.');
     }
 
-    // Single-character TLDs need special handling (comprehensive list)
-    const singleCharTLDs = new Set([
-      'aero', 'asia', 'biz', 'cat', 'com', 'coop', 'edu', 'gov',
-      'info', 'int', 'jobs', 'mil', 'mobi', 'museum', 'name',
-      'net', 'org', 'post', 'pro', 'tel', 'travel', 'xxx',
-      // Modern TLDs
-      'app', 'dev', 'io', 'co', 'xyz', 'online', 'site', 'store',
-      'cloud', 'space', 'tech', 'design', 'studio', 'web',
-      'agency', 'digital', 'network', 'software', 'platform'
-    ]);
-
-    if (singleCharTLDs.has(lastTwo)) {
-      return lastTwo;
-    }
-
-    // Default: last two parts
-    return lastTwo;
+    return parts.slice(-2).join('.');
   }
 
   // ============================================
@@ -590,7 +686,13 @@
       };
     }
 
-    const lowerDomain = domain.toLowerCase();
+    const lowerDomain = sanitizeHostname(domain);
+    if (!lowerDomain) {
+      return {
+        isSuspicious: false,
+        reason: 'Invalid domain'
+      };
+    }
 
     // Check cache first
     const cachedResult = getCachedResult(lowerDomain);
@@ -609,7 +711,34 @@
 
   // Implementation of domain checking (without caching)
   function _checkDomainImpl(domain, lowerDomain) {
+    if (isIPv4Address(lowerDomain)) {
+      if (isPrivateOrLocalIPv4(lowerDomain)) {
+        return {
+          isSuspicious: false,
+          reason: 'Local network address'
+        };
+      }
+
+      return {
+        isSuspicious: true,
+        originalDomain: lowerDomain,
+        reason: 'Public IP address used directly instead of a domain',
+        riskLevel: 'medium'
+      };
+    }
+
     const registrableDomain = getRegistrableDomain(lowerDomain);
+    if (!registrableDomain) {
+      return {
+        isSuspicious: false,
+        reason: 'Invalid domain'
+      };
+    }
+
+    const unicodeInfo = decodeDomainFromPunycode(lowerDomain);
+    const unicodeRegistrableDomain = unicodeInfo.hasDecodeError
+      ? registrableDomain
+      : (getRegistrableDomain(unicodeInfo.unicodeDomain) || registrableDomain);
 
     // 0. Check if this is a whitelisted legitimate domain (developer sites, etc.)
     if (LEGITIMATE_DOMAINS.has(lowerDomain) || LEGITIMATE_DOMAINS.has(registrableDomain)) {
@@ -648,8 +777,7 @@
     }
 
     // 3. Normalize the domain and check against protected brands
-    const normalizedDomain = normalizeDomain(registrableDomain);
-    const domainWithoutTLD = registrableDomain.split('.')[0];
+    const domainWithoutTLD = unicodeRegistrableDomain.split('.')[0];
     const normalizedDomainWithoutTLD = normalizeDomain(domainWithoutTLD);
 
     let highestSimilarity = 0;
@@ -735,7 +863,8 @@
    * @returns {Object} Detection result
    */
   function checkSubdomainTrick(domain) {
-    if (!domain) {
+    const normalizedDomain = sanitizeHostname(domain);
+    if (!normalizedDomain) {
       return { isSuspicious: false };
     }
 
@@ -746,13 +875,13 @@
         const escapedDomain = protectedDomain.replace(/\./g, '[\\.\\-]');
         const pattern = new RegExp(`(^|\\.)${escapedDomain}[\\.\\-]`, 'i');
 
-        if (pattern.test(domain) && !domain.endsWith(protectedDomain)) {
+        if (pattern.test(normalizedDomain) && !normalizedDomain.endsWith(protectedDomain)) {
           return {
             isSuspicious: true,
             matchedBrand: brand.name,
             matchedDomain: protectedDomain,
             similarity: 0.95,
-            originalDomain: domain,
+            originalDomain: normalizedDomain,
             reason: `Subdomain trick: "${protectedDomain}" appears as subdomain`,
             riskLevel: 'high'
           };
@@ -760,11 +889,11 @@
 
         // Also check for: secure-amazon.evil.com
         const brandBase = protectedDomain.split('.')[0];
-        if (domain.includes(brandBase) && !domain.endsWith(protectedDomain)) {
-          const registrable = getRegistrableDomain(domain);
+        if (normalizedDomain.includes(brandBase) && !normalizedDomain.endsWith(protectedDomain)) {
+          const registrable = getRegistrableDomain(normalizedDomain);
           if (!brand.domains.some(d => d === registrable)) {
             // Brand name appears in subdomain but registrable domain is different
-            const parts = domain.split('.');
+            const parts = normalizedDomain.split('.');
             const subdomainPart = parts.slice(0, -2).join('.');
 
             if (subdomainPart.includes(brandBase)) {
@@ -773,7 +902,7 @@
                 matchedBrand: brand.name,
                 matchedDomain: protectedDomain,
                 similarity: 0.85,
-                originalDomain: domain,
+                originalDomain: normalizedDomain,
                 reason: `"${brand.name}" appears in subdomain of unrelated domain`,
                 riskLevel: 'high'
               };
@@ -786,121 +915,227 @@
     return { isSuspicious: false };
   }
 
+  // Minimal per-label RFC3492 decoder for xn-- labels.
+  const PUNYCODE_BASE = 36;
+  const PUNYCODE_TMIN = 1;
+  const PUNYCODE_TMAX = 26;
+  const PUNYCODE_SKEW = 38;
+  const PUNYCODE_DAMP = 700;
+  const PUNYCODE_INITIAL_BIAS = 72;
+  const PUNYCODE_INITIAL_N = 128;
+
+  function punycodeDigit(codePoint) {
+    if (codePoint >= 0x30 && codePoint <= 0x39) return codePoint - 22; // 0-9 => 26-35
+    if (codePoint >= 0x41 && codePoint <= 0x5A) return codePoint - 0x41; // A-Z => 0-25
+    if (codePoint >= 0x61 && codePoint <= 0x7A) return codePoint - 0x61; // a-z => 0-25
+    return PUNYCODE_BASE;
+  }
+
+  function punycodeAdapt(delta, numPoints, firstTime) {
+    delta = firstTime ? Math.floor(delta / PUNYCODE_DAMP) : Math.floor(delta / 2);
+    delta += Math.floor(delta / numPoints);
+
+    let k = 0;
+    const threshold = Math.floor(((PUNYCODE_BASE - PUNYCODE_TMIN) * PUNYCODE_TMAX) / 2);
+    while (delta > threshold) {
+      delta = Math.floor(delta / (PUNYCODE_BASE - PUNYCODE_TMIN));
+      k += PUNYCODE_BASE;
+    }
+
+    return k + Math.floor(((PUNYCODE_BASE - PUNYCODE_TMIN + 1) * delta) / (delta + PUNYCODE_SKEW));
+  }
+
+  function decodePunycodeLabel(label) {
+    if (!label.startsWith('xn--')) return label;
+
+    const input = label.slice(4).toLowerCase();
+    if (!input) return null;
+
+    const output = [];
+    let n = PUNYCODE_INITIAL_N;
+    let i = 0;
+    let bias = PUNYCODE_INITIAL_BIAS;
+
+    const delimiter = input.lastIndexOf('-');
+    if (delimiter > -1) {
+      for (let j = 0; j < delimiter; j++) {
+        const codePoint = input.charCodeAt(j);
+        if (codePoint > 0x7F) return null;
+        output.push(input[j]);
+      }
+    }
+
+    let inputIndex = delimiter > -1 ? delimiter + 1 : 0;
+
+    while (inputIndex < input.length) {
+      const oldI = i;
+      let w = 1;
+
+      for (let k = PUNYCODE_BASE; ; k += PUNYCODE_BASE) {
+        if (inputIndex >= input.length) return null;
+
+        const digit = punycodeDigit(input.charCodeAt(inputIndex++));
+        if (digit >= PUNYCODE_BASE) return null;
+
+        i += digit * w;
+        const t = k <= bias
+          ? PUNYCODE_TMIN
+          : (k >= bias + PUNYCODE_TMAX ? PUNYCODE_TMAX : k - bias);
+
+        if (digit < t) break;
+
+        w *= (PUNYCODE_BASE - t);
+        if (!Number.isFinite(w) || w > Number.MAX_SAFE_INTEGER) return null;
+      }
+
+      const outputLength = output.length + 1;
+      bias = punycodeAdapt(i - oldI, outputLength, oldI === 0);
+      n += Math.floor(i / outputLength);
+      i %= outputLength;
+
+      if (n > 0x10FFFF) return null;
+
+      let nextChar;
+      try {
+        nextChar = String.fromCodePoint(n);
+      } catch (error) {
+        return null;
+      }
+
+      output.splice(i, 0, nextChar);
+      i++;
+    }
+
+    return output.join('');
+  }
+
+  function decodeDomainFromPunycode(domain) {
+    const normalizedDomain = sanitizeHostname(domain);
+    if (!normalizedDomain) {
+      return {
+        unicodeDomain: '',
+        hasPunycode: false,
+        hasDecodeError: false
+      };
+    }
+
+    const labels = normalizedDomain.split('.');
+    let hasPunycode = false;
+    let hasDecodeError = false;
+
+    const decodedLabels = labels.map(label => {
+      if (!label.startsWith('xn--')) return label;
+
+      hasPunycode = true;
+      const decoded = decodePunycodeLabel(label);
+      if (decoded === null) {
+        hasDecodeError = true;
+        return label;
+      }
+      return decoded.toLowerCase();
+    });
+
+    return {
+      unicodeDomain: decodedLabels.join('.'),
+      hasPunycode,
+      hasDecodeError
+    };
+  }
+
+  function getScriptBucket(char) {
+    if (!char || char === '.' || char === '-' || !/\p{L}/u.test(char)) {
+      return '';
+    }
+
+    if (/\p{Script=Latin}/u.test(char)) return 'latin';
+    if (/\p{Script=Cyrillic}/u.test(char)) return 'cyrillic';
+    if (/\p{Script=Greek}/u.test(char)) return 'greek';
+    return 'other';
+  }
+
   /**
    * Check for IDN homograph attacks (mixed Unicode scripts)
    * @param {string} domain - Domain to check
    * @returns {Object} Detection result
    */
   function checkIDNHomograph(domain) {
-    if (!domain) {
+    const normalizedDomain = sanitizeHostname(domain);
+    if (!normalizedDomain) {
       return { isSuspicious: false };
     }
 
-    // Check for punycode (xn--) which indicates IDN
-    if (domain.includes('xn--')) {
-      // Any punycode domain is suspicious when it pretends to be a brand
-      // Extract the decoded domain base (remove punycode prefix)
-      let decoded;
-      try {
-        decoded = new URL('http://' + domain).hostname;
-      } catch (e) {
-        return {
-          isSuspicious: true,
-          originalDomain: domain,
-          reason: 'Domain uses unreadable Punycode',
-          riskLevel: 'high'
-        };
-      }
+    const punycodeInfo = decodeDomainFromPunycode(normalizedDomain);
+    if (punycodeInfo.hasDecodeError) {
+      return {
+        isSuspicious: true,
+        originalDomain: normalizedDomain,
+        reason: 'Domain uses unreadable Punycode',
+        riskLevel: 'high'
+      };
+    }
 
-      // Remove the punycode indicator and check for lookalike characters
-      const decodedNoPunycode = decoded.replace(/^xn--/, '');
-      let hasHomoglyph = false;
-      let homoglyphChars = [];
+    const unicodeDomain = punycodeInfo.unicodeDomain || normalizedDomain;
+    const hasUnicodeChars = /[^\x00-\x7F]/.test(unicodeDomain);
+    const isIDN = punycodeInfo.hasPunycode || hasUnicodeChars;
 
-      for (const char of decodedNoPunycode) {
-        if (HOMOGRAPH_MAP[char]) {
-          hasHomoglyph = true;
-          homoglyphChars.push(char);
-        }
-      }
+    const unicodeRegistrable = getRegistrableDomain(unicodeDomain) || unicodeDomain;
+    const unicodeBase = unicodeRegistrable.split('.')[0] || '';
+    const normalizedUnicodeBase = normalizeDomain(unicodeBase);
 
-      // Flag if punycode was used AND contains lookalike characters
-      // OR if it imitates a protected brand name
-      const registrableDomain = getRegistrableDomain(decodedNoPunycode);
-
-      // Check if domain imitates any protected brand
+    // Brand similarity checks should run against decoded Unicode labels, not raw xn--.
+    if (isIDN && normalizedUnicodeBase) {
       for (const brand of PROTECTED_BRANDS) {
         for (const protectedDomain of brand.domains) {
           const protectedBase = protectedDomain.split('.')[0];
-          const normalizedProtected = normalizeDomain(protectedBase);
-          const normalizedDecoded = normalizeDomain(registrableDomain);
+          const similarity = calculateSimilarity(normalizedUnicodeBase, normalizeDomain(protectedBase));
 
-          const similarity = calculateSimilarity(normalizedDecoded, normalizedProtected);
           if (similarity > 0.7) {
             return {
               isSuspicious: true,
-              originalDomain: domain,
-              normalizedDomain: normalizedDecoded,
-              reason: `Punycode domain imitates ${brand.name}`,
+              originalDomain: normalizedDomain,
+              normalizedDomain: normalizedUnicodeBase,
+              reason: `Internationalized domain imitates ${brand.name}`,
               riskLevel: 'high'
             };
           }
         }
       }
+    }
 
-      if (hasHomoglyph) {
-        return {
-          isSuspicious: true,
-          originalDomain: domain,
-          normalizedDomain: normalizeDomain(decodedNoPunycode),
-          reason: `Punycode contains lookalike characters (${homoglyphChars.join(', ')})`,
-          riskLevel: 'high'
-        };
+    const homoglyphChars = [];
+    const seenHomoglyphChars = new Set();
+    const scriptBuckets = new Set();
+
+    for (const char of unicodeDomain) {
+      const script = getScriptBucket(char);
+      if (script) {
+        scriptBuckets.add(script);
       }
 
-      // Punycode without homoglyphs might be legitimate, but still suspicious
+      const codePoint = char.codePointAt(0);
+      if (codePoint > 0x7F && HOMOGRAPH_MAP[char] && !seenHomoglyphChars.has(char)) {
+        seenHomoglyphChars.add(char);
+        homoglyphChars.push(char);
+      }
+    }
+
+    if (homoglyphChars.length > 0) {
       return {
         isSuspicious: true,
-        originalDomain: domain,
-        normalizedDomain: normalizeDomain(decodedNoPunycode),
-        reason: 'Domain uses internationalized characters (Punycode)',
-        riskLevel: 'medium'
+        originalDomain: normalizedDomain,
+        normalizedDomain: normalizeDomain(unicodeDomain),
+        reason: `Domain contains lookalike characters (${homoglyphChars.join(', ')})`,
+        riskLevel: 'high'
       };
     }
 
-    // Check for non-ASCII characters that look like ASCII
-    let hasLatin = false;
-    let hasNonLatin = false;
+    const hasMixedScripts = scriptBuckets.has('latin') &&
+      (scriptBuckets.has('cyrillic') || scriptBuckets.has('greek') || scriptBuckets.has('other'));
 
-    for (const char of domain) {
-      const code = char.charCodeAt(0);
-
-      // Basic Latin (ASCII letters and common symbols)
-      if ((code >= 0x0041 && code <= 0x007A) || code === 0x002D || code === 0x002E) {
-        hasLatin = true;
-      }
-      // Non-ASCII characters
-      else if (code > 0x007F) {
-        hasNonLatin = true;
-
-        // Check if this character is a known homoglyph
-        if (HOMOGRAPH_MAP[char]) {
-          return {
-            isSuspicious: true,
-            originalDomain: domain,
-            normalizedDomain: normalizeDomain(domain),
-            reason: `Domain contains lookalike character: "${char}" looks like "${HOMOGRAPH_MAP[char][0]}"`,
-            riskLevel: 'high'
-          };
-        }
-      }
-    }
-
-    // Mixed scripts are suspicious
-    if (hasLatin && hasNonLatin) {
+    if (hasMixedScripts) {
       return {
         isSuspicious: true,
-        originalDomain: domain,
+        originalDomain: normalizedDomain,
         reason: 'Domain mixes different character scripts (potential homograph attack)',
         riskLevel: 'high'
       };

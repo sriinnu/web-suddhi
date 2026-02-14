@@ -138,6 +138,47 @@
     });
   }
 
+  function isUnknownMessageType(response) {
+    return response && response.success === false &&
+      typeof response.error === 'string' &&
+      response.error.startsWith('Unknown message type');
+  }
+
+  async function sendMessageWithFallback(types, payload = {}) {
+    const typeList = Array.isArray(types) ? types : [types];
+    let lastError = null;
+
+    for (const type of typeList) {
+      try {
+        const response = await sendMessage({ ...payload, type });
+        if (!isUnknownMessageType(response)) {
+          return response;
+        }
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (lastError) throw lastError;
+    return null;
+  }
+
+  function extractRequestLog(response) {
+    if (Array.isArray(response)) return response;
+    if (Array.isArray(response?.log)) return response.log;
+    if (Array.isArray(response?.entries)) return response.entries;
+    return [];
+  }
+
+  function getHistoryTotal(entry) {
+    if (!entry) return 0;
+    if (typeof entry.blocked === 'number') return entry.blocked;
+    if (typeof entry.total === 'number') return entry.total;
+    const network = entry.network ?? entry.networkBlocked ?? 0;
+    const cosmetic = entry.cosmetic ?? entry.cosmeticBlocked ?? 0;
+    return network + cosmetic;
+  }
+
   // ============================================
   // INITIALIZATION
   // ============================================
@@ -272,10 +313,8 @@
 
   async function loadRequestLog() {
     try {
-      const response = await sendMessage({ type: 'GET_REQUEST_LOG' });
-      if (response?.success && response.log) {
-        renderRequestLog(response.log);
-      }
+      const response = await sendMessageWithFallback(['GET_REQUEST_LOG', 'REQUEST_LOG']);
+      renderRequestLog(extractRequestLog(response));
     } catch (err) {
       logError('Failed to load request log:', err);
     }
@@ -416,42 +455,46 @@
 
   async function loadStats(period) {
     try {
-      const response = await sendMessage({ type: 'GET_ENHANCED_STATS' });
-      if (response?.success && response.stats) {
-        const stats = response.stats;
+      const statsResponse = await sendMessageWithFallback(['GET_STATS', 'GET_ENHANCED_STATS']);
+      const stats = statsResponse?.stats || null;
+      if (!stats) return;
 
-        if (!period || period === 'all') {
-          elements.networkBlocked.textContent = formatNumber(stats.totalNetworkBlocked || 0);
-          elements.cosmeticBlocked.textContent = formatNumber(stats.totalCosmeticBlocked || 0);
-          elements.totalBlocked.textContent = formatNumber(stats.totalBlocked || 0);
-        } else if (period === 'today') {
-          const today = stats.today || {};
-          elements.networkBlocked.textContent = formatNumber(today.networkBlocked || 0);
-          elements.cosmeticBlocked.textContent = formatNumber(today.cosmeticBlocked || 0);
-          elements.totalBlocked.textContent = formatNumber((today.networkBlocked || 0) + (today.cosmeticBlocked || 0));
-        } else {
-          const days = parseInt(period);
-          const periodResponse = await sendMessage({ type: 'GET_STATS_FOR_PERIOD', days });
-          if (periodResponse?.success) {
-            const ps = periodResponse.stats;
-            elements.networkBlocked.textContent = formatNumber(ps.network || 0);
-            elements.cosmeticBlocked.textContent = formatNumber(ps.cosmetic || 0);
-            elements.totalBlocked.textContent = formatNumber((ps.network || 0) + (ps.cosmetic || 0));
-          }
+      if (!period || period === 'all') {
+        elements.networkBlocked.textContent = formatNumber(stats.totalNetworkBlocked || 0);
+        elements.cosmeticBlocked.textContent = formatNumber(stats.totalCosmeticBlocked || 0);
+        elements.totalBlocked.textContent = formatNumber(stats.totalBlocked || 0);
+      } else if (period === 'today') {
+        const today = stats.today || {};
+        elements.networkBlocked.textContent = formatNumber(today.networkBlocked || 0);
+        elements.cosmeticBlocked.textContent = formatNumber(today.cosmeticBlocked || 0);
+        elements.totalBlocked.textContent = formatNumber((today.networkBlocked || 0) + (today.cosmeticBlocked || 0));
+      } else {
+        const days = parseInt(period, 10);
+        if (!Number.isNaN(days)) {
+          const periodResponse = await sendMessageWithFallback(
+            ['GET_PERIOD_STATS', 'GET_STATS_FOR_PERIOD'],
+            { days }
+          );
+          const ps = periodResponse?.stats || periodResponse || {};
+          const network = ps.network ?? ps.networkBlocked ?? 0;
+          const cosmetic = ps.cosmetic ?? ps.cosmeticBlocked ?? 0;
+          elements.networkBlocked.textContent = formatNumber(network);
+          elements.cosmeticBlocked.textContent = formatNumber(cosmetic);
+          elements.totalBlocked.textContent = formatNumber(network + cosmetic);
         }
-
-        // Render charts
-        renderBarChart(elements.topDomainsChart, stats.today?.topDomains || {}, 10);
-        renderBarChart(elements.topSitesChart, stats.today?.perSite || {}, 10, true);
-
-        // Render category pie chart
-        const byCategory = stats.today?.byCategory || stats.byCategory || {};
-        renderPieChart(elements.categoryChart, byCategory);
-
-        // Render trend chart
-        const history = stats.history || [];
-        renderTrendChart(elements.trendChart, history);
       }
+
+      // Render charts
+      renderBarChart(elements.topDomainsChart, stats.today?.topDomains || {}, 10);
+      renderBarChart(elements.topSitesChart, stats.today?.perSite || {}, 10, true);
+
+      // Render category pie chart
+      const byCategory = stats.today?.byCategory || stats.byCategory || {};
+      renderPieChart(elements.categoryChart, byCategory);
+
+      // Render trend chart
+      const history = stats.history || [];
+      renderTrendChart(elements.trendChart, history);
     } catch (err) {
       elements.totalBlocked.textContent = '0';
       elements.networkBlocked.textContent = '0';
@@ -589,7 +632,10 @@
     let entries;
     if (isSiteData) {
       entries = Object.entries(data)
-        .map(([key, val]) => [key, (val.network || 0) + (val.cosmetic || 0)])
+        .map(([key, val]) => {
+          if (typeof val === 'number') return [key, val];
+          return [key, (val?.network || 0) + (val?.cosmetic || 0)];
+        })
         .sort((a, b) => b[1] - a[1])
         .slice(0, limit);
     } else {
@@ -754,16 +800,18 @@
     }
 
     const last7 = history.slice(-7);
-    const maxVal = Math.max(...last7.map(d => d.blocked || 0), 1);
+    const maxVal = Math.max(...last7.map(getHistoryTotal), 1);
 
     const width = 300;
     const height = 120;
     const padding = 10;
 
     const points = last7.map((d, i) => {
-      const x = padding + (i / (last7.length - 1)) * (width - 2 * padding);
-      const y = height - padding - ((d.blocked || 0) / maxVal) * (height - 2 * padding);
-      return { x, y, date: d.date };
+      const x = last7.length === 1
+        ? width / 2
+        : padding + (i / (last7.length - 1)) * (width - 2 * padding);
+      const y = height - padding - (getHistoryTotal(d) / maxVal) * (height - 2 * padding);
+      return { x, y, date: d.date || d.day || d.timestamp };
     });
 
     const linePath = points.map((p, i) => (i === 0 ? 'M' : 'L') + `${p.x},${p.y}`).join(' ');
@@ -802,8 +850,10 @@
     labels.className = 'trend-labels';
 
     const dates = last7.map(d => {
-      const date = new Date(d.date);
-      return date.toLocaleDateString('en-US', { weekday: 'short' });
+      const date = new Date(d.date || d.day || d.timestamp || Date.now());
+      return Number.isNaN(date.getTime())
+        ? ''
+        : date.toLocaleDateString('en-US', { weekday: 'short' });
     });
 
     dates.forEach(dateText => {

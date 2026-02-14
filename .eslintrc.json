@@ -8,6 +8,18 @@
     "ecmaVersion": "latest",
     "sourceType": "script"
   },
+  "overrides": [
+    {
+      "files": ["rollup.config.js", "vitest.config.js", "src/**/*.js"],
+      "env": {
+        "node": true,
+        "browser": false
+      },
+      "parserOptions": {
+        "sourceType": "module"
+      }
+    }
+  ],
   "rules": {
     "no-eval": "error",
     "no-implied-eval": "error",
@@ -30,6 +42,7 @@
   },
   "ignorePatterns": [
     "_metadata/",
+    "dist/",
     "icons/convert-icons.js",
     "safari*/",
     "node_modules/"
