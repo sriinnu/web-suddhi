@@ -92,6 +92,13 @@ try {
   };
 
   const MAX_LOG_ENTRIES = DEFAULT_SETTINGS.maxLogEntries || 1000;
+  const RATE_LIMIT_EXEMPT_TYPES = new Set([
+    'GET_ALL_SETTINGS',
+    'GET_STATS',
+    'GET_ENHANCED_STATS',
+    'GET_PERIOD_STATS',
+    'GET_STATS_FOR_PERIOD'
+  ]);
 
   // Safe storage wrapper with defaults
   async function getStorage(keys) {
@@ -177,6 +184,7 @@ try {
   // Cached icon paths to avoid repeated getURL calls
   const ICON_PATHS_NORMAL = getIconPaths(false);
   const ICON_PATHS_ALERT = getIconPaths(true);
+  const tabFrameMap = new Map(); // tabId -> Map<host, { host, url, blocked, lastSeen }>
 
   // ============================================
   // RATE LIMITING - Protect against DOS attacks
@@ -309,7 +317,11 @@ try {
     if (!entry) return { success: false, error: 'No entry provided' };
 
     try {
-      const storage = await getStorage(['requestLog']);
+      const storage = await getStorage(['requestLog', 'loggingEnabled']);
+      if (storage.loggingEnabled === false) {
+        return { success: true, skipped: true };
+      }
+
       const log = storage.requestLog || [];
 
       // Add timestamp if not present
@@ -346,6 +358,8 @@ try {
       return { success: false, error: err.message };
     }
   }
+
+  self.WebSuddhi.addLogEntry = addLogEntry;
 
   // ============================================
   // PERFORMANCE STATS - Track blocking performance
@@ -456,30 +470,380 @@ try {
     }
   }
 
+  function normalizeHostname(value, stripWww = false) {
+    if (!value || typeof value !== 'string') return null;
+
+    let host = value.trim().toLowerCase();
+    if (!host) return null;
+
+    try {
+      const parsed = new URL(host.includes('://') ? host : ('https://' + host));
+      host = parsed.hostname.toLowerCase();
+    } catch (e) {
+      host = host.split('/')[0].split('?')[0].split('#')[0];
+      host = host.split(':')[0];
+    }
+
+    host = host.replace(/^\.+/, '').replace(/\.+$/, '');
+    if (stripWww) host = host.replace(/^www\./, '');
+    if (!host || host.includes(' ')) return null;
+
+    return host;
+  }
+
+  function normalizeDomainList(domains, stripWww = false, maxItems = Infinity) {
+    const normalized = [];
+    const seen = new Set();
+
+    for (const domain of domains || []) {
+      const host = normalizeHostname(domain, stripWww);
+      if (!host || seen.has(host)) continue;
+      seen.add(host);
+      normalized.push(host);
+      if (normalized.length >= maxItems) break;
+    }
+
+    return normalized;
+  }
+
+  function domainMatches(host, candidate) {
+    return host === candidate || host.endsWith('.' + candidate);
+  }
+
+  function normalizeSelectorEntry(entry) {
+    let selector = '';
+    let hostname = 'imported';
+    let date = Date.now();
+
+    if (typeof entry === 'string') {
+      selector = entry.trim();
+    } else if (entry && typeof entry.selector === 'string') {
+      selector = entry.selector.trim();
+      if (typeof entry.hostname === 'string' && entry.hostname.trim()) {
+        hostname = entry.hostname.trim();
+      }
+      if (Number.isFinite(entry.date)) {
+        date = entry.date;
+      }
+    }
+
+    if (!selector) return null;
+    if (typeof self.WebSuddhi.utils?.isValidCSSSelector === 'function' &&
+        !self.WebSuddhi.utils.isValidCSSSelector(selector)) {
+      return null;
+    }
+
+    return { selector, hostname, date };
+  }
+
+  function mergeSelectorEntries(existing, incoming, maxItems) {
+    const merged = [];
+    const seen = new Set();
+
+    function addEntry(entry) {
+      const normalized = normalizeSelectorEntry(entry);
+      if (!normalized || seen.has(normalized.selector)) return;
+      seen.add(normalized.selector);
+      merged.push(normalized);
+    }
+
+    for (const entry of (existing || [])) addEntry(entry);
+    for (const entry of (incoming || [])) addEntry(entry);
+
+    return merged.slice(0, maxItems);
+  }
+
+  function setTabFrameEntry(tabId, host, url, blocked) {
+    if (typeof tabId !== 'number' || tabId < 0 || !host) return;
+
+    let tabFrames = tabFrameMap.get(tabId);
+    if (!tabFrames) {
+      tabFrames = new Map();
+      tabFrameMap.set(tabId, tabFrames);
+    }
+
+    const prev = tabFrames.get(host) || {};
+    tabFrames.set(host, {
+      host,
+      url: url || prev.url || host,
+      blocked: typeof blocked === 'boolean' ? blocked : Boolean(prev.blocked),
+      lastSeen: Date.now()
+    });
+  }
+
+  async function refreshNetworkRules() {
+    const refreshFn = self.WebSuddhi.networkBlocker?.refreshDynamicRules ||
+      self.WebSuddhi.networkBlocker?.rebuildDynamicRules;
+
+    if (typeof refreshFn !== 'function') {
+      return { success: false, error: 'Network rule refresh not available' };
+    }
+
+    try {
+      await refreshFn();
+      return { success: true };
+    } catch (err) {
+      logError('Failed to refresh network rules:', err);
+      return { success: false, error: err.message };
+    }
+  }
+
+  async function addAllowedDomain(domain) {
+    const normalized = normalizeHostname(domain);
+    if (!normalized) return { success: false, error: 'Invalid domain' };
+
+    const maxDomains = DEFAULT_SETTINGS.maxBlockedDomains || 1000;
+    const storage = await getStorage(['allowedDomains']);
+    const allowedDomains = normalizeDomainList(storage.allowedDomains || [], false, maxDomains);
+
+    if (!allowedDomains.includes(normalized)) {
+      if (allowedDomains.length >= maxDomains) {
+        return { success: false, error: 'Allowed domains limit reached' };
+      }
+      allowedDomains.push(normalized);
+      await setStorage({ allowedDomains });
+    }
+
+    return { success: true, domain: normalized };
+  }
+
+  async function unblockRequestDomain(urlOrDomain) {
+    const domain = normalizeHostname(urlOrDomain);
+    if (!domain) return { success: false, error: 'Invalid URL or domain' };
+
+    const targetNoWww = normalizeHostname(domain, true);
+    const maxDomains = DEFAULT_SETTINGS.maxBlockedDomains || 1000;
+    const storage = await getStorage(['blockedDomains', 'allowedDomains']);
+    const blockedDomains = normalizeDomainList(storage.blockedDomains || [], false, maxDomains);
+    const allowedDomains = normalizeDomainList(storage.allowedDomains || [], false, maxDomains);
+
+    const updatedBlocked = blockedDomains.filter((entry) => {
+      return entry !== domain && normalizeHostname(entry, true) !== targetNoWww;
+    });
+
+    const alreadyAllowed = allowedDomains.some((entry) => {
+      return entry === domain || normalizeHostname(entry, true) === targetNoWww;
+    });
+
+    if (!alreadyAllowed) {
+      if (allowedDomains.length >= maxDomains) {
+        return { success: false, error: 'Allowed domains limit reached' };
+      }
+      allowedDomains.push(domain);
+    }
+
+    await setStorage({
+      blockedDomains: updatedBlocked,
+      allowedDomains
+    });
+    await refreshNetworkRules();
+
+    return { success: true, domain };
+  }
+
+  async function reportFrame(message, sender) {
+    const tabId = Number.isInteger(message.tabId) ? message.tabId : sender.tab?.id;
+    if (typeof tabId !== 'number' || tabId < 0) {
+      return { success: false, error: 'No tab ID for frame report' };
+    }
+
+    const host = normalizeHostname(message.frameHost || message.frameUrl);
+    if (!host) {
+      return { success: false, error: 'Invalid frame host' };
+    }
+
+    setTabFrameEntry(tabId, host, message.frameUrl || message.frameHost || host, message.blocked);
+    return { success: true };
+  }
+
+  async function allowFrame(message, sender) {
+    const tabId = Number.isInteger(message.tabId) ? message.tabId : sender.tab?.id;
+    const host = normalizeHostname(message.frameHost || message.frameUrl);
+
+    if (!host) {
+      return { success: false, error: 'Invalid frame host' };
+    }
+
+    setTabFrameEntry(tabId, host, message.frameUrl || message.frameHost || host, false);
+
+    const allowResult = await addAllowedDomain(host);
+    if (!allowResult.success) return allowResult;
+
+    await refreshNetworkRules();
+    return { success: true, domain: host };
+  }
+
+  async function getSecurityInfo(tabId) {
+    if (typeof tabId !== 'number' || tabId < 0) {
+      return { success: false, certificate: null, thirdPartyDomains: [], blockedFrames: [] };
+    }
+
+    const storage = await getStorage(['allowedDomains']);
+    const allowedDomains = normalizeDomainList(storage.allowedDomains || []);
+    const tabFrames = tabFrameMap.get(tabId);
+    const thirdPartyDomains = [];
+    const blockedFrames = [];
+
+    if (tabFrames) {
+      for (const frame of tabFrames.values()) {
+        const entry = { host: frame.host, url: frame.url || frame.host };
+        const isAllowed = allowedDomains.some((domain) => domainMatches(frame.host, domain));
+
+        if (isAllowed || frame.blocked !== true) {
+          thirdPartyDomains.push(entry);
+        } else {
+          blockedFrames.push(entry);
+        }
+      }
+    }
+
+    thirdPartyDomains.sort((a, b) => a.host.localeCompare(b.host));
+    blockedFrames.sort((a, b) => a.host.localeCompare(b.host));
+
+    let certificate = null;
+    try {
+      const tab = await new Promise((resolve) => {
+        api.tabs.get(tabId, (tabInfo) => {
+          if (api.runtime.lastError) resolve(null);
+          else resolve(tabInfo || null);
+        });
+      });
+      const host = normalizeHostname(tab?.url || '', true);
+      if (host && tab?.url && tab.url.startsWith('https://')) {
+        certificate = {
+          organization: host,
+          issuer: host
+        };
+      }
+    } catch (e) {}
+
+    return { success: true, certificate, thirdPartyDomains, blockedFrames };
+  }
+
+  async function exportRules() {
+    const storage = await getStorage([
+      'blockedSelectors',
+      'blockedDomains',
+      'allowedDomains',
+      'whitelistedSites',
+      'enabled',
+      'paywallEnabled'
+    ]);
+
+    return {
+      success: true,
+      data: {
+        version: '2.1.0',
+        exportDate: new Date().toISOString(),
+        blockedSelectors: storage.blockedSelectors || [],
+        blockedDomains: storage.blockedDomains || [],
+        allowedDomains: storage.allowedDomains || [],
+        whitelistedSites: storage.whitelistedSites || [],
+        enabled: storage.enabled !== false,
+        paywallEnabled: storage.paywallEnabled !== false
+      }
+    };
+  }
+
+  async function importRules(data) {
+    if (!data || typeof data !== 'object') {
+      return { success: false, error: 'Invalid import data' };
+    }
+
+    const hasSupportedPayload = [
+      'blockedSelectors',
+      'blockedDomains',
+      'allowedDomains',
+      'whitelistedSites'
+    ].some((key) => Array.isArray(data[key]));
+
+    if (!hasSupportedPayload) {
+      return { success: false, error: 'Invalid import format' };
+    }
+
+    const maxSelectors = DEFAULT_SETTINGS.maxBlockedSelectors || 1000;
+    const maxDomains = DEFAULT_SETTINGS.maxBlockedDomains || 1000;
+    const maxWhitelist = DEFAULT_SETTINGS.maxWhitelistSize || 1000;
+    const storage = await getStorage([
+      'blockedSelectors',
+      'blockedDomains',
+      'allowedDomains',
+      'whitelistedSites',
+      'enabled',
+      'paywallEnabled'
+    ]);
+
+    const blockedSelectors = Array.isArray(data.blockedSelectors)
+      ? mergeSelectorEntries(storage.blockedSelectors || [], data.blockedSelectors, maxSelectors)
+      : (storage.blockedSelectors || []);
+
+    const blockedDomains = Array.isArray(data.blockedDomains)
+      ? normalizeDomainList([...(storage.blockedDomains || []), ...data.blockedDomains], false, maxDomains)
+      : normalizeDomainList(storage.blockedDomains || [], false, maxDomains);
+
+    const allowedDomains = Array.isArray(data.allowedDomains)
+      ? normalizeDomainList([...(storage.allowedDomains || []), ...data.allowedDomains], false, maxDomains)
+      : normalizeDomainList(storage.allowedDomains || [], false, maxDomains);
+
+    const whitelistedSites = Array.isArray(data.whitelistedSites)
+      ? normalizeDomainList([...(storage.whitelistedSites || []), ...data.whitelistedSites], true, maxWhitelist)
+      : normalizeDomainList(storage.whitelistedSites || [], true, maxWhitelist);
+
+    const updateData = {
+      blockedSelectors,
+      blockedDomains,
+      allowedDomains,
+      whitelistedSites
+    };
+
+    if (typeof data.enabled === 'boolean') updateData.enabled = data.enabled;
+    if (typeof data.paywallEnabled === 'boolean') updateData.paywallEnabled = data.paywallEnabled;
+
+    await setStorage(updateData);
+
+    if (Array.isArray(data.blockedDomains) || Array.isArray(data.allowedDomains) || Array.isArray(data.whitelistedSites)) {
+      await refreshNetworkRules();
+    }
+
+    await notifyAllTabs();
+
+    return {
+      success: true,
+      totalRules: blockedSelectors.length,
+      imported: {
+        blockedDomains: blockedDomains.length,
+        allowedDomains: allowedDomains.length,
+        whitelistedSites: whitelistedSites.length
+      }
+    };
+  }
+
   // ============================================
   // WHITELIST MANAGEMENT
   // ============================================
   async function whitelistSite(hostnameOrUrl) {
     if (!hostnameOrUrl) return { success: false, error: 'No hostname provided' };
 
-    // Normalize hostname: remove www. prefix for consistent storage
-    let hostname;
-    try {
-      hostname = new URL(hostnameOrUrl).hostname.replace(/^www\./, '');
-    } catch (e) {
-      hostname = hostnameOrUrl.replace(/^www\./, '');
-    }
+    const hostname = normalizeHostname(hostnameOrUrl, true);
+    if (!hostname) return { success: false, error: 'Invalid hostname' };
 
     const storage = await getStorage(['whitelistedSites']);
     const whitelisted = storage.whitelistedSites || [];
 
     // Normalize existing entries too
-    const normalizedWhitelisted = whitelisted.map(s => s.replace(/^www\./, ''));
+    const normalizedWhitelisted = normalizeDomainList(
+      whitelisted,
+      true,
+      DEFAULT_SETTINGS.maxWhitelistSize || 1000
+    );
 
     if (!normalizedWhitelisted.includes(hostname)) {
       normalizedWhitelisted.push(hostname);
       await setStorage({ whitelistedSites: normalizedWhitelisted });
     }
+
+    const refreshResult = await refreshNetworkRules();
+    if (!refreshResult.success) warn('Whitelist update saved, but network rules were not refreshed');
 
     return { success: true, message: 'Whitelisted ' + hostname };
   }
@@ -488,26 +852,34 @@ try {
     if (!hostname) return { success: false, error: 'No hostname provided' };
 
     // Normalize: remove www. prefix for consistent comparison
-    const normalizedHostname = hostname.replace(/^www\./, '');
+    const normalizedHostname = normalizeHostname(hostname, true);
+    if (!normalizedHostname) return { success: false, error: 'Invalid hostname' };
 
     const storage = await getStorage(['whitelistedSites']);
     const whitelisted = storage.whitelistedSites || [];
 
     // Normalize and filter
-    const normalizedWhitelisted = whitelisted
-      .map(s => s.replace(/^www\./, ''))
-      .filter(s => s !== normalizedHostname);
+    const normalizedWhitelisted = normalizeDomainList(
+      whitelisted,
+      true,
+      DEFAULT_SETTINGS.maxWhitelistSize || 1000
+    ).filter(s => s !== normalizedHostname);
 
     await setStorage({ whitelistedSites: normalizedWhitelisted });
+    const refreshResult = await refreshNetworkRules();
+    if (!refreshResult.success) warn('Whitelist update saved, but network rules were not refreshed');
 
     return { success: true, message: 'Unwhitelisted ' + normalizedHostname };
   }
 
   async function toggleWhitelistForSite(hostname, tabId) {
     try {
-      const normalizedHostname = hostname.replace(/^www\./, '');
+      const normalizedHostname = normalizeHostname(hostname, true);
+      if (!normalizedHostname) {
+        return { success: false, error: 'Invalid hostname' };
+      }
       const storage = await getStorage(['whitelistedSites']);
-      const whitelisted = (storage.whitelistedSites || []).map(s => s.replace(/^www\./, ''));
+      const whitelisted = normalizeDomainList(storage.whitelistedSites || [], true);
 
       const isWhitelisted = whitelisted.includes(normalizedHostname);
 
@@ -524,7 +896,7 @@ try {
       if (tabId) {
         try {
           const newStorage = await getStorage(['whitelistedSites']);
-          const newWhitelisted = (newStorage.whitelistedSites || []).map(s => s.replace(/^www\./, ''));
+          const newWhitelisted = normalizeDomainList(newStorage.whitelistedSites || [], true);
           const nowWhitelisted = newWhitelisted.includes(normalizedHostname);
           const iconPath = nowWhitelisted ? ICON_PATHS_ALERT : ICON_PATHS_NORMAL;
 
@@ -545,9 +917,10 @@ try {
 
   async function isSiteWhitelisted(hostname) {
     try {
-      const normalizedHostname = hostname.replace(/^www\./, '');
+      const normalizedHostname = normalizeHostname(hostname, true);
+      if (!normalizedHostname) return false;
       const storage = await getStorage(['whitelistedSites']);
-      const whitelisted = (storage.whitelistedSites || []).map(s => s.replace(/^www\./, ''));
+      const whitelisted = normalizeDomainList(storage.whitelistedSites || [], true);
       return whitelisted.includes(normalizedHostname);
     } catch (err) {
       return false;
@@ -601,10 +974,9 @@ try {
     } else {
       // Fallback for browsers that don't support openOptionsPage
       const url = api.runtime.getURL('options/options.html');
-      if (anchor) {
-        window.open(url + '#' + anchor, '_blank');
-      } else {
-        window.open(url, '_blank');
+      const targetUrl = anchor ? (url + '#' + anchor) : url;
+      if (api.tabs && api.tabs.create) {
+        api.tabs.create({ url: targetUrl });
       }
     }
   }
@@ -758,7 +1130,7 @@ try {
   // ============================================
   async function handleMessage(message, sender, sendResponse) {
     // Handle rate limiting
-    if (message.type !== 'GET_ALL_SETTINGS' && message.type !== 'GET_STATS') {
+    if (!RATE_LIMIT_EXEMPT_TYPES.has(message.type)) {
       if (isRateLimited(sender.tab?.id)) {
         return { success: false, error: 'Rate limited' };
       }
@@ -768,11 +1140,14 @@ try {
       switch (message.type) {
         // Stats
         case 'GET_STATS':
+        case 'GET_ENHANCED_STATS':
           return await getStats(message.days);
 
         case 'GET_PERIOD_STATS':
+        case 'GET_STATS_FOR_PERIOD':
           return await getStatsForPeriod(message.days || 1);
 
+        case 'INCREMENT_COSMETIC_STATS':
         case 'INCREMENT_STATS':
           if (self.WebSuddhi.statsManager) {
             self.WebSuddhi.statsManager.reportCosmeticBlock(message.hostname, message.count, message.selector);
@@ -862,6 +1237,20 @@ try {
         case 'GET_WHITELIST':
           const storage = await getStorage(['whitelistedSites']);
           return { success: true, whitelistedSites: storage.whitelistedSites || [] };
+
+        case 'REPORT_FRAME':
+          return await reportFrame(message, sender);
+
+        case 'GET_SECURITY_INFO': {
+          const securityTabId = Number.isInteger(message.tabId) ? message.tabId : sender.tab?.id;
+          return await getSecurityInfo(securityTabId);
+        }
+
+        case 'ALLOW_FRAME':
+          return await allowFrame(message, sender);
+
+        case 'UNBLOCK_REQUEST':
+          return await unblockRequestDomain(message.url || message.domain);
 
         // Referrer/WebRTC/Ping
         case 'TOGGLE_REFERRER_STRIPPING':
@@ -967,13 +1356,19 @@ try {
 
         // Request log feature
         case 'GET_REQUEST_LOG':
-          return await getRequestLog();
+          return { success: true, log: await getRequestLog() };
 
         case 'CLEAR_REQUEST_LOG':
           return await clearRequestLog();
 
         case 'ADD_LOG_ENTRY':
           return await addLogEntry(message.entry);
+
+        case 'EXPORT_RULES':
+          return await exportRules();
+
+        case 'IMPORT_RULES':
+          return await importRules(message.data);
 
         // Phishing detection
         case 'CHECK_PHISHING': {
@@ -1073,6 +1468,14 @@ try {
           }
           return { success: true };
 
+        case 'STOP_PHISHING_ALERT': {
+          const tabId = Number.isInteger(message.tabId) ? message.tabId : sender.tab?.id;
+          if (typeof tabId === 'number') {
+            stopIconBlink(tabId);
+          }
+          return { success: true };
+        }
+
         // Tab management
         case 'GET_TABS':
           return await new Promise((resolve) => {
@@ -1132,27 +1535,9 @@ try {
   async function initialize() {
     try {
       // Load initial settings
-      const storage = await getStorage(Object.keys(DEFAULT_SETTINGS));
-
-      // Initialize modules if they have init functions
-      if (typeof self.WebSuddhi.networkBlocker?.init === 'function') {
-        await self.WebSuddhi.networkBlocker.init();
-      }
-      if (typeof self.WebSuddhi.statsManager?.init === 'function') {
-        await self.WebSuddhi.statsManager.init();
-      }
-      if (typeof self.WebSuddhi.urlCleaner?.init === 'function') {
-        await self.WebSuddhi.urlCleaner.init();
-      }
-      if (typeof self.WebSuddhi.privacy?.init === 'function') {
-        await self.WebSuddhi.privacy.init();
-      }
-      if (typeof self.WebSuddhi.filterLists?.init === 'function') {
-        await self.WebSuddhi.filterLists.init();
-      }
-      if (typeof self.WebSuddhi.phishingDetector?.init === 'function') {
-        await self.WebSuddhi.phishingDetector.init();
-      }
+      await getStorage(Object.keys(DEFAULT_SETTINGS));
+      // Modules imported via importScripts auto-initialize themselves.
+      // Avoid calling module init functions here to prevent duplicate listeners/timers.
 
       // Set up listeners
       api.runtime.onMessage.addListener(handleMessage);
@@ -1161,6 +1546,19 @@ try {
           log('Update available');
         }
       });
+      if (api.tabs && api.tabs.onRemoved) {
+        api.tabs.onRemoved.addListener((tabId) => {
+          tabFrameMap.delete(tabId);
+          stopIconBlink(tabId);
+        });
+      }
+      if (api.tabs && api.tabs.onUpdated) {
+        api.tabs.onUpdated.addListener((tabId, changeInfo) => {
+          if (changeInfo && changeInfo.status === 'loading') {
+            tabFrameMap.delete(tabId);
+          }
+        });
+      }
 
       // Set up context menu
       setupContextMenu();

@@ -14,13 +14,51 @@
     }
   };
 
+  function isTopFrame() {
+    try {
+      return window.top === window;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function isHttpOrHttpsPage() {
+    const protocol = window.location.protocol;
+    return protocol === 'http:' || protocol === 'https:';
+  }
+
+  function pageContainsPasswordField() {
+    try {
+      return Boolean(document.querySelector('input[type="password"]'));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function shouldRunAggressiveAntiAdblock(storage) {
+    if (storage?.aggressiveAntiAdblockEnabled !== true) return false;
+    if (!isTopFrame() || !isHttpOrHttpsPage()) return false;
+
+    const hostname = (window.location.hostname || '').toLowerCase();
+    const pathname = (window.location.pathname || '').toLowerCase();
+    const sensitivePattern = /(bank|pay|secure|login|account)/i;
+    if (sensitivePattern.test(hostname) || sensitivePattern.test(pathname)) {
+      return false;
+    }
+
+    return !pageContainsPasswordField();
+  }
+
   // ============================================
   // PHISHING PROTECTION - Check early before page renders
   // ============================================
 
   // Check for phishing immediately on script load
   (async function checkForPhishing() {
+    if (!isTopFrame() || !isHttpOrHttpsPage()) return;
+
     const hostname = window.location.hostname;
+    if (!hostname) return;
 
     try {
       const response = await sendMessageEarly({ type: 'CHECK_PHISHING', domain: hostname });
@@ -119,6 +157,9 @@
     const realDomain = data.realDomain || data.matchedDomain || 'unknown';
     const matchedBrand = data.matchedBrand || 'Unknown';
     const originalDomain = data.originalDomain || window.location.hostname;
+    const riskLevel = (data.riskLevel || '').toString().toLowerCase();
+    const isHighRisk = riskLevel === 'high';
+    const proceedCooldownSeconds = isHighRisk ? 10 : 5;
 
     // Create full-page overlay
     const overlay = document.createElement('div');
@@ -263,8 +304,37 @@
     const proceedBtn = document.createElement('button');
     proceedBtn.className = 'websuddhi-btn-danger';
     proceedBtn.id = 'websuddhiProceed';
-    proceedBtn.textContent = 'Proceed to ' + originalDomain;
+    const proceedBaseText = 'Proceed to ' + originalDomain;
+    proceedBtn.textContent = proceedBaseText;
+    proceedBtn.disabled = true;
+    proceedBtn.setAttribute('aria-disabled', 'true');
+    proceedBtn.style.opacity = '0.6';
     details.appendChild(proceedBtn);
+
+    const proceedHint = document.createElement('p');
+    proceedHint.className = 'websuddhi-phishing-advanced-warning';
+    proceedHint.textContent = isHighRisk
+      ? 'High risk: wait 10 seconds, then type the full domain to proceed.'
+      : 'Please wait 5 seconds before proceeding.';
+    details.appendChild(proceedHint);
+
+    let domainConfirmInput = null;
+    let domainConfirmed = !isHighRisk;
+
+    if (isHighRisk) {
+      const confirmLabel = document.createElement('label');
+      confirmLabel.className = 'websuddhi-phishing-advanced-warning';
+      confirmLabel.textContent = 'Type "' + originalDomain + '" to confirm you want to continue:';
+      details.appendChild(confirmLabel);
+
+      domainConfirmInput = document.createElement('input');
+      domainConfirmInput.type = 'text';
+      domainConfirmInput.autocomplete = 'off';
+      domainConfirmInput.spellcheck = false;
+      domainConfirmInput.placeholder = originalDomain;
+      domainConfirmInput.setAttribute('aria-label', 'Type domain to confirm proceeding');
+      details.appendChild(domainConfirmInput);
+    }
     modal.appendChild(details);
 
     // Footer
@@ -305,8 +375,38 @@
     });
     bodyObserver.observe(document.documentElement, { childList: true, subtree: true });
 
+    let cooldownRemaining = proceedCooldownSeconds;
+    const updateProceedButtonState = () => {
+      const cooldownDone = cooldownRemaining <= 0;
+      const canProceed = cooldownDone && domainConfirmed;
+      proceedBtn.disabled = !canProceed;
+      proceedBtn.style.opacity = canProceed ? '1' : '0.6';
+      proceedBtn.setAttribute('aria-disabled', canProceed ? 'false' : 'true');
+      proceedBtn.textContent = cooldownDone
+        ? proceedBaseText
+        : (proceedBaseText + ' (' + cooldownRemaining + 's)');
+    };
+    updateProceedButtonState();
+
+    const cooldownTimer = setInterval(() => {
+      cooldownRemaining -= 1;
+      updateProceedButtonState();
+      if (cooldownRemaining <= 0) {
+        clearInterval(cooldownTimer);
+      }
+    }, 1000);
+
+    if (domainConfirmInput) {
+      const expectedDomain = originalDomain.trim().toLowerCase();
+      domainConfirmInput.addEventListener('input', () => {
+        domainConfirmed = domainConfirmInput.value.trim().toLowerCase() === expectedDomain;
+        updateProceedButtonState();
+      });
+    }
+
     // Event handlers
     goBackBtn.onclick = () => {
+      clearInterval(cooldownTimer);
       if (window.history.length > 1) {
         window.history.back();
       } else {
@@ -322,6 +422,8 @@
     };
 
     proceedBtn.onclick = () => {
+      if (proceedBtn.disabled) return;
+      clearInterval(cooldownTimer);
       dismissPhishingWarning(overlay, bodyObserver, originalDomain);
     };
   }
@@ -718,8 +820,8 @@
         state.enabled = false;
       }
 
-      // Setup anti-anti-adblock EARLY - before page scripts can detect us
-      if (state.enabled) {
+      // Setup anti-anti-adblock EARLY (only when explicitly enabled and safe to run)
+      if (state.enabled && shouldRunAggressiveAntiAdblock(storage)) {
         setupAntiAntiAdblock();
       }
 
@@ -768,7 +870,7 @@
   }
 
   // Cross-browser storage API - use shared utils
-  const STORAGE_KEYS = ['enabled', 'paywallEnabled', 'socialBlockingEnabled', 'blockedSelectors', 'whitelistedSites', 'toastDuration'];
+  const STORAGE_KEYS = ['enabled', 'paywallEnabled', 'socialBlockingEnabled', 'blockedSelectors', 'whitelistedSites', 'toastDuration', 'aggressiveAntiAdblockEnabled'];
 
   function getStorage() {
     return self.WebSuddhi.utils.getStorage(STORAGE_KEYS);
@@ -980,7 +1082,7 @@
     for (const iframe of iframes) {
       try {
         const src = iframe.src || iframe.getAttribute('data-src') || '';
-        if (!src || src.startsWith('about:') || src.startsWith('javascript:')) continue;
+        if (!src || src.startsWith('about:') || /^\s*javascript\s*:/i.test(src)) continue;
 
         const url = new URL(src, window.location.href);
         const frameHost = url.hostname.replace(/^www\./, '');
@@ -1057,11 +1159,18 @@
     }
   }
 
-  // Report detected third-party frames to background
+  // Report detected third-party frames to popup/background
   function reportFramesToBackground() {
     const frames = detectThirdPartyFrames();
     if (frames.length === 0) return;
 
+    // Popup listens for this aggregated message
+    sendMessage({
+      type: 'FRAMES_DETECTED',
+      frames
+    }).catch(() => {});
+
+    // Keep per-frame reporting for background compatibility
     for (const frame of frames) {
       sendMessage({
         type: 'REPORT_FRAME',
@@ -1807,6 +1916,37 @@
   let pendingCosmeticCount = 0;
   let lastBlockedSelector = '';
 
+  function isUnknownMessageTypeResponse(response) {
+    return Boolean(
+      response &&
+      response.success === false &&
+      typeof response.error === 'string' &&
+      response.error.toLowerCase().includes('unknown message type')
+    );
+  }
+
+  function sendCosmeticStats(payload) {
+    sendMessage({
+      type: 'INCREMENT_STATS',
+      ...payload
+    })
+      .then((response) => {
+        if (isUnknownMessageTypeResponse(response)) {
+          return sendMessage({
+            type: 'INCREMENT_COSMETIC_STATS',
+            ...payload
+          });
+        }
+        return response;
+      })
+      .catch(() => {
+        sendMessage({
+          type: 'INCREMENT_COSMETIC_STATS',
+          ...payload
+        }).catch(() => {});
+      });
+  }
+
   function reportCosmeticBlockDebounced(selector) {
     pendingCosmeticCount++;
     if (selector) lastBlockedSelector = selector;
@@ -1817,12 +1957,11 @@
       pendingCosmeticCount = 0;
       lastBlockedSelector = '';
       try {
-        sendMessage({
-          type: 'INCREMENT_COSMETIC_STATS',
+        sendCosmeticStats({
           hostname: getCurrentHostname(),
           count,
           selector: selectorToReport
-        }).catch(() => {});
+        });
       } catch (e) {}
     }, 2000);
   }
