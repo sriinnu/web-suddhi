@@ -669,7 +669,14 @@
     toast.className = 'toast';
     toast.textContent = message;
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 2000);
+    requestAnimationFrame(() => {
+      toast.classList.add('show');
+    });
+    setTimeout(() => {
+      toast.classList.remove('show');
+      toast.classList.add('hide');
+      setTimeout(() => toast.remove(), 300);
+    }, 2000);
   }
 
   // ============================================
