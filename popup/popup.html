@@ -68,6 +68,58 @@
         </div>
       </section>
 
+      <!-- Site Security -->
+      <section class="card site-security-card">
+        <h3 class="section-title">Site Security</h3>
+        <div id="siteInfoSection" class="site-security-content">
+          <div class="security-main">
+            <div id="siteIcon" class="security-icon-wrap">
+              <svg class="icon icon-secure" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 11V7a5 5 0 0 0-10 0v4"/>
+                <rect x="5" y="11" width="14" height="10" rx="2" ry="2"/>
+                <line x1="10" y1="16" x2="14" y2="16"/>
+              </svg>
+              <svg class="icon icon-insecure" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2v8"/>
+                <path d="M4.93 20h14.14"/>
+                <path d="M7 18h10l-1-8H8l-1 8Z"/>
+                <line x1="12" y1="2" x2="12" y2="4"/>
+              </svg>
+            </div>
+            <div class="security-texts">
+              <span id="securityText" class="security-text">Unknown</span>
+              <span class="security-badge" id="securityBadge">Checking</span>
+              <span class="security-meta">
+                Protocol: <span id="certProtocol">---</span> - Type: <span id="certType">---</span>
+              </span>
+            </div>
+            <div id="siteMascot" class="security-mascot">
+              <span class="mascot-happy">[+]</span>
+              <span class="mascot-worried">[!]</span>
+            </div>
+          </div>
+          <div id="certOwnerSection" class="cert-owner">
+            <span class="cert-owner-title">Certificate Owner</span>
+            <span id="certOwnerName"></span>
+            <span id="certOwnerDetails"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tracker Summary -->
+      <section class="card tracker-summary-card">
+        <h3 class="section-title">Tracker Summary</h3>
+        <div id="trackerSummary" class="tracker-summary" style="display: none;">
+          <div id="trackerCategories" class="tracker-categories"></div>
+        </div>
+      </section>
+
+      <!-- Third-Party Frames -->
+      <section class="card frame-section" id="framesSection" style="display: none;">
+        <h3 class="section-title">Third-Party Frames <span id="framesCount" class="section-count">0</span></h3>
+        <div id="framesList" class="frame-list"></div>
+      </section>
+
       <!-- Stats -->
       <section class="card stats-card">
         <div class="stats-grid">
