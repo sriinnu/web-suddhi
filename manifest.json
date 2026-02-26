@@ -17,8 +17,7 @@
   "optional_permissions": [
     "contentSettings",
     "privacy",
-    "declarativeNetRequestFeedback",
-    "webRequestBlocking"
+    "declarativeNetRequestFeedback"
   ],
   "host_permissions": [
     "<all_urls>"
