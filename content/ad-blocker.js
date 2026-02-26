@@ -958,16 +958,7 @@
   }
 
   async function handleMessage(message, sender) {
-    log('Received message:', message.type, 'frameId:', sender.frameId);
-
-    // For pick/zap mode, only process in top frame
-    if (message.type === 'START_PICK_MODE' || message.type === 'START_ZAP_MODE') {
-      if (window !== window.top) {
-        log('Not top frame, skipping pick/zap mode');
-        return { success: false, error: 'Not top frame' };
-      }
-    }
-
+    log('Received message:', message.type);
     switch (message.type) {
       case 'TOGGLE':
         state.enabled = message.enabled;
@@ -2136,7 +2127,6 @@
   // ============================================
   function startPickMode() {
     log('startPickMode called');
-    // Frame check is now done in handleMessage
 
     if (state.zapMode) stopZapMode();
     state.pickMode = true;

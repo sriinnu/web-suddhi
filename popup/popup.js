@@ -213,18 +213,19 @@
       null;
   }
 
-  function sendToContentScript(message) {
+  function sendToContentScript(message, frameId = 0) {
     return new Promise((resolve, reject) => {
       if (!currentTab || !currentTab.id) {
         reject(new Error('No active tab'));
         return;
       }
 
-      const result = api.tabs.sendMessage(currentTab.id, message);
+      // Send to specific frame (0 = main/top frame)
+      const result = api.tabs.sendMessage(currentTab.id, message, { frameId });
       if (result && typeof result.then === 'function') {
         result.then(resolve).catch(reject);
       } else {
-        api.tabs.sendMessage(currentTab.id, message, (response) => {
+        api.tabs.sendMessage(currentTab.id, message, { frameId }, (response) => {
           if (api.runtime.lastError) reject(api.runtime.lastError);
           else resolve(response);
         });
