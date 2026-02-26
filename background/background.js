@@ -185,10 +185,6 @@ try {
   const ICON_PATHS_NORMAL = getIconPaths(false);
   const ICON_PATHS_ALERT = getIconPaths(true);
   const tabFrameMap = new Map(); // tabId -> Map<host, { host, url, blocked, lastSeen }>
-    } catch (e) {
-      warn('Failed to setup certificate listener:', e.message);
-    }
-  }
 
   // ============================================
   // RATE LIMITING - Protect against DOS attacks
