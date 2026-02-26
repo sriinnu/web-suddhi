@@ -192,20 +192,34 @@ try {
   // ============================================
   let webRequestSecurityInfoSupported = false;
 
-  // Feature detection for webRequest securityInfo (requires Chrome 144+)
+  // Feature detection for webRequest securityInfo (requires Chrome 144+ AND developer flag)
   function checkWebRequestSecuritySupport() {
     try {
-      // Check if webRequest API exists and supports securityInfo option
-      if (api.webRequest && api.webRequest.onHeadersReceived && typeof api.webRequest.onHeadersReceived.addListener === 'function') {
-        // Try to add a listener with securityInfo to test support
-        // This will throw if not supported
-        webRequestSecurityInfoSupported = true;
-        return true;
+      // Check if webRequest API exists
+      if (!api.webRequest || !api.webRequest.onHeadersReceived) {
+        return false;
       }
+
+      // Try to add a listener with securityInfo to test if it's supported
+      // This REQUIRES the "WebRequestSecurityInfo" developer flag in Chrome
+      // Without the flag, this will throw: "ExtraInfoSpec.securityInfo is allowed only with WebRequestSecurityInfo developer flag"
+      const testListener = () => {};
+      api.webRequest.onHeadersReceived.addListener(
+        testListener,
+        { urls: ['https://*/*'], types: ['main_frame'] },
+        ['blocking', 'securityInfo']
+      );
+
+      // If we get here, it worked - remove the test listener
+      api.webRequest.onHeadersReceived.removeListener(testListener);
+      webRequestSecurityInfoSupported = true;
+      return true;
     } catch (e) {
+      // securityInfo is not supported (requires developer flag)
       warn('WebRequest securityInfo not supported:', e.message);
+      webRequestSecurityInfoSupported = false;
+      return false;
     }
-    return false;
   }
 
   // Set up webRequest listener for certificate info
