@@ -759,6 +759,8 @@
     enabled: true,
     paywallEnabled: true,
     socialBlockingEnabled: false,
+    cookieConsentEnabled: false,
+    annoyancesEnabled: false,
     whitelistedSites: [],
     blockedSelectors: new Map(),
     pickMode: false,
@@ -804,6 +806,8 @@
       state.enabled = storage.enabled !== false;
       state.paywallEnabled = storage.paywallEnabled !== false;
       state.socialBlockingEnabled = storage.socialBlockingEnabled === true;
+      state.cookieConsentEnabled = storage.cookieConsentEnabled === true;
+      state.annoyancesEnabled = storage.annoyancesEnabled === true;
       state.whitelistedSites = storage.whitelistedSites || [];
       state.toastDuration = storage.toastDuration || 3;
       state.blockedSelectors = new Map();
@@ -997,6 +1001,38 @@
       case 'STOP_ZAP_MODE':
         stopZapMode();
         return { success: true };
+
+      case 'TOGGLE_PICK_MODE':
+        if (state.pickMode) {
+          stopPickMode();
+        } else {
+          startPickMode();
+        }
+        return { success: true, pickMode: state.pickMode };
+
+      case 'TOGGLE_ZAP_MODE':
+        if (state.zapMode) {
+          stopZapMode();
+        } else {
+          startZapMode();
+        }
+        return { success: true, zapMode: state.zapMode };
+
+      case 'TOGGLE_COOKIE_CONSENT':
+        state.cookieConsentEnabled = message.enabled;
+        await setStorage({ cookieConsentEnabled: state.cookieConsentEnabled });
+        if (state.cookieConsentEnabled) {
+          applyBlocking();
+        }
+        return { success: true, cookieConsentEnabled: state.cookieConsentEnabled };
+
+      case 'TOGGLE_ANNOYANCE_BLOCKING':
+        state.annoyancesEnabled = message.enabled;
+        await setStorage({ annoyancesEnabled: state.annoyancesEnabled });
+        if (state.annoyancesEnabled) {
+          applyBlocking();
+        }
+        return { success: true, annoyancesEnabled: state.annoyancesEnabled };
 
       case 'REMOVE_PAYWALL':
         const removed = removePaywall();
