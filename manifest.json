@@ -11,12 +11,14 @@
     "declarativeNetRequest",
     "alarms",
     "webNavigation",
-    "contextMenus"
+    "contextMenus",
+    "webRequest"
   ],
   "optional_permissions": [
     "contentSettings",
     "privacy",
-    "declarativeNetRequestFeedback"
+    "declarativeNetRequestFeedback",
+    "webRequestBlocking"
   ],
   "host_permissions": [
     "<all_urls>"

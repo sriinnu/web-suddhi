@@ -185,6 +185,108 @@ try {
   const ICON_PATHS_NORMAL = getIconPaths(false);
   const ICON_PATHS_ALERT = getIconPaths(true);
   const tabFrameMap = new Map(); // tabId -> Map<host, { host, url, blocked, lastSeen }>
+  const certificateInfoMap = new Map(); // hostname -> { issuer, organization, validFrom, validTo, protocol, cipher, fingerprint }
+
+  // ============================================
+  // HTTPS CERTIFICATE INFO - Uses webRequest.securityInfo (Chrome 144+)
+  // ============================================
+  let webRequestSecurityInfoSupported = false;
+
+  // Feature detection for webRequest securityInfo (requires Chrome 144+)
+  function checkWebRequestSecuritySupport() {
+    try {
+      // Check if webRequest API exists and supports securityInfo option
+      if (api.webRequest && api.webRequest.onHeadersReceived && typeof api.webRequest.onHeadersReceived.addListener === 'function') {
+        // Try to add a listener with securityInfo to test support
+        // This will throw if not supported
+        webRequestSecurityInfoSupported = true;
+        return true;
+      }
+    } catch (e) {
+      warn('WebRequest securityInfo not supported:', e.message);
+    }
+    return false;
+  }
+
+  // Set up webRequest listener for certificate info
+  function setupCertificateListener() {
+    if (!api.webRequest || !api.webRequest.onHeadersReceived) {
+      warn('webRequest.onHeadersReceived not available');
+      return;
+    }
+
+    try {
+      // Add listener with securityInfo option to capture TLS/cert details
+      api.webRequest.onHeadersReceived.addListener(
+        (details) => {
+          // Extract hostname from URL
+          try {
+            const url = new URL(details.url);
+            const hostname = url.hostname;
+
+            // Build certificate info from securityInfo if available
+            if (details.securityInfo) {
+              const secInfo = details.securityInfo;
+              const certInfo = {
+                issuer: '',
+                organization: '',
+                validFrom: null,
+                validTo: null,
+                protocol: '',
+                cipher: '',
+                fingerprint: ''
+              };
+
+              // Extract certificate chain info
+              if (secInfo.certificate) {
+                const cert = secInfo.certificate;
+                // Certificate subject organization
+                if (cert.subject && cert.subject.organization) {
+                  certInfo.organization = cert.subject.organization;
+                }
+                // Certificate issuer organization
+                if (cert.issuer && cert.issuer.organization) {
+                  certInfo.issuer = cert.issuer.organization;
+                }
+                // Validity dates
+                if (cert.validFrom) {
+                  certInfo.validFrom = cert.validFrom;
+                }
+                if (cert.validTo) {
+                  certInfo.validTo = cert.validTo;
+                }
+              }
+
+              // TLS protocol version
+              if (secInfo.protocol) {
+                certInfo.protocol = secInfo.protocol;
+              }
+
+              // Cipher suite
+              if (secInfo.cipher) {
+                certInfo.cipher = secInfo.cipher;
+              }
+
+              // Certificate fingerprint (SHA-256)
+              if (secInfo.fingerprint) {
+                certInfo.fingerprint = secInfo.fingerprint;
+              }
+
+              // Store in map
+              certificateInfoMap.set(hostname, certInfo);
+            }
+          } catch (e) {
+            // Ignore parsing errors
+          }
+        },
+        { urls: ['https://*/*'] },
+        ['blocking', 'securityInfo']
+      );
+      log('Certificate listener registered with securityInfo');
+    } catch (e) {
+      warn('Failed to setup certificate listener:', e.message);
+    }
+  }
 
   // ============================================
   // RATE LIMITING - Protect against DOS attacks
@@ -710,10 +812,22 @@ try {
       });
       const host = normalizeHostname(tab?.url || '', true);
       if (host && tab?.url && tab.url.startsWith('https://')) {
-        certificate = {
-          organization: host,
-          issuer: host
-        };
+        // First try to get real certificate info from webRequest listener
+        const certFromMap = certificateInfoMap.get(host);
+        if (certFromMap && (certFromMap.organization || certFromMap.issuer || certFromMap.protocol)) {
+          certificate = certFromMap;
+        } else {
+          // Fallback to placeholder if no real cert data available yet
+          certificate = {
+            organization: host,
+            issuer: host,
+            validFrom: null,
+            validTo: null,
+            protocol: '',
+            cipher: '',
+            fingerprint: ''
+          };
+        }
       }
     } catch (e) {}
 
@@ -1558,6 +1672,11 @@ try {
             tabFrameMap.delete(tabId);
           }
         });
+      }
+
+      // Set up HTTPS certificate info listener (Chrome 144+)
+      if (checkWebRequestSecuritySupport()) {
+        setupCertificateListener();
       }
 
       // Set up context menu
