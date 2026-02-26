@@ -856,15 +856,33 @@
 
       // Setup listeners
       setupMessageListener();
+
+      // Re-apply blocking when page becomes visible (e.g., user switches back to tab)
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && state.enabled && !isSiteWhitelisted()) {
+          applyBlocking();
+        }
+      });
+
+      // Apply blocking both immediately and after DOM is ready
+      // This ensures selectors persist even if DOM isn't ready on first load
+      const applyBlockingWhenReady = () => {
+        if (state.enabled && !isSiteWhitelisted()) {
+          applyBlocking();
+        }
+        // Also setup observer after DOM is ready
+        setupMutationObserver();
+        setTimeout(reportFramesToBackground, 2000);
+      };
+
       // Only start observer when body exists
       if (document.body) {
-        setupMutationObserver();
-        // Report frames after a delay to let page load
-        setTimeout(reportFramesToBackground, 2000);
+        // Apply blocking immediately AND after a short delay to ensure persistence
+        setTimeout(applyBlockingWhenReady, 100);
       } else {
         document.addEventListener('DOMContentLoaded', () => {
-          setupMutationObserver();
-          setTimeout(reportFramesToBackground, 2000);
+          // Apply blocking after DOM is ready
+          setTimeout(applyBlockingWhenReady, 100);
         });
       }
 
