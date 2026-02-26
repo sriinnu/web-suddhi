@@ -350,6 +350,31 @@ body {
   background: var(--border);
 }
 
+.stats-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.stat-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.view-all {
+  font-size: 12px;
+  color: var(--primary);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.view-all:hover {
+  text-decoration: underline;
+}
+
 /* ============================================
    Sections
    ============================================ */
@@ -872,4 +897,112 @@ body {
 .toast.hide {
   opacity: 0;
   transform: translateX(-50%) translateY(10px);
+}
+
+/* ============================================
+   Features Grid
+   ============================================ */
+.features-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ============================================
+   Blocked Panel
+   ============================================ */
+.blocked-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-primary);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.blocked-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.blocked-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.blocked-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: var(--text-secondary);
+}
+
+.blocked-close:hover {
+  color: var(--text-primary);
+}
+
+.blocked-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.blocked-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  margin-bottom: 8px;
+}
+
+.blocked-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.blocked-item-url {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.blocked-item-type {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.blocked-unblock {
+  background: none;
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.blocked-unblock:hover {
+  background: var(--bg-tertiary);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.blocked-empty {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-secondary);
 }

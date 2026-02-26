@@ -45,6 +45,7 @@
     enableToggle: document.getElementById('enableToggle'),
     currentSite: document.getElementById('currentSite'),
     paywallToggle: document.getElementById('paywallToggle'),
+    socialBlockingToggle: document.getElementById('socialBlockingToggle'),
     networkBlockedCount: document.getElementById('networkBlockedCount'),
     cosmeticBlockedCount: document.getElementById('cosmeticBlockedCount'),
     rulesCount: document.getElementById('rulesCount'),
@@ -249,6 +250,7 @@
     if (elements.cookieConsentToggle) elements.cookieConsentToggle.checked = settings.cookieConsentEnabled !== false;
     if (elements.annoyanceToggle) elements.annoyanceToggle.checked = settings.annoyanceBlockingEnabled !== false;
     if (elements.paywallToggle) elements.paywallToggle.checked = settings.paywallEnabled !== false;
+    if (elements.socialBlockingToggle) elements.socialBlockingToggle.checked = settings.socialBlockingEnabled === true;
 
     // Update blocked count
     if (elements.networkBlockedCount) {
@@ -364,6 +366,13 @@
     const enabled = elements.paywallToggle.checked;
     await sendToBackground({ type: 'TOGGLE_PAYWALL', enabled });
     await sendToContentScript({ type: 'TOGGLE_PAYWALL', enabled });
+  }
+
+  async function toggleSocialBlocking() {
+    const enabled = elements.socialBlockingToggle.checked;
+    await sendToBackground({ type: 'TOGGLE_SOCIAL_BLOCKING', enabled });
+    await sendToContentScript({ type: 'TOGGLE_SOCIAL_BLOCKING', enabled });
+    showToast(`Social blocking ${enabled ? 'enabled' : 'disabled'}`);
   }
 
   async function toggleWhitelist() {
@@ -1180,6 +1189,7 @@
       elements.cookieConsentToggle?.addEventListener('change', toggleCookieConsent);
       elements.annoyanceToggle?.addEventListener('change', toggleAnnoyanceBlocking);
       elements.paywallToggle?.addEventListener('change', togglePaywall);
+      elements.socialBlockingToggle?.addEventListener('change', toggleSocialBlocking);
       elements.removePaywallBtn?.addEventListener('click', removePaywall);
       elements.pickModeBtn?.addEventListener('click', togglePickMode);
       elements.zapModeBtn?.addEventListener('click', toggleZapMode);
