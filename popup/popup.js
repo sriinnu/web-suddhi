@@ -880,20 +880,8 @@
           if (validTo) {
             details.push('Until: ' + validTo);
           }
-          const protocol = cert?.protocol || securityInfo?.protocol;
-          if (protocol) {
-            details.push('Protocol: ' + protocol);
-          }
-          const cipher = cert?.cipher || securityInfo?.cipher;
-          if (cipher) {
-            details.push('Cipher: ' + cipher);
-          }
-          const fingerprint = cert?.fingerprint || securityInfo?.fingerprint;
-          if (fingerprint) {
-            // Truncate fingerprint for display (show first 32 chars + ...)
-            const displayFp = fingerprint.length > 32 ? fingerprint.substring(0, 32) + '...' : fingerprint;
-            details.push('Fingerprint: ' + displayFp);
-          }
+          // Note: Protocol, cipher, and fingerprint details are not available
+          // (requires Chrome 144+ with WebRequestSecurityInfo developer flag)
           elements.certOwnerDetails.textContent = details.join(' | ');
 
           // Show the section
