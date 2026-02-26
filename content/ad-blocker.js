@@ -5,6 +5,9 @@
 (function() {
   'use strict';
 
+  // Debug log
+  const log = (...args) => console.log('[WebSuddhi]', ...args);
+
   // Logging helpers (use utils if available, fallback to console)
   const logError = (...args) => {
     if (self.WebSuddhi && self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
@@ -938,6 +941,7 @@
   // MESSAGE HANDLING
   // ============================================
   function setupMessageListener() {
+    log('Setting up message listener');
     const handler = (message, sender, sendResponse) => {
       handleMessage(message, sender)
         .then(sendResponse)
@@ -950,9 +954,11 @@
     } else if (typeof chrome !== 'undefined' && chrome.runtime) {
       chrome.runtime.onMessage.addListener(handler);
     }
+    log('Message listener set up');
   }
 
   async function handleMessage(message, sender) {
+    log('Received message:', message.type);
     switch (message.type) {
       case 'TOGGLE':
         state.enabled = message.enabled;
@@ -2120,8 +2126,10 @@
   // PICK MODE - Select & Save Elements
   // ============================================
   function startPickMode() {
+    log('startPickMode called');
     // Only run pick mode in the top/main frame to avoid conflicts with iframes
     if (window !== window.top) {
+      log('Not top frame, skipping pick mode');
       return;
     }
 

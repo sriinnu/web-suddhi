@@ -450,7 +450,10 @@
   // PICK MODE (Element Picker)
   // ============================================
   async function togglePickMode() {
-    if (!currentTab?.id) return;
+    if (!currentTab?.id) {
+      showToast('No active tab');
+      return;
+    }
 
     isPickMode = !isPickMode;
 
@@ -458,11 +461,20 @@
       setButtonContent(elements.pickModeBtn, SVG_PATHS.cancel, 'Cancel Pick');
       elements.pickModeBtn.classList.add('active');
       showToast('Pick mode: Click an element to block');
-      await sendToContentScript({ type: 'START_PICK_MODE' });
+      try {
+        await sendToContentScript({ type: 'START_PICK_MODE' });
+      } catch (e) {
+        console.error('Pick mode error:', e);
+        showToast('Error: ' + e.message);
+      }
     } else {
       setButtonContent(elements.pickModeBtn, SVG_PATHS.pick, 'Pick Element');
       elements.pickModeBtn.classList.remove('active');
-      await sendToContentScript({ type: 'STOP_PICK_MODE' });
+      try {
+        await sendToContentScript({ type: 'STOP_PICK_MODE' });
+      } catch (e) {
+        console.error('Stop pick mode error:', e);
+      }
     }
   }
 
