@@ -268,15 +268,40 @@ function setupEventListeners() {
     }
   });
 
+  // --- Mobile hamburger sidebar ---
+  const sidebarToggle = document.getElementById('sidebarToggle');
+  const sidebar = document.getElementById('sidebar');
+  const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+  function closeSidebar() {
+    sidebar?.classList.remove('open');
+    sidebarOverlay?.classList.remove('active');
+    if (sidebarToggle) sidebarToggle.setAttribute('aria-expanded', 'false');
+  }
+
+  sidebarToggle?.addEventListener('click', () => {
+    const isOpen = sidebar?.classList.toggle('open');
+    sidebarOverlay?.classList.toggle('active', isOpen);
+    sidebarToggle.setAttribute('aria-expanded', String(!!isOpen));
+  });
+  sidebarOverlay?.addEventListener('click', closeSidebar);
+
   // --- Navigation ---
   document.querySelectorAll('.nav-item').forEach((item) => {
     item.addEventListener('click', (e) => {
       e.preventDefault();
       const section = item.dataset.section;
       if (!section) return;
-      document.querySelectorAll('.nav-item').forEach((n) => n.classList.remove('active'));
+      // Update ARIA tab states
+      document.querySelectorAll('.nav-item').forEach((n) => {
+        n.classList.remove('active');
+        n.setAttribute('aria-selected', 'false');
+      });
       item.classList.add('active');
+      item.setAttribute('aria-selected', 'true');
       document.getElementById(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Close sidebar on mobile after navigation
+      closeSidebar();
     });
   });
 
@@ -286,7 +311,11 @@ function setupEventListeners() {
     for (const entry of entries) {
       if (entry.isIntersecting) {
         const id = entry.target.getAttribute('id');
-        document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.section === id));
+        document.querySelectorAll('.nav-item').forEach((n) => {
+          const isActive = n.dataset.section === id;
+          n.classList.toggle('active', isActive);
+          n.setAttribute('aria-selected', String(isActive));
+        });
       }
     }
   }, { threshold: 0.3 });
