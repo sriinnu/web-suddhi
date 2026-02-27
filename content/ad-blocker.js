@@ -2480,8 +2480,36 @@
     const el = e.target;
     if (el.classList.contains('websuddhi-pick-preview') || el.closest('.websuddhi-pick-preview')) return;
 
-    hideElement(el);
-    showToast('Element hidden (not saved)');
+    // Generate a unique selector so the block persists across page loads
+    const selector = getUniqueSelector(el);
+    hideElement(el, selector);
+
+    if (!selector) {
+      showToast('Element hidden (could not generate selector)');
+      return;
+    }
+
+    // Persist the rule — same flow as Pick Mode but without the confirm dialog
+    (async () => {
+      try {
+        if (state.blockedSelectors.size >= 500) {
+          showToast('Element hidden — rule limit reached (500). Remove old rules first.');
+          return;
+        }
+        state.blockedSelectors.set(selector, {
+          url: window.location.hostname,
+          date: Date.now(),
+          source: 'zap'
+        });
+        await saveSelectors();
+        blockSelector(selector);
+        try { await sendMessage({ type: 'ADD_SELECTOR', selector }); } catch (_) {}
+        showToast('Element zapped and rule saved');
+      } catch (err) {
+        logError('Zap mode: failed to save selector:', err);
+        showToast('Element hidden (save failed)');
+      }
+    })();
   }
 
   function handleZapEscape(e) {
@@ -2769,7 +2797,8 @@
         }
         state.blockedSelectors.set(selector, {
           url: window.location.hostname,
-          date: Date.now()
+          date: Date.now(),
+          source: 'pick'
         });
         await saveSelectors();
         blockSelector(selector);
