@@ -10,10 +10,21 @@
   },
   "overrides": [
     {
-      "files": ["rollup.config.js", "vitest.config.js", "src/**/*.js"],
+      "files": ["rollup.config.js", "vitest.config.js", "scripts/**/*.js"],
       "env": {
         "node": true,
         "browser": false
+      },
+      "parserOptions": {
+        "sourceType": "module"
+      }
+    },
+    {
+      "files": ["src/**/*.js"],
+      "env": {
+        "browser": true,
+        "es2022": true,
+        "webextensions": true
       },
       "parserOptions": {
         "sourceType": "module"
