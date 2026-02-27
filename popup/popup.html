@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="popup-wrapper">
+  <div class="popup-wrapper" role="main">
     <!-- Header -->
     <header class="header">
       <div class="header-left">
@@ -18,8 +18,8 @@
         <span class="tagline">Clean web, clear mind</span>
       </div>
       <div class="header-right">
-        <span class="status-badge" id="statusBadge">
-          <span class="status-dot"></span>
+        <span class="status-badge" id="statusBadge" role="status" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
           Active
         </span>
       </div>
@@ -28,7 +28,7 @@
     <main class="main-content">
       <!-- Protection Toggle -->
       <section class="card protection-card">
-        <div class="card-icon">
+        <div class="card-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
           </svg>
@@ -37,9 +37,9 @@
           <h2>Protection</h2>
           <p>Block ads, trackers, and annoyances</p>
         </div>
-        <label class="toggle">
-          <input type="checkbox" id="enableToggle" checked>
-          <span class="toggle-track">
+        <label class="toggle" aria-label="Toggle protection">
+          <input type="checkbox" id="enableToggle" checked role="switch" aria-checked="true">
+          <span class="toggle-track" aria-hidden="true">
             <span class="toggle-thumb"></span>
           </span>
         </label>
@@ -49,17 +49,17 @@
       <section class="card site-card">
         <div class="site-info">
           <span class="site-label">Current Website</span>
-          <span class="site-domain" id="currentSite">loading...</span>
+          <span class="site-domain" id="currentSite" aria-live="polite">loading...</span>
         </div>
         <div class="site-actions">
-          <button class="btn btn-secondary" id="whitelistBtn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <button class="btn btn-secondary" id="whitelistBtn" aria-label="Allow current site">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <polyline points="20 6 9 17 4 12"/>
             </svg>
             Allow
           </button>
-          <button class="btn btn-danger" id="blacklistBtn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <button class="btn btn-danger" id="blacklistBtn" aria-label="Block current site">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
@@ -93,9 +93,13 @@
                 Protocol: <span id="certProtocol">---</span> - Type: <span id="certType">---</span>
               </span>
             </div>
-            <div id="siteMascot" class="security-mascot">
-              <span class="mascot-happy">[+]</span>
-              <span class="mascot-worried">[!]</span>
+            <div id="siteMascot" class="security-mascot" aria-hidden="true">
+              <span class="mascot-happy">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+              </span>
+              <span class="mascot-worried">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01"/><circle cx="12" cy="12" r="10"/></svg>
+              </span>
             </div>
           </div>
           <div id="certOwnerSection" class="cert-owner">
@@ -109,8 +113,9 @@
       <!-- Tracker Summary -->
       <section class="card tracker-summary-card">
         <h3 class="section-title">Tracker Summary</h3>
-        <div id="trackerSummary" class="tracker-summary" style="display: none;">
+        <div id="trackerSummary" class="tracker-summary" style="display: none;" role="region" aria-label="Tracker summary">
           <div id="trackerCategories" class="tracker-categories"></div>
+          <p class="tracker-empty" style="display:none; text-align:center; color:var(--text-secondary); font-size:12px; padding:8px;">No trackers detected on this page</p>
         </div>
       </section>
 
@@ -123,13 +128,13 @@
       <!-- Stats -->
       <section class="card stats-card">
         <div class="stats-grid">
-          <div class="stat" id="networkStatBtn" style="cursor: pointer;">
-            <span class="stat-value" id="networkBlockedCount">0</span>
+          <div class="stat" id="networkStatBtn" style="cursor: pointer;" role="button" tabindex="0">
+            <span class="stat-value" id="networkBlockedCount" aria-label="Network requests blocked">0</span>
             <span class="stat-label">Network</span>
           </div>
-          <div class="stat-divider"></div>
-          <div class="stat" id="cosmeticStatBtn" style="cursor: pointer;">
-            <span class="stat-value" id="cosmeticBlockedCount">0</span>
+          <div class="stat-divider" aria-hidden="true"></div>
+          <div class="stat" id="cosmeticStatBtn" style="cursor: pointer;" role="button" tabindex="0">
+            <span class="stat-value" id="cosmeticBlockedCount" aria-label="Elements hidden">0</span>
             <span class="stat-label">Cosmetic</span>
           </div>
           <div class="stat-divider"></div>
@@ -149,7 +154,7 @@
         <h3 class="section-title">Blocking Features</h3>
         <div class="features-grid">
           <label class="feature-item">
-            <input type="checkbox" id="networkBlockingToggle" checked>
+            <input type="checkbox" id="networkBlockingToggle" checked aria-label="Network blocking">
             <div class="feature-card">
               <div class="feature-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -171,7 +176,7 @@
           </label>
 
           <label class="feature-item">
-            <input type="checkbox" id="urlCleaningToggle" checked>
+            <input type="checkbox" id="urlCleaningToggle" checked aria-label="URL cleaning">
             <div class="feature-card">
               <div class="feature-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -192,7 +197,7 @@
           </label>
 
           <label class="feature-item">
-            <input type="checkbox" id="cookieConsentToggle" checked>
+            <input type="checkbox" id="cookieConsentToggle" checked aria-label="Cookie consent blocking">
             <div class="feature-card">
               <div class="feature-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -216,7 +221,7 @@
           </label>
 
           <label class="feature-item">
-            <input type="checkbox" id="annoyanceToggle" checked>
+            <input type="checkbox" id="annoyanceToggle" checked aria-label="Annoyance blocking">
             <div class="feature-card">
               <div class="feature-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -237,7 +242,7 @@
           </label>
 
           <label class="feature-item">
-            <input type="checkbox" id="paywallToggle" checked>
+            <input type="checkbox" id="paywallToggle" checked aria-label="Paywall removal">
             <div class="feature-card">
               <div class="feature-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -258,7 +263,7 @@
           </label>
 
           <label class="feature-item">
-            <input type="checkbox" id="socialBlockingToggle">
+            <input type="checkbox" id="socialBlockingToggle" aria-label="Social widget blocking">
             <div class="feature-card">
               <div class="feature-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -281,7 +286,7 @@
             </div>
           </label>
 
-          <button class="action-item" id="removePaywallBtn" style="width: 100%; margin-top: 8px;">
+          <button class="action-item" id="removePaywallBtn" style="width: 100%; margin-top: 8px;" aria-label="Try removing paywall on current page">
             <div class="action-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
@@ -297,7 +302,7 @@
       <section class="actions-section">
         <h3 class="section-title">Quick Actions</h3>
         <div class="actions-grid">
-          <button class="action-item" id="pickModeBtn">
+          <button class="action-item" id="pickModeBtn" aria-label="Pick element to block">
             <div class="action-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M7 2l12 11.5-5.5 1.2 3.3 6.8-2.2 1-3.2-7L7 20V2z"/>
@@ -305,7 +310,7 @@
             </div>
             <span class="action-label">Pick Element</span>
           </button>
-          <button class="action-item" id="zapModeBtn">
+          <button class="action-item" id="zapModeBtn" aria-label="Quick zap element">
             <div class="action-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
@@ -313,7 +318,7 @@
             </div>
             <span class="action-label">Quick Zap</span>
           </button>
-          <button class="action-item" id="whitelistToggleBtn">
+          <button class="action-item" id="whitelistToggleBtn" aria-label="Toggle whitelist for current site">
             <div class="action-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M9 12l2 2 4-4"/>
@@ -322,7 +327,7 @@
             </div>
             <span class="action-label" id="whitelistBtnText">Whitelist</span>
           </button>
-          <button class="action-item" id="openOptionsBtn">
+          <button class="action-item" id="openOptionsBtn" aria-label="Open settings page">
             <div class="action-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="3"/>
@@ -335,10 +340,10 @@
       </section>
 
       <!-- Blocked Panel (hidden by default) -->
-      <div class="blocked-panel" id="blockedPanel" style="display: none;">
+      <div class="blocked-panel" id="blockedPanel" style="display: none;" role="dialog" aria-label="Blocked items" aria-hidden="true">
         <div class="blocked-header">
           <h3 id="blockedTitle">Blocked</h3>
-          <button class="blocked-close" id="blockedClose">
+          <button class="blocked-close" id="blockedClose" aria-label="Close blocked items panel">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>
@@ -352,7 +357,7 @@
     <!-- Footer -->
     <footer class="footer">
       <span class="version">WebSuddhi 2.1.0</span>
-      <a href="https://github.com/sriinnu/web-suddhi/issues" class="link" id="reportIssue">Report Issue</a>
+      <a href="https://github.com/sriinnu/web-suddhi/issues" class="link" id="reportIssue" target="_blank" rel="noopener noreferrer">Report Issue</a>
     </footer>
   </div>
   <script src="popup.js"></script>

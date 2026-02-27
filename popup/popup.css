@@ -1006,3 +1006,80 @@ body {
   padding: 40px;
   color: var(--text-secondary);
 }
+
+/* ============================================
+   FIX 1: Color Contrast (WCAG 2.1 AA)
+   --text-tertiary adjusted for ≥ 4.5:1 ratio
+   ============================================ */
+:root {
+  --text-tertiary: #6E6E73;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text-tertiary: #98989D;
+  }
+}
+
+/* ============================================
+   FIX 2: Keyboard Focus Styles (WCAG 2.4.7)
+   ============================================ */
+.btn:focus-visible,
+.action-item:focus-visible,
+.view-all:focus-visible,
+.link:focus-visible,
+.blocked-close:focus-visible,
+.blocked-unblock:focus-visible,
+.frame-allow-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Hidden checkbox in .toggle — ring on adjacent .toggle-track */
+.toggle input:focus-visible + .toggle-track {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Hidden checkbox in .feature-item — ring on adjacent .feature-card */
+.feature-item input:focus-visible + .feature-card {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ============================================
+   FIX 3: Popup Body Scroll
+   ============================================ */
+.popup-wrapper {
+  max-height: 600px;
+  overflow-y: auto;
+  position: relative;
+}
+
+.popup-wrapper::-webkit-scrollbar {
+  width: 6px;
+}
+
+.popup-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.popup-wrapper::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+}
+
+.popup-wrapper::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* ============================================
+   FIX 4: Toast scoped to .popup-wrapper
+   ============================================ */
+.toast {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  z-index: 200;
+}

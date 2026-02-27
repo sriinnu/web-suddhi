@@ -447,6 +447,20 @@ function showConfirmDialog(selector, _element) {
         // Fallback: save directly if background unreachable
         await saveSelectors();
       }
+      showToast('Element blocked — ' + selector);
+    } catch (err) {
+      showToast('Failed to block element');
+    }
+    closeDialog();
+    stopPickMode();
+  });
+
+  cancelBtn.addEventListener('click', () => {
+    closeDialog();
+    resumePickMode();
+  });
+}
+
 // ============================================
 // HELPERS
 // ============================================
