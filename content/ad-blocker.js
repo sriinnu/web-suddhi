@@ -5,6 +5,9 @@
 (function() {
   'use strict';
 
+  // Debug log
+  const log = (...args) => console.log('[WebSuddhi]', ...args);
+
   // Logging helpers (use utils if available, fallback to console)
   const logError = (...args) => {
     if (self.WebSuddhi && self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
@@ -759,6 +762,8 @@
     enabled: true,
     paywallEnabled: true,
     socialBlockingEnabled: false,
+    cookieConsentEnabled: false,
+    annoyancesEnabled: false,
     whitelistedSites: [],
     blockedSelectors: new Map(),
     pickMode: false,
@@ -804,6 +809,8 @@
       state.enabled = storage.enabled !== false;
       state.paywallEnabled = storage.paywallEnabled !== false;
       state.socialBlockingEnabled = storage.socialBlockingEnabled === true;
+      state.cookieConsentEnabled = storage.cookieConsentEnabled === true;
+      state.annoyancesEnabled = storage.annoyancesEnabled === true;
       state.whitelistedSites = storage.whitelistedSites || [];
       state.toastDuration = storage.toastDuration || 3;
       state.blockedSelectors = new Map();
@@ -852,15 +859,33 @@
 
       // Setup listeners
       setupMessageListener();
+
+      // Re-apply blocking when page becomes visible (e.g., user switches back to tab)
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && state.enabled && !isSiteWhitelisted()) {
+          applyBlocking();
+        }
+      });
+
+      // Apply blocking both immediately and after DOM is ready
+      // This ensures selectors persist even if DOM isn't ready on first load
+      const applyBlockingWhenReady = () => {
+        if (state.enabled && !isSiteWhitelisted()) {
+          applyBlocking();
+        }
+        // Also setup observer after DOM is ready
+        setupMutationObserver();
+        setTimeout(reportFramesToBackground, 2000);
+      };
+
       // Only start observer when body exists
       if (document.body) {
-        setupMutationObserver();
-        // Report frames after a delay to let page load
-        setTimeout(reportFramesToBackground, 2000);
+        // Apply blocking immediately AND after a short delay to ensure persistence
+        setTimeout(applyBlockingWhenReady, 100);
       } else {
         document.addEventListener('DOMContentLoaded', () => {
-          setupMutationObserver();
-          setTimeout(reportFramesToBackground, 2000);
+          // Apply blocking after DOM is ready
+          setTimeout(applyBlockingWhenReady, 100);
         });
       }
 
@@ -916,6 +941,7 @@
   // MESSAGE HANDLING
   // ============================================
   function setupMessageListener() {
+    log('Setting up message listener');
     const handler = (message, sender, sendResponse) => {
       handleMessage(message, sender)
         .then(sendResponse)
@@ -928,9 +954,11 @@
     } else if (typeof chrome !== 'undefined' && chrome.runtime) {
       chrome.runtime.onMessage.addListener(handler);
     }
+    log('Message listener set up');
   }
 
   async function handleMessage(message, sender) {
+    log('Received message:', message.type);
     switch (message.type) {
       case 'TOGGLE':
         state.enabled = message.enabled;
@@ -997,6 +1025,38 @@
       case 'STOP_ZAP_MODE':
         stopZapMode();
         return { success: true };
+
+      case 'TOGGLE_PICK_MODE':
+        if (state.pickMode) {
+          stopPickMode();
+        } else {
+          startPickMode();
+        }
+        return { success: true, pickMode: state.pickMode };
+
+      case 'TOGGLE_ZAP_MODE':
+        if (state.zapMode) {
+          stopZapMode();
+        } else {
+          startZapMode();
+        }
+        return { success: true, zapMode: state.zapMode };
+
+      case 'TOGGLE_COOKIE_CONSENT':
+        state.cookieConsentEnabled = message.enabled;
+        await setStorage({ cookieConsentEnabled: state.cookieConsentEnabled });
+        if (state.cookieConsentEnabled) {
+          applyBlocking();
+        }
+        return { success: true, cookieConsentEnabled: state.cookieConsentEnabled };
+
+      case 'TOGGLE_ANNOYANCE_BLOCKING':
+        state.annoyancesEnabled = message.enabled;
+        await setStorage({ annoyancesEnabled: state.annoyancesEnabled });
+        if (state.annoyancesEnabled) {
+          applyBlocking();
+        }
+        return { success: true, annoyancesEnabled: state.annoyancesEnabled };
 
       case 'REMOVE_PAYWALL':
         const removed = removePaywall();
@@ -2066,10 +2126,7 @@
   // PICK MODE - Select & Save Elements
   // ============================================
   function startPickMode() {
-    // Only run pick mode in the top/main frame to avoid conflicts with iframes
-    if (window !== window.top) {
-      return;
-    }
+    log('startPickMode called');
 
     if (state.zapMode) stopZapMode();
     state.pickMode = true;
@@ -2423,8 +2480,36 @@
     const el = e.target;
     if (el.classList.contains('websuddhi-pick-preview') || el.closest('.websuddhi-pick-preview')) return;
 
-    hideElement(el);
-    showToast('Element hidden (not saved)');
+    // Generate a unique selector so the block persists across page loads
+    const selector = getUniqueSelector(el);
+    hideElement(el, selector);
+
+    if (!selector) {
+      showToast('Element hidden (could not generate selector)');
+      return;
+    }
+
+    // Persist the rule — same flow as Pick Mode but without the confirm dialog
+    (async () => {
+      try {
+        if (state.blockedSelectors.size >= 500) {
+          showToast('Element hidden — rule limit reached (500). Remove old rules first.');
+          return;
+        }
+        state.blockedSelectors.set(selector, {
+          url: window.location.hostname,
+          date: Date.now(),
+          source: 'zap'
+        });
+        await saveSelectors();
+        blockSelector(selector);
+        try { await sendMessage({ type: 'ADD_SELECTOR', selector }); } catch (_) {}
+        showToast('Element zapped and rule saved');
+      } catch (err) {
+        logError('Zap mode: failed to save selector:', err);
+        showToast('Element hidden (save failed)');
+      }
+    })();
   }
 
   function handleZapEscape(e) {
@@ -2712,7 +2797,8 @@
         }
         state.blockedSelectors.set(selector, {
           url: window.location.hostname,
-          date: Date.now()
+          date: Date.now(),
+          source: 'pick'
         });
         await saveSelectors();
         blockSelector(selector);

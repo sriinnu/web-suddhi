@@ -1,10 +1,12 @@
 {
   "name": "websuddhi",
   "version": "2.1.0",
+  "type": "module",
   "description": "Block ads, remove paywalls, strip trackers, and clean up any website",
   "main": "background/background.js",
   "scripts": {
-    "build": "rollup -c",
+    "build": "rollup -c && node scripts/build-dist.js",
+    "build:mv2": "rollup -c && node scripts/build-dist.js --mv2",
     "build:watch": "rollup -c -w",
     "lint": "eslint . --ext .js",
     "lint:fix": "eslint . --ext .js --fix",

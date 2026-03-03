@@ -710,9 +710,15 @@ try {
       });
       const host = normalizeHostname(tab?.url || '', true);
       if (host && tab?.url && tab.url.startsWith('https://')) {
+        // Return basic certificate info based on hostname (detailed cert info requires Chrome 144+ with dev flag)
         certificate = {
           organization: host,
-          issuer: host
+          issuer: host,
+          validFrom: null,
+          validTo: null,
+          protocol: '',
+          cipher: '',
+          fingerprint: ''
         };
       }
     } catch (e) {}

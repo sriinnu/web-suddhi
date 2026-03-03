@@ -45,6 +45,7 @@
     enableToggle: document.getElementById('enableToggle'),
     currentSite: document.getElementById('currentSite'),
     paywallToggle: document.getElementById('paywallToggle'),
+    socialBlockingToggle: document.getElementById('socialBlockingToggle'),
     networkBlockedCount: document.getElementById('networkBlockedCount'),
     cosmeticBlockedCount: document.getElementById('cosmeticBlockedCount'),
     rulesCount: document.getElementById('rulesCount'),
@@ -212,18 +213,19 @@
       null;
   }
 
-  function sendToContentScript(message) {
+  function sendToContentScript(message, frameId = 0) {
     return new Promise((resolve, reject) => {
       if (!currentTab || !currentTab.id) {
         reject(new Error('No active tab'));
         return;
       }
 
-      const result = api.tabs.sendMessage(currentTab.id, message);
+      // Send to specific frame (0 = main/top frame)
+      const result = api.tabs.sendMessage(currentTab.id, message, { frameId });
       if (result && typeof result.then === 'function') {
         result.then(resolve).catch(reject);
       } else {
-        api.tabs.sendMessage(currentTab.id, message, (response) => {
+        api.tabs.sendMessage(currentTab.id, message, { frameId }, (response) => {
           if (api.runtime.lastError) reject(api.runtime.lastError);
           else resolve(response);
         });
@@ -249,6 +251,7 @@
     if (elements.cookieConsentToggle) elements.cookieConsentToggle.checked = settings.cookieConsentEnabled !== false;
     if (elements.annoyanceToggle) elements.annoyanceToggle.checked = settings.annoyanceBlockingEnabled !== false;
     if (elements.paywallToggle) elements.paywallToggle.checked = settings.paywallEnabled !== false;
+    if (elements.socialBlockingToggle) elements.socialBlockingToggle.checked = settings.socialBlockingEnabled === true;
 
     // Update blocked count
     if (elements.networkBlockedCount) {
@@ -366,6 +369,13 @@
     await sendToContentScript({ type: 'TOGGLE_PAYWALL', enabled });
   }
 
+  async function toggleSocialBlocking() {
+    const enabled = elements.socialBlockingToggle.checked;
+    await sendToBackground({ type: 'TOGGLE_SOCIAL_BLOCKING', enabled });
+    await sendToContentScript({ type: 'TOGGLE_SOCIAL_BLOCKING', enabled });
+    showToast(`Social blocking ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
   async function toggleWhitelist() {
     if (!currentTab?.url) return;
 
@@ -441,7 +451,10 @@
   // PICK MODE (Element Picker)
   // ============================================
   async function togglePickMode() {
-    if (!currentTab?.id) return;
+    if (!currentTab?.id) {
+      showToast('No active tab');
+      return;
+    }
 
     isPickMode = !isPickMode;
 
@@ -449,11 +462,20 @@
       setButtonContent(elements.pickModeBtn, SVG_PATHS.cancel, 'Cancel Pick');
       elements.pickModeBtn.classList.add('active');
       showToast('Pick mode: Click an element to block');
-      await sendToContentScript({ type: 'START_PICK_MODE' });
+      try {
+        await sendToContentScript({ type: 'START_PICK_MODE' });
+      } catch (e) {
+        console.error('Pick mode error:', e);
+        showToast('Error: ' + e.message);
+      }
     } else {
       setButtonContent(elements.pickModeBtn, SVG_PATHS.pick, 'Pick Element');
       elements.pickModeBtn.classList.remove('active');
-      await sendToContentScript({ type: 'STOP_PICK_MODE' });
+      try {
+        await sendToContentScript({ type: 'STOP_PICK_MODE' });
+      } catch (e) {
+        console.error('Stop pick mode error:', e);
+      }
     }
   }
 
@@ -871,6 +893,8 @@
           if (validTo) {
             details.push('Until: ' + validTo);
           }
+          // Note: Protocol, cipher, and fingerprint details are not available
+          // (requires Chrome 144+ with WebRequestSecurityInfo developer flag)
           elements.certOwnerDetails.textContent = details.join(' | ');
 
           // Show the section
@@ -1166,6 +1190,7 @@
       elements.cookieConsentToggle?.addEventListener('change', toggleCookieConsent);
       elements.annoyanceToggle?.addEventListener('change', toggleAnnoyanceBlocking);
       elements.paywallToggle?.addEventListener('change', togglePaywall);
+      elements.socialBlockingToggle?.addEventListener('change', toggleSocialBlocking);
       elements.removePaywallBtn?.addEventListener('click', removePaywall);
       elements.pickModeBtn?.addEventListener('click', togglePickMode);
       elements.zapModeBtn?.addEventListener('click', toggleZapMode);
