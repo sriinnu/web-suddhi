@@ -5,15 +5,23 @@
 (function() {
   'use strict';
 
-  // Debug log
-  const log = (...args) => console.log('[WebSuddhi]', ...args);
+  // Deduplication guard: when this script is injected via two manifest entries
+  // (all_frames + top-frame-only), the top frame executes the IIFE twice.
+  // Skip the second execution — the first already handled everything.
+  if (window.__websuddhiScriptRunning) return;
+  window.__websuddhiScriptRunning = true;
 
-  // Logging helpers (use utils if available, fallback to console)
+  // Debug log
+  const log = (...args) => {
+    if (self.WebSuddhi && self.WebSuddhi.utils && self.WebSuddhi.utils.log) {
+      self.WebSuddhi.utils.log(...args);
+    }
+  };
+
+  // Logging helpers (use utils if available)
   const logError = (...args) => {
     if (self.WebSuddhi && self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
       self.WebSuddhi.utils.error(...args);
-    } else {
-      console.error('[WebSuddhi]', ...args);
     }
   };
 
@@ -94,55 +102,7 @@
   function escapeHtmlPhishing(text) {
     const div = document.createElement('div');
     div.textContent = text || '';
-    return div.textContent;  // Return textContent, not innerHTML
-  }
-
-  // Highlight suspicious characters (homoglyphs) in domain
-  function highlightSuspiciousChars(domain) {
-    if (!domain) return '';
-
-    // Common homoglyph mappings (suspicious char -> normal char it mimics)
-    const homoglyphs = {
-      '0': 'o', 'О': 'O', 'о': 'o', // Cyrillic O
-      '1': 'l', 'І': 'I', 'і': 'i', // Cyrillic I
-      'а': 'a', 'А': 'A', // Cyrillic A
-      'е': 'e', 'Е': 'E', // Cyrillic E
-      'р': 'p', 'Р': 'P', // Cyrillic P
-      'с': 'c', 'С': 'C', // Cyrillic C
-      'у': 'y', 'У': 'Y', // Cyrillic Y
-      'х': 'x', 'Х': 'X', // Cyrillic X
-      'ѕ': 's', 'Ѕ': 'S', // Cyrillic S
-      'ј': 'j', 'Ј': 'J', // Cyrillic J
-      'ԁ': 'd', // Cyrillic D
-      'ɡ': 'g', // Latin small letter script G
-      'ո': 'n', // Armenian N
-      'ɑ': 'a', // Latin alpha
-      'ß': 'ss', // German eszett
-      'ı': 'i', // Dotless I
-      'ｇ': 'g', 'ｏ': 'o', 'ｌ': 'l', 'ｅ': 'e', // Fullwidth chars
-      'ⅰ': 'i', 'ⅼ': 'l', // Roman numerals
-      'ɴ': 'n', 'ᴍ': 'm', 'ᴀ': 'a', // Small caps
-      'ⓐ': 'a', 'ⓑ': 'b', 'ⓒ': 'c', 'ⓓ': 'd', 'ⓔ': 'e', // Circled letters
-      'ⓕ': 'f', 'ⓖ': 'g', 'ⓗ': 'h', 'ⓘ': 'i', 'ⓙ': 'j',
-      'ⓚ': 'k', 'ⓛ': 'l', 'ⓜ': 'm', 'ⓝ': 'n', 'ⓞ': 'o',
-      'ⓟ': 'p', 'ⓠ': 'q', 'ⓡ': 'r', 'ⓢ': 's', 'ⓣ': 't',
-      'ⓤ': 'u', 'ⓥ': 'v', 'ⓦ': 'w', 'ⓧ': 'x', 'ⓨ': 'y', 'ⓩ': 'z',
-      'rn': 'm' // Common trick: rn looks like m
-    };
-
-    let result = '';
-    for (let i = 0; i < domain.length; i++) {
-      const char = domain[i];
-      if (homoglyphs[char]) {
-        result += '<span class="websuddhi-suspicious-char">' + escapeHtmlPhishing(char) + '</span>';
-      } else if (char.charCodeAt(0) > 127) {
-        // Non-ASCII character - potentially suspicious
-        result += '<span class="websuddhi-suspicious-char">' + escapeHtmlPhishing(char) + '</span>';
-      } else {
-        result += escapeHtmlPhishing(char);
-      }
-    }
-    return result;
+    return div.innerHTML;
   }
 
   // Show full-page phishing warning overlay
@@ -827,14 +787,23 @@
         state.enabled = false;
       }
 
-      // Setup anti-anti-adblock EARLY (only when explicitly enabled and safe to run)
-      if (state.enabled && shouldRunAggressiveAntiAdblock(storage)) {
-        setupAntiAntiAdblock();
-      }
-
+      // ── LIGHTWEIGHT (runs in ALL frames) ──────────────────────
+      // Immediate CSS-based hiding of ad selectors.
+      // This is the only work child iframes need to do.
       if (state.enabled) {
         applyBlocking();
         removePingAttributes();
+      }
+
+      // ── HEAVY (top frame ONLY) ────────────────────────────────
+      // MutationObserver, anti-adblock bypass, paywall removal,
+      // element picker, social widget blocking, message listeners,
+      // visibility-change re-blocking, frame reporting, etc.
+      if (!isTopFrame()) return;
+
+      // Setup anti-anti-adblock EARLY (only when explicitly enabled and safe to run)
+      if (state.enabled && shouldRunAggressiveAntiAdblock(storage)) {
+        setupAntiAntiAdblock();
       }
 
       // Apply social widget blocking if enabled
@@ -902,45 +871,14 @@
   }
 
   function setStorage(data) {
-    return new Promise((resolve, reject) => {
-      if (typeof browser !== 'undefined' && browser.storage) {
-        browser.storage.local.set(data).then(resolve).catch(reject);
-        return;
-      }
-      if (typeof chrome !== 'undefined' && chrome.storage) {
-        chrome.storage.local.set(data, () => {
-          if (chrome.runtime.lastError) reject(chrome.runtime.lastError);
-          else resolve();
-        });
-        return;
-      }
-      try {
-        if (data.blockedSelectors) {
-          localStorage.setItem('websuddhi_selectors', JSON.stringify(data.blockedSelectors));
-        }
-        if (data.enabled !== undefined) {
-          localStorage.setItem('websuddhi_enabled', data.enabled);
-        }
-        if (data.paywallEnabled !== undefined) {
-          localStorage.setItem('websuddhi_paywall', data.paywallEnabled);
-        }
-        if (data.socialBlockingEnabled !== undefined) {
-          localStorage.setItem('websuddhi_social', data.socialBlockingEnabled);
-        }
-        if (data.whitelistedSites) {
-          localStorage.setItem('websuddhi_whitelist', JSON.stringify(data.whitelistedSites));
-        }
-        resolve();
-      } catch (err) {
-        reject(err);
-      }
-    });
+    return self.WebSuddhi.utils.setStorage(data);
   }
 
   // ============================================
   // MESSAGE HANDLING
   // ============================================
   function setupMessageListener() {
+    if (!isTopFrame()) return;
     log('Setting up message listener');
     const handler = (message, sender, sendResponse) => {
       handleMessage(message, sender)
@@ -1221,6 +1159,7 @@
 
   // Report detected third-party frames to popup/background
   function reportFramesToBackground() {
+    if (!isTopFrame()) return;
     const frames = detectThirdPartyFrames();
     if (frames.length === 0) return;
 
@@ -1245,6 +1184,7 @@
   // PAYWALL DETECTION & REMOVAL
   // ============================================
   function detectAndRemovePaywall() {
+    if (!isTopFrame()) return;
     if (!state.paywallEnabled) return;
 
     // Method 1: Check for common paywall class names
@@ -1492,6 +1432,7 @@
   // ANTI-ADBLOCK DETECTION
   // ============================================
   function handleAntiAdblock() {
+    if (!isTopFrame()) return;
     if (!state.enabled) return;
 
     // Remove anti-adblock overlays
@@ -1512,6 +1453,7 @@
   // ANTI-ANTI-ADBLOCK BYPASS
   // ============================================
   function setupAntiAntiAdblock() {
+    if (!isTopFrame()) return;
     if (!state.enabled) return;
 
     try {
@@ -1764,6 +1706,7 @@
   }
 
   function removeAntiAdblockOverlays() {
+    if (!isTopFrame()) return;
     const overlaySelectors = ANTI_ADBLOCK_SELECTORS.join(',');
 
     try {
@@ -1815,6 +1758,7 @@
   // SOCIAL WIDGET BLOCKING
   // ============================================
   function applySocialBlocking() {
+    if (!isTopFrame()) return;
     if (!state.socialBlockingEnabled || isSiteWhitelisted()) return;
 
     for (const selector of SOCIAL_WIDGET_SELECTORS) {
@@ -2034,6 +1978,7 @@
   // SHADOW DOM SUPPORT
   // ============================================
   function handleShadowDOM(container) {
+    if (!isTopFrame()) return;
     container = container || document.body;
     if (!container) return;
 
@@ -2069,6 +2014,7 @@
   // DYNAMIC CONTENT
   // ============================================
   function setupMutationObserver() {
+    if (!isTopFrame()) return;
     if (!document.body) return;
     if (state.observer) return;
 
@@ -2126,6 +2072,7 @@
   // PICK MODE - Select & Save Elements
   // ============================================
   function startPickMode() {
+    if (!isTopFrame()) return;
     log('startPickMode called');
 
     if (state.zapMode) stopZapMode();
@@ -2430,7 +2377,7 @@
   // ============================================
   function startZapMode() {
     // Only run zap mode in the top/main frame to avoid conflicts with iframes
-    if (window !== window.top) {
+    if (!isTopFrame()) {
       return;
     }
 
@@ -2898,7 +2845,7 @@
   function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
-    return div.textContent;
+    return div.innerHTML;
   }
 
   // ============================================

@@ -8,8 +8,6 @@
   const logError = (...args) => {
     if (self.WebSuddhi && self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
       self.WebSuddhi.utils.error(...args);
-    } else {
-      console.error('[WebSuddhi]', ...args);
     }
   };
 
@@ -106,37 +104,29 @@
   // ============================================
   function getStorage(keys) {
     return new Promise((resolve, reject) => {
-      if (api.storage) {
-        const result = api.storage.local.get(keys);
-        if (result && typeof result.then === 'function') {
-          result.then(resolve).catch(reject);
-        } else {
-          api.storage.local.get(keys, (data) => {
-            if (api.runtime.lastError) reject(api.runtime.lastError);
-            else resolve(data);
-          });
-        }
-        return;
+      const result = api.storage.local.get(keys);
+      if (result && typeof result.then === 'function') {
+        result.then(resolve).catch(reject);
+      } else {
+        api.storage.local.get(keys, (data) => {
+          if (api.runtime.lastError) reject(api.runtime.lastError);
+          else resolve(data);
+        });
       }
-      reject(new Error('No storage API'));
     });
   }
 
   function setStorage(data) {
     return new Promise((resolve, reject) => {
-      if (api.storage) {
-        const result = api.storage.local.set(data);
-        if (result && typeof result.then === 'function') {
-          result.then(resolve).catch(reject);
-        } else {
-          api.storage.local.set(data, () => {
-            if (api.runtime.lastError) reject(api.runtime.lastError);
-            else resolve();
-          });
-        }
-        return;
+      const result = api.storage.local.set(data);
+      if (result && typeof result.then === 'function') {
+        result.then(resolve).catch(reject);
+      } else {
+        api.storage.local.set(data, () => {
+          if (api.runtime.lastError) reject(api.runtime.lastError);
+          else resolve();
+        });
       }
-      reject(new Error('No storage API'));
     });
   }
 
@@ -290,16 +280,17 @@
 
     // Update status badge
     if (elements.statusBadge) {
-      if (settings.enabled === false) {
-        elements.statusBadge.textContent = 'Disabled';
-        elements.statusBadge.style.background = 'rgba(239, 68, 68, 0.2)';
-        elements.statusBadge.style.color = '#ef4444';
-      } else {
-        elements.statusBadge.textContent = 'Active';
-        elements.statusBadge.style.background = 'rgba(16, 185, 129, 0.2)';
-        elements.statusBadge.style.color = '#10b981';
-      }
+      const textEl = elements.statusBadge.querySelector('.status-text');
+      const label = settings.enabled === false ? 'Disabled' : 'Active';
+      if (textEl) textEl.textContent = label;
+      elements.statusBadge.classList.toggle('disabled', settings.enabled === false);
     }
+
+    // Show/hide protection disabled banner
+    updateProtectionBanner(settings.enabled !== false);
+
+    // Update Allow/Block button active states
+    updateSiteActions();
   }
 
   // ============================================
@@ -308,25 +299,33 @@
 
   // Toggle main protection
   async function toggleEnabled() {
-    // Click on label fires before browser toggles checkbox, so invert the state
-    const enabled = !elements.enableToggle.checked;
+    const enabled = elements.enableToggle.checked;
 
-    await sendToBackground({ type: 'TOGGLE_ENABLED', enabled });
+    // Persist directly to storage AND notify background (belt-and-suspenders)
+    await setStorage({ enabled });
+    try {
+      await sendToBackground({ type: 'TOGGLE_ENABLED', enabled });
+    } catch (e) {
+      // Background message failed, but storage was already written above
+    }
 
     // Update status badge
     if (elements.statusBadge) {
-      const textEl = elements.statusBadge.querySelector('span:last-child');
+      const textEl = elements.statusBadge.querySelector('.status-text');
       if (textEl) {
         textEl.textContent = enabled ? 'Active' : 'Disabled';
       }
       elements.statusBadge.classList.toggle('disabled', !enabled);
     }
 
+    // Show/hide protection disabled banner
+    updateProtectionBanner(enabled);
+
     // Notify content script IMMEDIATELY
     try {
       await sendToContentScript({ type: 'TOGGLE', enabled });
     } catch (e) {
-      console.log('Content script not available');
+      // Content script not available
     }
 
     showToast(enabled ? 'Protection enabled' : 'Protection disabled');
@@ -335,13 +334,15 @@
   // Toggle features - change event fires after checkbox toggled, so use checked directly
   async function toggleNetworkBlocking() {
     const enabled = elements.networkBlockingToggle.checked;
-    await sendToBackground({ type: 'TOGGLE_NETWORK_BLOCKING', enabled });
+    await setStorage({ networkBlockingEnabled: enabled });
+    try { await sendToBackground({ type: 'TOGGLE_NETWORK_BLOCKING', enabled }); } catch (e) {}
     showToast(`Network blocking ${enabled ? 'enabled' : 'disabled'}`);
   }
 
   async function toggleUrlCleaning() {
     const enabled = elements.urlCleaningToggle.checked;
-    await sendToBackground({ type: 'TOGGLE_URL_CLEANING', enabled });
+    await setStorage({ urlCleaningEnabled: enabled });
+    try { await sendToBackground({ type: 'TOGGLE_URL_CLEANING', enabled }); } catch (e) {}
     showToast(`URL cleaning ${enabled ? 'enabled' : 'disabled'}`);
   }
 
@@ -365,14 +366,16 @@
 
   async function togglePaywall() {
     const enabled = elements.paywallToggle.checked;
-    await sendToBackground({ type: 'TOGGLE_PAYWALL', enabled });
-    await sendToContentScript({ type: 'TOGGLE_PAYWALL', enabled });
+    await setStorage({ paywallEnabled: enabled });
+    try { await sendToBackground({ type: 'TOGGLE_PAYWALL', enabled }); } catch (e) {}
+    try { await sendToContentScript({ type: 'TOGGLE_PAYWALL', enabled }); } catch (e) {}
   }
 
   async function toggleSocialBlocking() {
     const enabled = elements.socialBlockingToggle.checked;
-    await sendToBackground({ type: 'TOGGLE_SOCIAL_BLOCKING', enabled });
-    await sendToContentScript({ type: 'TOGGLE_SOCIAL_BLOCKING', enabled });
+    await setStorage({ socialBlockingEnabled: enabled });
+    try { await sendToBackground({ type: 'TOGGLE_SOCIAL_BLOCKING', enabled }); } catch (e) {}
+    try { await sendToContentScript({ type: 'TOGGLE_SOCIAL_BLOCKING', enabled }); } catch (e) {}
     showToast(`Social blocking ${enabled ? 'enabled' : 'disabled'}`);
   }
 
@@ -380,7 +383,7 @@
     if (!currentTab?.url) return;
 
     const hostname = new URL(currentTab.url).hostname;
-    const response = await sendToBackground({ type: 'TOGGLE_WHITELIST' });
+    const response = await sendToBackground({ type: 'TOGGLE_WHITELIST', hostname });
     isWhitelisted = response.whitelisted;
 
     // Update UI - update button text
@@ -388,6 +391,9 @@
     if (btnText) {
       btnText.textContent = isWhitelisted ? 'Allowed' : 'Whitelist';
     }
+
+    // Update Allow/Block active state
+    updateSiteActions();
 
     // Show toast notification
     showToast(isWhitelisted ? `Whitelisted: ${hostname}` : `Removed from whitelist: ${hostname}`);
@@ -400,8 +406,11 @@
         await sendToContentScript({ type: 'UNWHITELIST_SITE', hostname });
       }
     } catch (e) {
-      console.log('Content script not available');
+      // Content script not available
     }
+
+    // Reload the page so changes take effect
+    reloadCurrentTab();
   }
 
   // Quick whitelist from header button
@@ -413,18 +422,31 @@
 
     if (response.success) {
       isWhitelisted = true;
+      // Also persist directly to storage
+      try {
+        const data = await getStorage(['whitelistedSites']);
+        const sites = data.whitelistedSites || [];
+        if (!sites.includes(hostname)) {
+          sites.push(hostname);
+          await setStorage({ whitelistedSites: sites });
+        }
+      } catch (e) {}
       // Update button text
       const btnText = elements.whitelistToggleBtn?.querySelector('#whitelistBtnText');
       if (btnText) {
         btnText.textContent = 'Allowed';
       }
+      // Update Allow/Block active state
+      updateSiteActions();
       showToast(`Whitelisted: ${hostname}`);
       // Notify content script IMMEDIATELY using correct message type
       try {
         await sendToContentScript({ type: 'WHITELIST_SITE', hostname });
       } catch (e) {
-        console.log('Content script not available');
+        // Content script not available
       }
+      // Reload the page so changes take effect
+      reloadCurrentTab();
     } else {
       showToast(response.error || 'Failed to whitelist');
     }
@@ -439,9 +461,10 @@
 
     if (response.success) {
       showToast(`Blocked: ${hostname}`);
-      // Blacklisting doesn't need immediate content script update
-      // DNR rules will handle network blocking
-      // Cosmetic blocking can be refreshed by reloading
+      // Update Allow/Block active state
+      updateSiteActions();
+      // Reload the page so blocking takes effect
+      reloadCurrentTab();
     } else {
       showToast(response.error || 'Failed to block');
     }
@@ -465,7 +488,7 @@
       try {
         await sendToContentScript({ type: 'START_PICK_MODE' });
       } catch (e) {
-        console.error('Pick mode error:', e);
+        // Pick mode error
         showToast('Error: ' + e.message);
       }
     } else {
@@ -474,7 +497,7 @@
       try {
         await sendToContentScript({ type: 'STOP_PICK_MODE' });
       } catch (e) {
-        console.error('Stop pick mode error:', e);
+        // Stop pick mode error
       }
     }
   }
@@ -615,7 +638,7 @@
           <div class="blocked-item" title="${escapeHtml(url)}">
             <div class="blocked-item-info">
               <div class="blocked-item-url">${escapeHtml(shortUrl)}</div>
-              <div class="blocked-item-type ${type}">${escapeHtml(domain)} • ${category}</div>
+              <div class="blocked-item-type ${type}">${escapeHtml(domain)} • ${escapeHtml(category)}</div>
             </div>
             <button class="blocked-unblock" data-url="${escapeHtml(url)}">Unblock</button>
           </div>
@@ -707,7 +730,7 @@
   function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
-    return div.textContent;
+    return div.innerHTML;
   }
 
   function extractDomain(url) {
@@ -723,6 +746,45 @@
     if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
     if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return bytes + ' B';
+  }
+
+  // Update Allow/Block button active states based on whitelist/blacklist status
+  function updateSiteActions() {
+    if (!elements.whitelistBtn || !elements.blacklistBtn) return;
+
+    if (isWhitelisted) {
+      elements.whitelistBtn.classList.add('active');
+      elements.blacklistBtn.classList.remove('active');
+    } else {
+      elements.whitelistBtn.classList.remove('active');
+      elements.blacklistBtn.classList.remove('active');
+    }
+  }
+
+  // Reload the current tab after a toggle action
+  function reloadCurrentTab() {
+    if (currentTab?.id) {
+      try {
+        api.tabs.reload(currentTab.id);
+      } catch (e) {
+        // Tab may have been closed
+      }
+    }
+  }
+
+  // Show/hide the protection disabled banner
+  function updateProtectionBanner(enabled) {
+    const banner = document.getElementById('protectionBanner');
+    const content = document.querySelector('.main-content');
+    if (!banner) return;
+
+    if (!enabled) {
+      banner.style.display = 'flex';
+      if (content) content.classList.add('protection-off');
+    } else {
+      banner.style.display = 'none';
+      if (content) content.classList.remove('protection-off');
+    }
   }
 
   // Update security info display based on URL
@@ -1152,9 +1214,31 @@
         }
       }
 
-      // Load settings
-      const settingsResponse = await sendToBackground({ type: 'GET_ALL_SETTINGS' });
-      const settings = settingsResponse?.settings || {};
+      // Load settings - try background first, fall back to direct storage read
+      let settings = {};
+      try {
+        const settingsResponse = await sendToBackground({ type: 'GET_ALL_SETTINGS' });
+        settings = settingsResponse?.settings || {};
+      } catch (e) {
+        // Background not available, read directly from storage
+      }
+
+      // Direct storage read as authoritative source of truth
+      const directStorage = await getStorage([
+        'enabled', 'networkBlockingEnabled', 'urlCleaningEnabled',
+        'cookieConsentEnabled', 'annoyanceBlockingEnabled', 'paywallEnabled',
+        'socialBlockingEnabled'
+      ]);
+
+      // Merge: direct storage overrides defaults but background fills in gaps
+      if (directStorage.enabled !== undefined) settings.enabled = directStorage.enabled;
+      if (directStorage.networkBlockingEnabled !== undefined) settings.networkBlockingEnabled = directStorage.networkBlockingEnabled;
+      if (directStorage.urlCleaningEnabled !== undefined) settings.urlCleaningEnabled = directStorage.urlCleaningEnabled;
+      if (directStorage.cookieConsentEnabled !== undefined) settings.cookieConsentEnabled = directStorage.cookieConsentEnabled;
+      if (directStorage.annoyanceBlockingEnabled !== undefined) settings.annoyanceBlockingEnabled = directStorage.annoyanceBlockingEnabled;
+      if (directStorage.paywallEnabled !== undefined) settings.paywallEnabled = directStorage.paywallEnabled;
+      if (directStorage.socialBlockingEnabled !== undefined) settings.socialBlockingEnabled = directStorage.socialBlockingEnabled;
+
       currentSettings = settings;
 
       // Update UI
@@ -1172,17 +1256,17 @@
           if (btnText) {
             btnText.textContent = isWhitelisted ? 'Allowed' : 'Whitelist';
           }
+
+          // Update Allow/Block active state now that we know whitelist status
+          updateSiteActions();
         } catch (e) {
-          console.error('Whitelist check failed:', e);
+          // Whitelist check failed
         }
       }
 
       // Set up event listeners
       // Main protection toggle
-      elements.enableToggle?.parentElement?.addEventListener('click', (e) => {
-        e.preventDefault();
-        toggleEnabled();
-      });
+      elements.enableToggle?.addEventListener('change', toggleEnabled);
 
       // Feature toggles - use checkbox state after the browser updates it.
       elements.networkBlockingToggle?.addEventListener('change', toggleNetworkBlocking);

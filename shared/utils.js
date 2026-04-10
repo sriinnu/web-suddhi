@@ -49,8 +49,9 @@
   };
 
   utils.error = function(...args) {
-    // Always log errors
-    console.error('[WebSuddhi]', ...args);
+    if (debugEnabled) {
+      console.error('[WebSuddhi]', ...args);
+    }
   };
 
   utils.setDebug = function(enabled) {
@@ -422,6 +423,11 @@
     'sentry.io': { category: 'Error Tracking', severity: 'low', desc: 'Error monitoring' }
   };
 
+  // Expose the tracker database for other modules to use
+  utils.getTrackerDatabase = function() {
+    return TRACKER_DATABASE;
+  };
+
   // Get tracker info by domain (supports subdomain matching)
   utils.getTrackerInfo = function(domain) {
     if (!domain || typeof domain !== 'string') {
@@ -491,7 +497,7 @@
     if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
-    return div.textContent;  // Return textContent, not innerHTML
+    return div.innerHTML;
   };
 
   // Format large numbers with K/M suffix

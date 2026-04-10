@@ -1,22 +1,23 @@
 /* ============================================
-   WebSuddhi Popup - Apple-Inspired Design
+   WebSuddhi Popup - Nature-Inspired Design
+   Palette: Forest Green, Olive, Cream, Rose, Teal
    ============================================ */
 
 :root {
-  --primary: #007AFF;
-  --primary-light: #5AC8FA;
-  --success: #34C759;
-  --danger: #FF3B30;
-  --warning: #FF9500;
-  --bg-primary: #FFFFFF;
-  --bg-secondary: #F5F5F7;
-  --bg-tertiary: #E8E8ED;
-  --text-primary: #1D1D1F;
-  --text-secondary: #86868B;
-  --text-tertiary: #A1A1A6;
-  --border: rgba(0, 0, 0, 0.08);
-  --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.1);
+  --primary: #105666;
+  --primary-light: #1a8a9e;
+  --success: #0A3323;
+  --danger: #D3968C;
+  --warning: #839958;
+  --bg-primary: #F7F4D5;
+  --bg-secondary: #FFFFFF;
+  --bg-tertiary: #ece8c4;
+  --text-primary: #0A3323;
+  --text-secondary: #3d5a4a;
+  --text-tertiary: #6b7f6e;
+  --border: #d4d0a8;
+  --shadow: 0 2px 8px rgba(10, 51, 35, 0.08);
+  --shadow-lg: 0 4px 16px rgba(10, 51, 35, 0.12);
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -25,18 +26,18 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --primary: #0A84FF;
-    --primary-light: #5AC8FA;
-    --success: #30D158;
-    --danger: #FF453A;
-    --warning: #FF9F0A;
-    --bg-primary: #1C1C1E;
-    --bg-secondary: #2C2C2E;
-    --bg-tertiary: #3A3A3C;
-    --text-primary: #F5F5F7;
-    --text-secondary: #86868B;
-    --text-tertiary: #6E6E73;
-    --border: rgba(255, 255, 255, 0.1);
+    --primary: #1a8a9e;
+    --primary-light: #5cc5d8;
+    --success: #1b6b47;
+    --danger: #e8b0a8;
+    --warning: #a3b87a;
+    --bg-primary: #0f1f1a;
+    --bg-secondary: #1a2e27;
+    --bg-tertiary: #253d34;
+    --text-primary: #e8e2c4;
+    --text-secondary: #a8b89e;
+    --text-tertiary: #7d9080;
+    --border: rgba(26, 138, 158, 0.2);
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.4);
   }
@@ -110,7 +111,7 @@ body {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: rgba(52, 199, 89, 0.15);
+  background: rgba(10, 51, 35, 0.12);
   color: var(--success);
   font-size: 12px;
   font-weight: 600;
@@ -118,7 +119,7 @@ body {
 }
 
 .status-badge.disabled {
-  background: rgba(255, 59, 48, 0.15);
+  background: rgba(211, 150, 140, 0.15);
   color: var(--danger);
 }
 
@@ -133,7 +134,7 @@ body {
    Cards
    ============================================ */
 .card {
-  background: var(--bg-primary);
+  background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 16px;
@@ -161,7 +162,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 122, 255, 0.1);
+  background: rgba(16, 86, 102, 0.1);
   color: var(--primary);
   border-radius: var(--radius-md);
   flex-shrink: 0;
@@ -221,7 +222,7 @@ body {
   top: 1px;
   left: 1px;
   transition: transform 0.25s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 4px rgba(10, 51, 35, 0.15);
 }
 
 .toggle input:checked + .toggle-track {
@@ -303,12 +304,12 @@ body {
 }
 
 .btn-danger {
-  background: rgba(255, 59, 48, 0.1);
+  background: rgba(211, 150, 140, 0.15);
   color: var(--danger);
 }
 
 .btn-danger:hover {
-  background: rgba(255, 59, 48, 0.2);
+  background: rgba(211, 150, 140, 0.25);
 }
 
 /* ============================================
@@ -425,7 +426,7 @@ body {
 }
 
 .feature-item input:checked + .feature-card {
-  background: rgba(0, 122, 255, 0.08);
+  background: rgba(16, 86, 102, 0.08);
   border-color: var(--primary);
 }
 
@@ -491,7 +492,7 @@ body {
 }
 
 .feature-item input:checked + .feature-card .feature-check {
-  color: var(--success);
+  color: #1b6b47;
 }
 
 .feature-item input:checked + .feature-card .feature-check svg {
@@ -531,7 +532,7 @@ body {
 }
 
 .action-item.active {
-  background: rgba(0, 122, 255, 0.1);
+  background: rgba(16, 86, 102, 0.1);
   border-color: var(--primary);
 }
 
@@ -592,7 +593,7 @@ body {
   place-items: center;
   background: var(--bg-tertiary);
   border-radius: var(--radius-md);
-  color: var(--success);
+  color: #1b6b47;
 }
 
 .security-icon-wrap .icon {
@@ -636,12 +637,12 @@ body {
   padding: 4px 10px;
   font-size: 11px;
   font-weight: 600;
-  background: rgba(52, 199, 89, 0.15);
-  color: var(--success);
+  background: rgba(10, 51, 35, 0.12);
+  color: #1b6b47;
 }
 
 .security-badge.insecure {
-  background: rgba(255, 59, 48, 0.15);
+  background: rgba(211, 150, 140, 0.15);
   color: var(--danger);
 }
 
@@ -661,7 +662,7 @@ body {
   border-radius: var(--radius-full);
   border: 1px solid var(--border);
   background: var(--bg-tertiary);
-  color: var(--success);
+  color: #1b6b47;
   display: grid;
   place-items: center;
   font-size: 12px;
@@ -739,28 +740,28 @@ body {
   gap: 6px;
   padding: 6px 10px;
   border-radius: var(--radius-full);
-  background: rgba(0, 122, 255, 0.1);
+  background: rgba(16, 86, 102, 0.1);
   color: var(--text-secondary);
   font-size: 11px;
-  border: 1px solid rgba(0, 122, 255, 0.2);
+  border: 1px solid rgba(16, 86, 102, 0.2);
 }
 
 .tracker-badge.low {
-  background: rgba(52, 199, 89, 0.12);
-  color: var(--success);
-  border-color: rgba(52, 199, 89, 0.25);
+  background: rgba(10, 51, 35, 0.12);
+  color: #1b6b47;
+  border-color: rgba(10, 51, 35, 0.25);
 }
 
 .tracker-badge.medium {
-  background: rgba(255, 149, 0, 0.12);
+  background: rgba(131, 153, 88, 0.12);
   color: var(--warning);
-  border-color: rgba(255, 149, 0, 0.25);
+  border-color: rgba(131, 153, 88, 0.25);
 }
 
 .tracker-badge.high {
-  background: rgba(255, 59, 48, 0.12);
+  background: rgba(211, 150, 140, 0.12);
   color: var(--danger);
-  border-color: rgba(255, 59, 48, 0.25);
+  border-color: rgba(211, 150, 140, 0.25);
 }
 
 .tracker-count {
@@ -770,7 +771,7 @@ body {
   width: 20px;
   height: 20px;
   border-radius: var(--radius-full);
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(10, 51, 35, 0.08);
   font-size: 11px;
   font-weight: 700;
   color: var(--text-primary);
@@ -803,7 +804,7 @@ body {
 }
 
 .frame-item.blocked {
-  border-color: rgba(255, 59, 48, 0.35);
+  border-color: rgba(211, 150, 140, 0.35);
 }
 
 .frame-host {
@@ -818,8 +819,8 @@ body {
 .frame-allow-btn {
   border: 0;
   border-radius: var(--radius-sm);
-  background: rgba(52, 199, 89, 0.15);
-  color: var(--success);
+  background: rgba(10, 51, 35, 0.12);
+  color: #1b6b47;
   padding: 4px 10px;
   font-size: 11px;
   font-weight: 600;
@@ -832,7 +833,7 @@ body {
 }
 
 .frame-status.allowed {
-  color: var(--success);
+  color: #1b6b47;
 }
 
 /* ============================================
@@ -866,7 +867,7 @@ body {
 
 .link:hover {
   color: var(--primary);
-  background: rgba(0, 122, 255, 0.1);
+  background: rgba(16, 86, 102, 0.1);
 }
 
 /* ============================================
@@ -1009,15 +1010,14 @@ body {
 
 /* ============================================
    FIX 1: Color Contrast (WCAG 2.1 AA)
-   --text-tertiary adjusted for ≥ 4.5:1 ratio
    ============================================ */
 :root {
-  --text-tertiary: #6E6E73;
+  --text-tertiary: #4d6a54;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text-tertiary: #98989D;
+    --text-tertiary: #98b09a;
   }
 }
 
@@ -1082,4 +1082,114 @@ body {
   left: 50%;
   transform: translateX(-50%) translateY(10px);
   z-index: 200;
+}
+
+/* ============================================
+   Protection Disabled Banner
+   ============================================ */
+.protection-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  background: rgba(211, 150, 140, 0.15);
+  border: 1px solid rgba(211, 150, 140, 0.4);
+  border-radius: var(--radius-md);
+  color: var(--danger);
+  animation: banner-pulse 2s ease-in-out infinite;
+}
+
+.protection-banner svg {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.protection-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.protection-banner-text strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+.protection-banner-text span {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.3;
+}
+
+@keyframes banner-pulse {
+  0%, 100% { border-color: rgba(211, 150, 140, 0.4); }
+  50% { border-color: rgba(211, 150, 140, 0.7); }
+}
+
+@media (prefers-color-scheme: dark) {
+  .protection-banner {
+    background: rgba(232, 176, 168, 0.12);
+    border-color: rgba(232, 176, 168, 0.35);
+  }
+  @keyframes banner-pulse {
+    0%, 100% { border-color: rgba(232, 176, 168, 0.35); }
+    50% { border-color: rgba(232, 176, 168, 0.6); }
+  }
+}
+
+/* Dimmed content when protection is off */
+.main-content.protection-off .card,
+.main-content.protection-off .features-section,
+.main-content.protection-off .actions-section {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Allow the protection card itself to remain interactive */
+.main-content.protection-off .protection-card {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ============================================
+   Active Allow/Block Buttons
+   ============================================ */
+.btn-secondary.active {
+  background: var(--success);
+  color: white;
+  box-shadow: 0 0 0 2px rgba(10, 51, 35, 0.2);
+}
+
+.btn-secondary.active svg {
+  stroke: white;
+}
+
+.btn-danger.active {
+  background: var(--danger);
+  color: white;
+  box-shadow: 0 0 0 2px rgba(211, 150, 140, 0.3);
+}
+
+.btn-danger.active svg {
+  stroke: white;
+}
+
+@media (prefers-color-scheme: dark) {
+  .btn-secondary.active {
+    background: #1b6b47;
+    box-shadow: 0 0 0 2px rgba(27, 107, 71, 0.3);
+  }
+  .btn-danger.active {
+    background: #e8b0a8;
+    color: #1a2e27;
+    box-shadow: 0 0 0 2px rgba(232, 176, 168, 0.3);
+  }
+  .btn-danger.active svg {
+    stroke: #1a2e27;
+  }
 }

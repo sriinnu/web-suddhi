@@ -15,19 +15,31 @@
 
   // Get storage
   function getStorage(keys) {
-    return new Promise((resolve) => {
-      api.storage.local.get(keys, (data) => {
-        resolve(data || {});
-      });
+    return new Promise((resolve, reject) => {
+      const result = api.storage.local.get(keys);
+      if (result && typeof result.then === 'function') {
+        result.then(resolve).catch(reject);
+      } else {
+        api.storage.local.get(keys, (data) => {
+          if (api.runtime.lastError) reject(api.runtime.lastError);
+          else resolve(data || {});
+        });
+      }
     });
   }
 
   // Set storage
   function setStorage(data) {
-    return new Promise((resolve) => {
-      api.storage.local.set(data, () => {
-        resolve();
-      });
+    return new Promise((resolve, reject) => {
+      const result = api.storage.local.set(data);
+      if (result && typeof result.then === 'function') {
+        result.then(resolve).catch(reject);
+      } else {
+        api.storage.local.set(data, () => {
+          if (api.runtime.lastError) reject(api.runtime.lastError);
+          else resolve();
+        });
+      }
     });
   }
 
@@ -136,7 +148,7 @@
       } catch (err) {
         element.textContent = 'Error';
         element.classList.remove('recording');
-        console.error('Failed to update shortcut:', err);
+        // Failed to update shortcut
       }
 
       document.removeEventListener('keydown', handleKeyDown);
