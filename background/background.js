@@ -16,7 +16,7 @@ try {
     );
   }
 } catch (e) {
-  console.error('WebSuddhi: importScripts error:', e);
+  // importScripts error
 }
 
 (function() {
@@ -39,8 +39,6 @@ try {
   const logError = (...args) => {
     if (self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
       self.WebSuddhi.utils.error(...args);
-    } else {
-      console.error('[WebSuddhi]', ...args);
     }
   };
 
@@ -100,37 +98,15 @@ try {
     'GET_STATS_FOR_PERIOD'
   ]);
 
-  // Safe storage wrapper with defaults
-  async function getStorage(keys) {
-    return new Promise((resolve) => {
-      api.storage.local.get(keys, (data) => {
-        if (api.runtime.lastError) {
-          logError('Storage get error:', api.runtime.lastError);
-          resolve({});
-        } else {
-          resolve(data || {});
-        }
-      });
-    });
-  }
-
-  async function setStorage(data) {
-    return new Promise((resolve) => {
-      api.storage.local.set(data, () => {
-        if (api.runtime.lastError) {
-          logError('Storage set error:', api.runtime.lastError);
-        }
-        resolve();
-      });
-    });
-  }
+  // Use shared storage helpers from utils.js (loaded via importScripts)
+  const getStorage = self.WebSuddhi.utils.getStorage;
+  const setStorage = self.WebSuddhi.utils.setStorage;
 
   async function getStorageWithDefaults(keys, defaults) {
     const storage = await getStorage(keys);
     const result = {};
     for (const key of keys) {
-      const defaultValue = defaults[key];
-      result[key] = storage[key] !== undefined ? storage[key] : defaultValue;
+      result[key] = storage[key] !== undefined ? storage[key] : defaults[key];
     }
     return result;
   }
@@ -198,22 +174,23 @@ try {
   const RATE_LIMIT_GLOBAL = 100;
   const RATE_LIMIT_WINDOW = 1000; // 1 second
 
-  // Reset rate limit counts every second
-  setInterval(() => {
-    rateLimits.perTab.clear();
-    rateLimits.global = 0;
-    rateLimits.lastReset = Date.now();
-  }, RATE_LIMIT_WINDOW);
-
   /**
    * Check if a message should be rate limited
+   * Uses time-based reset instead of setInterval (survives SW restarts)
    * @param {number|undefined} tabId - The tab ID sending the message
    * @returns {boolean} - true if rate limited, false if allowed
    */
   function isRateLimited(tabId) {
+    // Time-based reset: clear counters if window has elapsed
+    const now = Date.now();
+    if (now - rateLimits.lastReset >= RATE_LIMIT_WINDOW) {
+      rateLimits.perTab.clear();
+      rateLimits.global = 0;
+      rateLimits.lastReset = now;
+    }
+
     // Check global rate limit
     if (rateLimits.global >= RATE_LIMIT_GLOBAL) {
-      log('Global rate limit exceeded');
       return true;
     }
 
@@ -221,7 +198,6 @@ try {
     if (tabId !== undefined) {
       const tabCount = rateLimits.perTab.get(tabId) || 0;
       if (tabCount >= RATE_LIMIT_PER_TAB) {
-        log('Per-tab rate limit exceeded for tab:', tabId);
         return true;
       }
 
@@ -376,6 +352,14 @@ try {
 
       // Update total blocked
       stats.totalBlocked = (stats.totalBlocked || 0) + count;
+
+      // Estimate data saved (~15 KB per blocked request on average)
+      const AVG_BYTES_PER_BLOCK = 15 * 1024;
+      stats.estimatedDataSaved = (stats.estimatedDataSaved || 0) + (count * AVG_BYTES_PER_BLOCK);
+
+      // Estimate time saved (~0.5 seconds per blocked request)
+      const AVG_SECONDS_PER_BLOCK = 0.5;
+      stats.estimatedTimeSaved = (stats.estimatedTimeSaved || 0) + (count * AVG_SECONDS_PER_BLOCK);
 
       // Update today's stats
       const today = new Date().toDateString();
@@ -1218,15 +1202,25 @@ try {
         case 'TOGGLE_PAYWALL':
           return await togglePaywall(message.enabled);
 
+        case 'TOGGLE_COOKIE_CONSENT':
+          await setStorage({ cookieConsentEnabled: message.enabled });
+          return { success: true, enabled: message.enabled };
+
+        case 'TOGGLE_ANNOYANCE_BLOCKING':
+          await setStorage({ annoyanceBlockingEnabled: message.enabled });
+          return { success: true, enabled: message.enabled };
+
         case 'TOGGLE_SOCIAL_BLOCKING':
           return await toggleSocialBlocking(message.enabled);
 
-        case 'TOGGLE_WHITELIST':
-          if (sender.tab?.url) {
-            const hostname = new URL(sender.tab.url).hostname;
-            return await toggleWhitelistForSite(hostname, sender.tab.id);
+        case 'TOGGLE_WHITELIST': {
+          const toggleHost = message.hostname ||
+            (sender.tab?.url ? new URL(sender.tab.url).hostname : null);
+          if (toggleHost) {
+            return await toggleWhitelistForSite(toggleHost, sender.tab?.id);
           }
-          return { success: false, error: 'No tab URL' };
+          return { success: false, error: 'No hostname provided' };
+        }
 
         case 'IS_WHITELISTED':
           if (message.hostname) {
@@ -1499,8 +1493,6 @@ try {
       logError('Message handler error:', err);
       return { success: false, error: err.message };
     }
-
-    return true; // Keep message channel open for async responses
   }
 
   // ============================================
@@ -1540,8 +1532,6 @@ try {
   // ============================================
   async function initialize() {
     try {
-      // Load initial settings
-      await getStorage(Object.keys(DEFAULT_SETTINGS));
       // Modules imported via importScripts auto-initialize themselves.
       // Avoid calling module init functions here to prevent duplicate listeners/timers.
 

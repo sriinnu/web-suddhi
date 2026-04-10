@@ -8,8 +8,6 @@
   const logError = (...args) => {
     if (self.WebSuddhi && self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
       self.WebSuddhi.utils.error(...args);
-    } else {
-      console.error('[WebSuddhi]', ...args);
     }
   };
 
@@ -90,37 +88,29 @@
   // ============================================
   function getStorage(keys) {
     return new Promise((resolve, reject) => {
-      if (api.storage) {
-        const result = api.storage.local.get(keys);
-        if (result && typeof result.then === 'function') {
-          result.then(resolve).catch(reject);
-        } else {
-          api.storage.local.get(keys, (data) => {
-            if (api.runtime.lastError) reject(api.runtime.lastError);
-            else resolve(data);
-          });
-        }
-        return;
+      const result = api.storage.local.get(keys);
+      if (result && typeof result.then === 'function') {
+        result.then(resolve).catch(reject);
+      } else {
+        api.storage.local.get(keys, (data) => {
+          if (api.runtime.lastError) reject(api.runtime.lastError);
+          else resolve(data);
+        });
       }
-      reject(new Error('No storage API'));
     });
   }
 
   function setStorage(data) {
     return new Promise((resolve, reject) => {
-      if (api.storage) {
-        const result = api.storage.local.set(data);
-        if (result && typeof result.then === 'function') {
-          result.then(resolve).catch(reject);
-        } else {
-          api.storage.local.set(data, () => {
-            if (api.runtime.lastError) reject(api.runtime.lastError);
-            else resolve();
-          });
-        }
-        return;
+      const result = api.storage.local.set(data);
+      if (result && typeof result.then === 'function') {
+        result.then(resolve).catch(reject);
+      } else {
+        api.storage.local.set(data, () => {
+          if (api.runtime.lastError) reject(api.runtime.lastError);
+          else resolve();
+        });
       }
-      reject(new Error('No storage API'));
     });
   }
 
@@ -975,12 +965,20 @@
 
     // Toggle protection
     elements.enableProtection.addEventListener('change', async () => {
-      await setStorage({ enabled: elements.enableProtection.checked });
+      const enabled = elements.enableProtection.checked;
+      await setStorage({ enabled });
+      try {
+        await sendMessage({ type: 'TOGGLE_ENABLED', enabled });
+      } catch (e) {}
     });
 
     // Toggle paywall
     elements.enablePaywall.addEventListener('change', async () => {
-      await setStorage({ paywallEnabled: elements.enablePaywall.checked });
+      const enabled = elements.enablePaywall.checked;
+      await setStorage({ paywallEnabled: enabled });
+      try {
+        await sendMessage({ type: 'TOGGLE_PAYWALL', enabled });
+      } catch (e) {}
     });
 
     // Toggle network blocking
@@ -1420,14 +1418,23 @@
         const text = await file.text();
         const data = JSON.parse(text);
 
-        if (!data.blockedSelectors || !Array.isArray(data.blockedSelectors)) {
+        const hasValidData = Array.isArray(data.blockedSelectors) ||
+                             Array.isArray(data.blockedDomains) ||
+                             Array.isArray(data.allowedDomains) ||
+                             Array.isArray(data.whitelistedSites);
+
+        if (!hasValidData) {
           showStatus('Invalid file format. Expected a WebSuddhi export file.', 'error');
           return;
         }
 
         const response = await sendMessage({ type: 'IMPORT_RULES', data });
         if (response?.success) {
-          showStatus('Imported ' + (data.blockedSelectors.length) + ' rules. Total: ' + response.totalRules, 'success');
+          const totalImported = (data.blockedSelectors?.length || 0) +
+                                (data.blockedDomains?.length || 0) +
+                                (data.allowedDomains?.length || 0) +
+                                (data.whitelistedSites?.length || 0);
+          showStatus('Imported ' + totalImported + ' entries. Total rules: ' + response.totalRules, 'success');
           await loadRules();
           await loadWhitelist();
         } else {
@@ -1447,7 +1454,8 @@
     elements.rateExtension?.addEventListener('click', (e) => {
       e.preventDefault();
       if (api.tabs) {
-        api.tabs.create({ url: GITHUB_URL + '/issues' });
+        // Chrome Web Store review page (update this URL when published)
+        api.tabs.create({ url: 'https://github.com/sriinnu/web-suddhi' });
       }
     });
 
@@ -1457,6 +1465,31 @@
         api.tabs.create({ url: GITHUB_URL });
       }
     });
+
+    // Share extension link
+    const shareExtension = document.getElementById('shareExtension');
+    if (shareExtension) {
+      shareExtension.addEventListener('click', (e) => {
+        e.preventDefault();
+        const shareUrl = 'https://github.com/sriinnu/web-suddhi';
+        if (navigator.share) {
+          navigator.share({
+            title: 'WebSuddhi - Privacy-first Ad Blocker',
+            text: 'Check out WebSuddhi, a free and open-source ad blocker!',
+            url: shareUrl
+          }).catch(() => {
+            // User cancelled or share failed, fallback to clipboard
+            navigator.clipboard.writeText(shareUrl).then(() => {
+              showToast('Link copied to clipboard!');
+            });
+          });
+        } else {
+          navigator.clipboard.writeText(shareUrl).then(() => {
+            showToast('Link copied to clipboard!');
+          });
+        }
+      });
+    }
   }
 
   // ============================================
@@ -1465,7 +1498,7 @@
   function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
-    return div.textContent;
+    return div.innerHTML;
   }
 
   function formatNumber(num) {

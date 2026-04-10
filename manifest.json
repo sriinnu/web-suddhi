@@ -60,6 +60,12 @@
     },
     {
       "matches": ["<all_urls>"],
+      "js": ["content/ad-blocker.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": ["<all_urls>"],
       "js": ["shared/utils.js", "content/cookie-consent.js", "content/annoyance-blocker.js"],
       "run_at": "document_idle",
       "all_frames": false

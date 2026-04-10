@@ -1,87 +1,253 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
   <defs>
-    <!-- Primary gradient - modern cyan to blue -->
-    <linearGradient id="shieldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#22d3ee"/>
-      <stop offset="40%" stop-color="#0ea5e9"/>
-      <stop offset="100%" stop-color="#0284c7"/>
+    <!-- Shield gradient: deep teal -->
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a8a9e"/>
+      <stop offset="50%" stop-color="#105666"/>
+      <stop offset="100%" stop-color="#0d4a58"/>
     </linearGradient>
 
-    <!-- Subtle inner glow gradient -->
-    <linearGradient id="innerGlow" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.25"/>
-      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    <!-- Shield rim highlight -->
+    <linearGradient id="shieldRim" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#5cc5d8" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#105666" stop-opacity="0"/>
     </linearGradient>
 
-    <!-- Shadow filter for depth -->
-    <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0369a1" flood-opacity="0.3"/>
-    </filter>
+    <!-- Leaf body gradient: forest green -->
+    <radialGradient id="leafGrad" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#2d8a5e"/>
+      <stop offset="60%" stop-color="#1b6b47"/>
+      <stop offset="100%" stop-color="#0A3323"/>
+    </radialGradient>
 
-    <!-- Subtle inner shadow -->
-    <filter id="innerShadow" x="-50%" y="-50%" width="200%" height="200%">
-      <feComponentTransfer in="SourceAlpha">
-        <feFuncA type="table" tableValues="1 0"/>
-      </feComponentTransfer>
-      <feGaussianBlur stdDeviation="2"/>
-      <feOffset dx="0" dy="1" result="offsetblur"/>
-      <feFlood flood-color="#0369a1" flood-opacity="0.2"/>
-      <feComposite in2="offsetblur" operator="in"/>
+    <!-- Leaf inner highlight -->
+    <radialGradient id="leafHighlight" cx="45%" cy="35%" r="40%">
+      <stop offset="0%" stop-color="#a3b87a" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#1b6b47" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Warm cream glow behind leaf -->
+    <radialGradient id="warmGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#F7F4D5" stop-opacity="0.5"/>
+      <stop offset="60%" stop-color="#F7F4D5" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#F7F4D5" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Sparkle gradient -->
+    <radialGradient id="sparkleGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#F7F4D5" stop-opacity="0.95"/>
+      <stop offset="60%" stop-color="#F7F4D5" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#F7F4D5" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Ambient glow filter -->
+    <filter id="ambientGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feFlood flood-color="#1a8a9e" flood-opacity="0.25"/>
+      <feComposite in2="blur" operator="in"/>
       <feMerge>
         <feMergeNode/>
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
+
+    <!-- Soft shadow -->
+    <filter id="softShadow" x="-20%" y="-10%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#0A3323" flood-opacity="0.35"/>
+    </filter>
+
+    <!-- Inner glow for shield -->
+    <filter id="shieldInnerGlow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur"/>
+      <feFlood flood-color="#5cc5d8" flood-opacity="0.2"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Sparkle glow -->
+    <filter id="sparkleGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Leaf vein pattern -->
+    <clipPath id="leafClip">
+      <path d="M128 58
+               C118 62, 92 80, 88 105
+               C84 130, 100 165, 128 190
+               C156 165, 172 130, 168 105
+               C164 80, 138 62, 128 58 Z"/>
+    </clipPath>
   </defs>
 
-  <!-- Main shield shape with shadow -->
-  <path
-    d="M64 6
-       C64 6 18 24 18 24
-       L18 54
-       C18 90 40 114 64 122
-       C88 114 110 90 110 54
-       L110 24
-       C110 24 64 6 64 6 Z"
-    fill="url(#shieldGradient)"
-    filter="url(#dropShadow)"/>
+  <!-- ============================================ -->
+  <!-- SHIELD SHAPE -->
+  <!-- ============================================ -->
 
-  <!-- Inner highlight for 3D effect -->
+  <!-- Shield body -->
   <path
-    d="M64 14
-       C64 14 26 30 26 30
-       L26 54
-       C26 84 44 106 64 113
-       C84 106 102 84 102 54
-       L102 30
-       C102 30 64 14 64 14 Z"
-    fill="url(#innerGlow)"/>
+    d="M128 14
+       C128 14 38 48 38 48
+       L38 112
+       C38 180 82 226 128 244
+       C174 226 218 180 218 112
+       L218 48
+       C218 48 128 14 128 14 Z"
+    fill="url(#shieldGrad)"
+    filter="url(#softShadow)"/>
 
-  <!-- Checkmark - clean and bold -->
-  <g filter="url(#innerShadow)">
-    <path
-      d="M42 64 L56 78 L86 48"
-      fill="none"
-      stroke="#ffffff"
-      stroke-width="10"
-      stroke-linecap="round"
-      stroke-linejoin="round"/>
+  <!-- Shield inner rim highlight (top light) -->
+  <path
+    d="M128 20
+       C128 20 44 52 44 52
+       L44 112
+       C44 174 84 220 128 238
+       C172 220 212 174 212 112
+       L212 52
+       C212 52 128 20 128 20 Z"
+    fill="url(#shieldRim)"/>
+
+  <!-- Shield inner border (subtle) -->
+  <path
+    d="M128 24
+       C128 24 48 54 48 54
+       L48 112
+       C48 172 86 216 128 234
+       C170 216 208 172 208 112
+       L208 54
+       C208 54 128 24 128 24 Z"
+    fill="none"
+    stroke="#5cc5d8"
+    stroke-width="1"
+    stroke-opacity="0.15"/>
+
+  <!-- ============================================ -->
+  <!-- WARM GLOW (behind leaf) -->
+  <!-- ============================================ -->
+  <ellipse cx="128" cy="130" rx="55" ry="65" fill="url(#warmGlow)"/>
+
+  <!-- ============================================ -->
+  <!-- PEEPAL LEAF (sacred fig - heart shaped) -->
+  <!-- ============================================ -->
+
+  <!-- Leaf body -->
+  <path
+    d="M128 58
+       C118 62, 92 80, 88 105
+       C84 130, 100 165, 128 190
+       C156 165, 172 130, 168 105
+       C164 80, 138 62, 128 58 Z"
+    fill="url(#leafGrad)"
+    filter="url(#shieldInnerGlow)"/>
+
+  <!-- Leaf highlight (light hitting top-left) -->
+  <path
+    d="M128 58
+       C118 62, 92 80, 88 105
+       C84 130, 100 165, 128 190
+       C156 165, 172 130, 168 105
+       C164 80, 138 62, 128 58 Z"
+    fill="url(#leafHighlight)"/>
+
+  <!-- Leaf central vein -->
+  <line x1="128" y1="68" x2="128" y2="185"
+    stroke="#0A3323" stroke-width="2" stroke-opacity="0.4" stroke-linecap="round"/>
+
+  <!-- Leaf side veins (left) -->
+  <g stroke="#0A3323" stroke-width="1.2" stroke-opacity="0.25" stroke-linecap="round" fill="none">
+    <path d="M128 90 C120 88, 106 95, 98 108"/>
+    <path d="M128 110 C118 108, 100 118, 94 132"/>
+    <path d="M128 130 C120 128, 106 138, 100 152"/>
+    <path d="M128 150 C122 150, 112 158, 108 168"/>
   </g>
 
-  <!-- Subtle top edge highlight -->
-  <path
-    d="M64 10 L24 27"
-    fill="none"
-    stroke="#ffffff"
-    stroke-width="1.5"
-    stroke-opacity="0.4"
-    stroke-linecap="round"/>
+  <!-- Leaf side veins (right) -->
+  <g stroke="#0A3323" stroke-width="1.2" stroke-opacity="0.25" stroke-linecap="round" fill="none">
+    <path d="M128 90 C136 88, 150 95, 158 108"/>
+    <path d="M128 110 C138 108, 156 118, 162 132"/>
+    <path d="M128 130 C136 128, 150 138, 156 152"/>
+    <path d="M128 150 C134 150, 144 158, 148 168"/>
+  </g>
 
-  <path
-    d="M64 10 L104 27"
-    fill="none"
-    stroke="#0369a1"
-    stroke-width="1"
-    stroke-opacity="0.3"
-    stroke-linecap="round"/>
+  <!-- ============================================ -->
+  <!-- SPIRIT FACE (cute, minimal, Disney-esque) -->
+  <!-- ============================================ -->
+
+  <!-- Left eye -->
+  <ellipse cx="116" cy="112" rx="4.5" ry="5" fill="#F7F4D5" opacity="0.95"/>
+  <ellipse cx="115" cy="111" rx="2.2" ry="2.5" fill="#0A3323"/>
+  <circle cx="114" cy="110" r="1" fill="#F7F4D5" opacity="0.8"/>
+
+  <!-- Right eye -->
+  <ellipse cx="140" cy="112" rx="4.5" ry="5" fill="#F7F4D5" opacity="0.95"/>
+  <ellipse cx="139" cy="111" rx="2.2" ry="2.5" fill="#0A3323"/>
+  <circle cx="138" cy="110" r="1" fill="#F7F4D5" opacity="0.8"/>
+
+  <!-- Gentle smile -->
+  <path d="M120 124 Q128 132 136 124"
+    fill="none" stroke="#F7F4D5" stroke-width="2" stroke-opacity="0.8" stroke-linecap="round"/>
+
+  <!-- Blush marks (subtle warmth) -->
+  <ellipse cx="108" cy="122" rx="6" ry="3.5" fill="#D3968C" opacity="0.2"/>
+  <ellipse cx="148" cy="122" rx="6" ry="3.5" fill="#D3968C" opacity="0.2"/>
+
+  <!-- ============================================ -->
+  <!-- SPARKLES (Disney magic dust) -->
+  <!-- ============================================ -->
+
+  <!-- Large sparkle - top right -->
+  <g transform="translate(175, 55)" filter="url(#sparkleGlow)">
+    <path d="M0 -8 L1.5 -1.5 L8 0 L1.5 1.5 L0 8 L-1.5 1.5 L-8 0 L-1.5 -1.5 Z"
+      fill="#F7F4D5" opacity="0.9"/>
+  </g>
+
+  <!-- Medium sparkle - left -->
+  <g transform="translate(70, 90)" filter="url(#sparkleGlow)">
+    <path d="M0 -5 L1 -1 L5 0 L1 1 L0 5 L-1 1 L-5 0 L-1 -1 Z"
+      fill="#F7F4D5" opacity="0.7"/>
+  </g>
+
+  <!-- Small sparkle - bottom right -->
+  <g transform="translate(185, 140)" filter="url(#sparkleGlow)">
+    <path d="M0 -4 L0.8 -0.8 L4 0 L0.8 0.8 L0 4 L-0.8 0.8 L-4 0 L-0.8 -0.8 Z"
+      fill="#F7F4D5" opacity="0.6"/>
+  </g>
+
+  <!-- Tiny sparkle - top left -->
+  <g transform="translate(85, 60)" filter="url(#sparkleGlow)">
+    <path d="M0 -3 L0.6 -0.6 L3 0 L0.6 0.6 L0 3 L-0.6 0.6 L-3 0 L-0.6 -0.6 Z"
+      fill="#F7F4D5" opacity="0.5"/>
+  </g>
+
+  <!-- Tiny sparkle - near leaf tip -->
+  <g transform="translate(158, 175)" filter="url(#sparkleGlow)">
+    <path d="M0 -3 L0.6 -0.6 L3 0 L0.6 0.6 L0 3 L-0.6 0.6 L-3 0 L-0.6 -0.6 Z"
+      fill="#a3b87a" opacity="0.6"/>
+  </g>
+
+  <!-- Micro sparkles (star dust) -->
+  <circle cx="95" cy="75" r="1.2" fill="#F7F4D5" opacity="0.4"/>
+  <circle cx="165" cy="78" r="1" fill="#F7F4D5" opacity="0.3"/>
+  <circle cx="80" cy="130" r="1" fill="#F7F4D5" opacity="0.25"/>
+  <circle cx="180" cy="165" r="1.2" fill="#a3b87a" opacity="0.3"/>
+  <circle cx="150" cy="60" r="0.8" fill="#F7F4D5" opacity="0.35"/>
+
+  <!-- ============================================ -->
+  <!-- LEAF STEM (extends below shield) -->
+  <!-- ============================================ -->
+  <path d="M128 190 C130 200, 132 210, 128 218"
+    fill="none" stroke="#0A3323" stroke-width="3" stroke-linecap="round" stroke-opacity="0.5"/>
+
+  <!-- ============================================ -->
+  <!-- SHIELD TOP EDGE HIGHLIGHT (light catching) -->
+  <!-- ============================================ -->
+  <path d="M128 18 L46 50" fill="none" stroke="#5cc5d8" stroke-width="2" stroke-opacity="0.3" stroke-linecap="round"/>
+  <path d="M128 18 L210 50" fill="none" stroke="#105666" stroke-width="1.5" stroke-opacity="0.2" stroke-linecap="round"/>
 </svg>

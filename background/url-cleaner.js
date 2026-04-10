@@ -14,8 +14,6 @@
   const logError = (...args) => {
     if (self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
       self.WebSuddhi.utils.error(...args);
-    } else {
-      console.error('[WebSuddhi]', ...args);
     }
   };
 
@@ -131,13 +129,9 @@
     return { success: true, enabled };
   }
 
-  // Use shared storage helpers from utils.js
-  const getStorage = self.WebSuddhi?.utils?.getStorage || function(keys) {
-    return new Promise((resolve) => resolve({}));
-  };
-  const setStorage = self.WebSuddhi?.utils?.setStorage || function() {
-    return Promise.resolve();
-  };
+  // Shared storage (utils.js is loaded via importScripts before this file)
+  const getStorage = self.WebSuddhi.utils.getStorage;
+  const setStorage = self.WebSuddhi.utils.setStorage;
 
   // ============================================
   // EXPOSE API

@@ -15,8 +15,6 @@
   const logError = (...args) => {
     if (self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
       self.WebSuddhi.utils.error(...args);
-    } else {
-      console.error('[WebSuddhi]', ...args);
     }
   };
 
@@ -24,56 +22,34 @@
   const tabBlockedCounts = new Map();
 
   // MV2 domain blocklist for webRequest fallback
+  // Derived from shared tracker DB + additional ad-specific domains
+  const _trackerDB = self.WebSuddhi.utils.getTrackerDatabase ? self.WebSuddhi.utils.getTrackerDatabase() : {};
+  const _ADDITIONAL_AD_DOMAINS = [
+    'pagead2.googlesyndication.com', 'moatads.com', 'doubleverify.com',
+    'serving-sys.com', 'rlcdn.com', 'everesttech.net', 'mathtag.com',
+    'simpli.fi', 'adsrvr.org', 'tapad.com', 'bidswitch.net',
+    'smartadserver.com', 'adform.net', 'smaato.net', 'sharethrough.com',
+    'triplelift.com', 'gumgum.com', '33across.com', 'sovrn.com',
+    'revcontent.com', 'mgid.com', 'propellerads.com', 'popads.net',
+    'adsterra.com', 'exoclick.com', 'trafficjunky.com', 'spotxchange.com',
+    'carbonads.com', 'buysellads.com', 'adcolony.com', 'inmobi.com',
+    'appsflyer.com', 'adjust.com', 'kochava.com', 'liadm.com',
+    'crwdcntrl.net', 'eyeota.com', 'nativo.com', 'bidtellect.com',
+    'zemanta.com', 'jwpltx.com', 'connatix.com', 'heatmap.com',
+    'agkn.com', 'ml314.com', 'bkrtx.com', 'semasio.net', 'weborama.com',
+    'adkernel.com', 'adpushup.com', 'publift.com', 'setupad.com',
+    'snigel.com', 'freestar.com', 'sortable.com', 'playwire.com',
+    'venatus.com', 'nitropay.com'
+  ];
   const MV2_AD_DOMAINS = new Set([
-    'doubleclick.net', 'googlesyndication.com', 'googleadservices.com',
-    'adservice.google.com', 'pagead2.googlesyndication.com',
-    'google-analytics.com', 'googletagmanager.com',
-    'criteo.com', 'taboola.com', 'outbrain.com',
-    'amazon-adsystem.com', 'adnxs.com', 'pubmatic.com',
-    'openx.net', 'rubiconproject.com', 'casalemedia.com',
-    'indexww.com', 'advertising.com', 'media.net',
-    'connect.facebook.net', 'pixel.facebook.com',
-    'ads.twitter.com', 'ads.linkedin.com',
-    'analytics.twitter.com', 'tr.snapchat.com',
-    'mixpanel.com', 'segment.com', 'hotjar.com', 'clarity.ms',
-    'moatads.com', 'doubleverify.com', 'thetradedesk.com',
-    'serving-sys.com', 'rlcdn.com', 'demdex.net',
-    'everesttech.net', 'mathtag.com', 'simpli.fi',
-    'bat.bing.com', 'ads.pinterest.com', 'analytics.tiktok.com',
-    'scorecardresearch.com', 'imrworldwide.com',
-    'adsrvr.org', 'krxd.net', 'tapad.com',
-    'bidswitch.net', 'smartadserver.com', 'adform.net',
-    'smaato.net', 'sharethrough.com', 'triplelift.com',
-    'gumgum.com', '33across.com', 'sovrn.com',
-    'adroll.com', 'bluekai.com', 'bombora.com',
-    'revcontent.com', 'mgid.com', 'propellerads.com',
-    'popads.net', 'adsterra.com', 'exoclick.com',
-    'trafficjunky.com', 'spotxchange.com',
-    'fingerprintjs.com', 'amplitude.com', 'posthog.com',
-    'pendo.io', 'logrocket.com', 'fullstory.com',
-    'mouseflow.com', 'smartlook.com', 'contentsquare.com',
-    'clearbit.com', 'zoominfo.com',
-    'pardot.com', 'marketo.com', 'eloqua.com',
-    'carbonads.com', 'buysellads.com',
-    'adcolony.com', 'inmobi.com', 'appsflyer.com',
-    'adjust.com', 'kochava.com', 'liadm.com',
-    'crwdcntrl.net', 'lotame.com', 'eyeota.com',
-    'nativo.com', 'bidtellect.com', 'zemanta.com',
-    'jwpltx.com', 'connatix.com',
-    'sessionstack.com', 'heatmap.com',
-    'agkn.com', 'ml314.com', 'bkrtx.com',
-    'semasio.net', 'weborama.com',
-    'adkernel.com', 'adpushup.com', 'publift.com',
-    'setupad.com', 'snigel.com', 'freestar.com',
-    'sortable.com', 'playwire.com', 'venatus.com', 'nitropay.com'
+    ...Object.keys(_trackerDB),
+    ..._ADDITIONAL_AD_DOMAINS
   ]);
 
-  // MV2 tracking domains (unique - duplicates removed to avoid Set waste)
+  // MV2 tracking domains (extra domains not in main tracker DB)
   const MV2_TRACKING_DOMAINS = new Set([
     'fpjs.io', 'perimeterx.com', 'datadome.co',
-    'walkme.com', 'appcues.com', 'bugsnag.com', 'rollbar.com',
-    'trackjs.com', 'newrelic.com', 'dynatrace.com',
-    'appdynamics.com', 'apollo.io', 'lusha.com', 'leadiq.com'
+    'walkme.com', 'appcues.com', 'appdynamics.com'
   ]);
 
   // Resource types to block (exclude main_frame)
@@ -501,16 +477,9 @@
     return { success: true, enabled };
   }
 
-  // ============================================
-  // STORAGE HELPERS
-  // ============================================
-  // Use shared storage helpers from utils.js
-  const getStorage = self.WebSuddhi?.utils?.getStorage || function(keys) {
-    return new Promise((resolve) => resolve({}));
-  };
-  const setStorage = self.WebSuddhi?.utils?.setStorage || function() {
-    return Promise.resolve();
-  };
+  // Shared storage (utils.js is loaded via importScripts before this file)
+  const getStorage = self.WebSuddhi.utils.getStorage;
+  const setStorage = self.WebSuddhi.utils.setStorage;
 
   // ============================================
   // EXPOSE API

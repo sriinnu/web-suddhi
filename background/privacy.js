@@ -12,8 +12,6 @@
   const logError = (...args) => {
     if (self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
       self.WebSuddhi.utils.error(...args);
-    } else {
-      console.error('[WebSuddhi]', ...args);
     }
   };
 
@@ -23,37 +21,21 @@
   const TELEMETRY_RULE_ID_START = 30100;
   const THIRD_PARTY_COOKIE_RULE_ID = 30003;
 
-  // Known telemetry/analytics domains to block
+  // Telemetry domains derived from shared tracker database in utils.js
+  // Plus additional subdomains and telemetry-specific hosts not in the main DB
   const TELEMETRY_DOMAINS = [
-    'google-analytics.com', 'googletagmanager.com', 'googletagservices.com',
-    'analytics.google.com', 'ssl.google-analytics.com',
-    'segment.io', 'segment.com', 'cdn.segment.com',
-    'mixpanel.com', 'api.mixpanel.com', 'cdn.mxpnl.com',
-    'amplitude.com', 'api.amplitude.com',
-    'hotjar.com', 'static.hotjar.com', 'script.hotjar.com',
-    'fullstory.com', 'rs.fullstory.com',
-    'heap.io', 'heapanalytics.com',
-    'mouseflow.com', 'cdn.mouseflow.com',
-    'crazyegg.com', 'script.crazyegg.com',
-    'luckyorange.com', 'cdn.luckyorange.net',
-    'clarity.ms', 'www.clarity.ms',
-    'plausible.io', 'umami.is',
-    'matomo.cloud', 'piwik.pro',
-    'newrelic.com', 'js-agent.newrelic.com', 'bam.nr-data.net',
-    'sentry.io', 'browser.sentry-cdn.com',
-    'bugsnag.com', 'd2wy8f7a9ursnm.cloudfront.net',
-    'raygun.com', 'raygun.io',
-    'logrocket.com', 'cdn.logrocket.io',
-    'smartlook.com', 'rec.smartlook.com',
-    'inspectlet.com', 'cdn.inspectlet.com',
-    'quantserve.com', 'pixel.quantserve.com',
-    'scorecardresearch.com', 'sb.scorecardresearch.com',
-    'comscore.com', 'b.scorecardresearch.com',
-    'facebook.com/tr', 'connect.facebook.net',
-    'bat.bing.com',
-    'analytics.tiktok.com', 'analytics.twitter.com',
-    'snap.licdn.com', 'px.ads.linkedin.com',
-    'ct.pinterest.com', 'analytics.pinterest.com'
+    ...Object.keys(self.WebSuddhi.utils.getTrackerDatabase ? self.WebSuddhi.utils.getTrackerDatabase() : {}),
+    'googletagservices.com', 'ssl.google-analytics.com',
+    'api.mixpanel.com', 'cdn.mxpnl.com', 'api.amplitude.com',
+    'static.hotjar.com', 'script.hotjar.com', 'rs.fullstory.com',
+    'heapanalytics.com', 'cdn.mouseflow.com', 'script.crazyegg.com',
+    'cdn.luckyorange.net', 'www.clarity.ms', 'cdn.segment.com',
+    'js-agent.newrelic.com', 'bam.nr-data.net', 'browser.sentry-cdn.com',
+    'd2wy8f7a9ursnm.cloudfront.net', 'raygun.io', 'cdn.logrocket.io',
+    'rec.smartlook.com', 'cdn.inspectlet.com', 'pixel.quantserve.com',
+    'sb.scorecardresearch.com', 'b.scorecardresearch.com',
+    'facebook.com/tr', 'bat.bing.com', 'px.ads.linkedin.com',
+    'ct.pinterest.com'
   ];
 
   // ============================================
@@ -429,19 +411,39 @@
     return { success: true, enabled };
   }
 
-  // Use shared storage helpers from utils.js
-  const getStorage = self.WebSuddhi?.utils?.getStorage || function(keys) {
-    return new Promise((resolve) => resolve({}));
-  };
-  const setStorage = self.WebSuddhi?.utils?.setStorage || function() {
-    return Promise.resolve();
-  };
+  // Shared storage (utils.js is loaded via importScripts before this file)
+  const getStorage = self.WebSuddhi.utils.getStorage;
+  const setStorage = self.WebSuddhi.utils.setStorage;
+
+  // ============================================
+  // GET STATUS
+  // ============================================
+  async function getStatus() {
+    const storage = await getStorage([
+      'referrerStrippingEnabled',
+      'webrtcProtectionEnabled',
+      'pingProtectionEnabled',
+      'telemetryBlockingEnabled',
+      'thirdPartyCookieBlockingEnabled'
+    ]);
+    return {
+      success: true,
+      status: {
+        referrerStripping: storage.referrerStrippingEnabled === true,
+        webrtcProtection: storage.webrtcProtectionEnabled === true,
+        pingProtection: storage.pingProtectionEnabled !== false,
+        telemetryBlocking: storage.telemetryBlockingEnabled === true,
+        thirdPartyCookieBlocking: storage.thirdPartyCookieBlockingEnabled === true
+      }
+    };
+  }
 
   // ============================================
   // EXPOSE API
   // ============================================
   self.WebSuddhi.privacy = {
     init: initPrivacy,
+    getStatus,
     toggleReferrerStripping,
     toggleWebRTCProtection,
     togglePingProtection,

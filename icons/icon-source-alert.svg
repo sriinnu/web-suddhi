@@ -1,78 +1,167 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
   <defs>
-    <!-- Alert gradient - red/orange tones -->
-    <linearGradient id="alertGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#fb923c"/>
-      <stop offset="40%" stop-color="#f97316"/>
-      <stop offset="100%" stop-color="#ea580c"/>
+    <!-- Alert shield gradient: dusty rose -->
+    <linearGradient id="shieldGradAlert" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e8b0a8"/>
+      <stop offset="50%" stop-color="#D3968C"/>
+      <stop offset="100%" stop-color="#b87a6e"/>
     </linearGradient>
 
-    <!-- Subtle inner glow gradient -->
-    <linearGradient id="alertInnerGlow" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.25"/>
-      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    <!-- Shield rim highlight -->
+    <linearGradient id="shieldRimAlert" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#e8b0a8" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#D3968C" stop-opacity="0"/>
     </linearGradient>
 
-    <!-- Shadow filter for depth -->
-    <filter id="alertDropShadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#c2410c" flood-opacity="0.3"/>
+    <!-- Leaf body gradient: deep rose-tinted -->
+    <radialGradient id="leafGradAlert" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#8a3a3a"/>
+      <stop offset="60%" stop-color="#6b2a2a"/>
+      <stop offset="100%" stop-color="#4a1a1a"/>
+    </radialGradient>
+
+    <!-- Leaf inner highlight -->
+    <radialGradient id="leafHighlightAlert" cx="45%" cy="35%" r="40%">
+      <stop offset="0%" stop-color="#e8b0a8" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#6b2a2a" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Warm warning glow -->
+    <radialGradient id="warmGlowAlert" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#e8b0a8" stop-opacity="0.4"/>
+      <stop offset="60%" stop-color="#D3968C" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#D3968C" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Soft shadow -->
+    <filter id="softShadowAlert" x="-20%" y="-10%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#4a1a1a" flood-opacity="0.35"/>
+    </filter>
+
+    <!-- Inner glow for shield -->
+    <filter id="shieldInnerGlowAlert" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur"/>
+      <feFlood flood-color="#e8b0a8" flood-opacity="0.2"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Sparkle glow -->
+    <filter id="sparkleGlowAlert" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
     </filter>
   </defs>
 
-  <!-- Main shield shape with shadow -->
+  <!-- Shield body -->
   <path
-    d="M64 6
-       C64 6 18 24 18 24
-       L18 54
-       C18 90 40 114 64 122
-       C88 114 110 90 110 54
-       L110 24
-       C110 24 64 6 64 6 Z"
-    fill="url(#alertGradient)"
-    filter="url(#alertDropShadow)"/>
+    d="M128 14
+       C128 14 38 48 38 48
+       L38 112
+       C38 180 82 226 128 244
+       C174 226 218 180 218 112
+       L218 48
+       C218 48 128 14 128 14 Z"
+    fill="url(#shieldGradAlert)"
+    filter="url(#softShadowAlert)"/>
 
-  <!-- Inner highlight for 3D effect -->
+  <!-- Shield inner rim -->
   <path
-    d="M64 14
-       C64 14 26 30 26 30
-       L26 54
-       C26 84 44 106 64 113
-       C84 106 102 84 102 54
-       L102 30
-       C102 30 64 14 64 14 Z"
-    fill="url(#alertInnerGlow)"/>
+    d="M128 20
+       C128 20 44 52 44 52
+       L44 112
+       C44 174 84 220 128 238
+       C172 220 212 174 212 112
+       L212 52
+       C212 52 128 20 128 20 Z"
+    fill="url(#shieldRimAlert)"/>
 
-  <!-- Exclamation mark - bar -->
-  <rect
-    x="56"
-    y="36"
-    width="16"
-    height="42"
-    rx="6"
-    ry="6"
-    fill="#ffffff"/>
+  <!-- Warning glow -->
+  <ellipse cx="128" cy="130" rx="55" ry="65" fill="url(#warmGlowAlert)"/>
 
-  <!-- Exclamation mark - dot -->
-  <circle
-    cx="64"
-    cy="94"
-    r="9"
-    fill="#ffffff"/>
-
-  <!-- Subtle top edge highlight -->
+  <!-- Leaf body (worried) -->
   <path
-    d="M64 10 L24 27"
-    fill="none"
-    stroke="#ffffff"
-    stroke-width="1.5"
-    stroke-opacity="0.4"
-    stroke-linecap="round"/>
+    d="M128 58
+       C118 62, 92 80, 88 105
+       C84 130, 100 165, 128 190
+       C156 165, 172 130, 168 105
+       C164 80, 138 62, 128 58 Z"
+    fill="url(#leafGradAlert)"
+    filter="url(#shieldInnerGlowAlert)"/>
 
+  <!-- Leaf highlight -->
   <path
-    d="M64 10 L104 27"
-    fill="none"
-    stroke="#c2410c"
-    stroke-width="1"
-    stroke-opacity="0.3"
-    stroke-linecap="round"/>
+    d="M128 58
+       C118 62, 92 80, 88 105
+       C84 130, 100 165, 128 190
+       C156 165, 172 130, 168 105
+       C164 80, 138 62, 128 58 Z"
+    fill="url(#leafHighlightAlert)"/>
+
+  <!-- Leaf central vein -->
+  <line x1="128" y1="68" x2="128" y2="185"
+    stroke="#4a1a1a" stroke-width="2" stroke-opacity="0.3" stroke-linecap="round"/>
+
+  <!-- Leaf side veins -->
+  <g stroke="#4a1a1a" stroke-width="1.2" stroke-opacity="0.2" stroke-linecap="round" fill="none">
+    <path d="M128 90 C120 88, 106 95, 98 108"/>
+    <path d="M128 110 C118 108, 100 118, 94 132"/>
+    <path d="M128 130 C120 128, 106 138, 100 152"/>
+    <path d="M128 150 C122 150, 112 158, 108 168"/>
+    <path d="M128 90 C136 88, 150 95, 158 108"/>
+    <path d="M128 110 C138 108, 156 118, 162 132"/>
+    <path d="M128 130 C136 128, 150 138, 156 152"/>
+    <path d="M128 150 C134 150, 144 158, 148 168"/>
+  </g>
+
+  <!-- WORRIED FACE -->
+  <!-- Left eye -->
+  <ellipse cx="116" cy="112" rx="4.5" ry="5" fill="#e8b0a8" opacity="0.95"/>
+  <ellipse cx="115" cy="111" rx="2.2" ry="2.5" fill="#4a1a1a"/>
+  <circle cx="114" cy="110" r="1" fill="#e8b0a8" opacity="0.7"/>
+
+  <!-- Right eye -->
+  <ellipse cx="140" cy="112" rx="4.5" ry="5" fill="#e8b0a8" opacity="0.95"/>
+  <ellipse cx="139" cy="111" rx="2.2" ry="2.5" fill="#4a1a1a"/>
+  <circle cx="138" cy="110" r="1" fill="#e8b0a8" opacity="0.7"/>
+
+  <!-- Worried mouth (frown) -->
+  <path d="M120 128 Q128 122 136 128"
+    fill="none" stroke="#e8b0a8" stroke-width="2" stroke-opacity="0.7" stroke-linecap="round"/>
+
+  <!-- Worried eyebrows -->
+  <path d="M109 104 Q115 100 122 103"
+    fill="none" stroke="#e8b0a8" stroke-width="1.5" stroke-opacity="0.5" stroke-linecap="round"/>
+  <path d="M134 103 Q141 100 147 104"
+    fill="none" stroke="#e8b0a8" stroke-width="1.5" stroke-opacity="0.5" stroke-linecap="round"/>
+
+  <!-- Warning sparkles (fewer, dimmer) -->
+  <g transform="translate(175, 55)" filter="url(#sparkleGlowAlert)">
+    <path d="M0 -6 L1.2 -1.2 L6 0 L1.2 1.2 L0 6 L-1.2 1.2 L-6 0 L-1.2 -1.2 Z"
+      fill="#e8b0a8" opacity="0.5"/>
+  </g>
+  <g transform="translate(75, 85)" filter="url(#sparkleGlowAlert)">
+    <path d="M0 -4 L0.8 -0.8 L4 0 L0.8 0.8 L0 4 L-0.8 0.8 L-4 0 L-0.8 -0.8 Z"
+      fill="#e8b0a8" opacity="0.4"/>
+  </g>
+
+  <!-- Warning exclamation indicator -->
+  <circle cx="188" cy="62" r="10" fill="#D3968C" opacity="0.7"/>
+  <rect x="186" y="55" width="4" height="9" rx="2" fill="#4a1a1a" opacity="0.9"/>
+  <circle cx="188" cy="68" r="2" fill="#4a1a1a" opacity="0.9"/>
+
+  <!-- Leaf stem -->
+  <path d="M128 190 C130 200, 132 210, 128 218"
+    fill="none" stroke="#4a1a1a" stroke-width="3" stroke-linecap="round" stroke-opacity="0.4"/>
+
+  <!-- Shield top edge highlight -->
+  <path d="M128 18 L46 50" fill="none" stroke="#e8b0a8" stroke-width="2" stroke-opacity="0.3" stroke-linecap="round"/>
+  <path d="M128 18 L210 50" fill="none" stroke="#b87a6e" stroke-width="1.5" stroke-opacity="0.2" stroke-linecap="round"/>
 </svg>
