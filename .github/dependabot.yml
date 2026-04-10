@@ -23,6 +23,8 @@ updates:
     groups:
       # Batch minor/patch updates together — fewer PRs, less noise
       minor-and-patch:
+        patterns:
+          - "*"
         update-types:
           - "minor"
           - "patch"
