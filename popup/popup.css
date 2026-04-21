@@ -53,6 +53,30 @@
   box-sizing: border-box;
 }
 
+/* Thin elegant scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border, rgba(0, 0, 0, 0.15));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary, rgba(0, 0, 0, 0.25));
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border, rgba(0, 0, 0, 0.15)) transparent;
+}
+
 body {
   width: 370px;
   font-family: var(--font-family, var(--font-sans, -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif));
