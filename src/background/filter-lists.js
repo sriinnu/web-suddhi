@@ -37,9 +37,9 @@ function getApi() {
 // CONSTANTS
 // ============================================
 
-const MAX_BODY_BYTES = 2 * 1024 * 1024; // 2 MB
-const MAX_LINES = 50000;
-const MAX_DOMAINS = 10000;
+const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10 MB
+const MAX_LINES = 200000;
+const MAX_DOMAINS = 100000;
 const PARSE_CHUNK_SIZE = 2000; // lines per async chunk (fix #7)
 
 // ============================================
@@ -284,7 +284,7 @@ export async function updateSubscription(subscriptionId) {
     );
 
     const domains = await parseABPFilterList(text);
-    if (domains.length > MAX_DOMAINS) throw new Error('Filter list has too many rules (max 10,000)');
+    if (domains.length > 100000) throw new Error('Filter list has too many rules (max 100,000)');
 
     sub.ruleCount = domains.length;
     sub.lastUpdated = new Date().toISOString();
