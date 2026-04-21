@@ -95,3 +95,6 @@ credentials.json
 # Blocklist build cache
 rules/.cache/
 rules/provenance.json
+
+# Chrome extension build artifacts
+_metadata/
