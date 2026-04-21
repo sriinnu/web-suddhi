@@ -33,6 +33,11 @@
   const FILTER_CACHE_TTL = 60 * 60 * 1000; // 1 hour in milliseconds
   const filterCache = new Map(); // url -> { data, timestamp }
 
+  // Dynamic rule budget management
+  const MAX_DYNAMIC_RULES = 5000;
+  const RESERVED_FOR_OTHER = 600;
+  const FILTER_BUDGET = MAX_DYNAMIC_RULES - RESERVED_FOR_OTHER;
+
   // Rate limiting for subscription updates
   let lastUpdateTime = 0;
   const UPDATE_COOLDOWN = 5000; // 5 seconds between updates
@@ -239,9 +244,31 @@
     await setStorage({ filterSubscriptions: subscriptions });
 
     // Fetch and apply rules immediately
-    await updateSubscription(subscription.id);
+    let updateResult;
+    try {
+      updateResult = await updateSubscription(subscription.id);
+      log('addSubscription updateResult:', JSON.stringify(updateResult));
+    } catch (e) {
+      logError('addSubscription updateSubscription threw:', e);
+      updateResult = { success: false, error: e.message };
+    }
 
-    return { success: true, subscription };
+    // Re-read the subscription from storage to get the updated ruleCount
+    const updatedStorage = await getStorage(['filterSubscriptions']);
+    const updatedSubscriptions = updatedStorage.filterSubscriptions || [];
+    const updatedSub = updatedSubscriptions.find(s => s.id === subscription.id) || subscription;
+
+    // If update failed, still report the subscription was created but with the error
+    const applied = updateResult?.appliedCount || updatedSub.ruleCount || 0;
+    const totalParsed = updateResult?.totalParsed || updatedSub.totalParsed || 0;
+
+    return {
+      success: true,
+      subscription: updatedSub,
+      appliedCount: applied,
+      totalParsed: totalParsed,
+      updateError: updateResult?.success === false ? updateResult.error : null
+    };
   }
 
   async function removeSubscription(subscriptionId) {
@@ -315,11 +342,15 @@
 
       await persistSubscriptionDomains(subscriptionId, domains);
 
+      let applied = domains.length;
+      let total = domains.length;
       if (sub.enabled) {
-        await applySubscriptionRules(subscriptionId, domains);
+        const result = await applySubscriptionRules(subscriptionId, domains);
+        applied = result.applied;
+        total = result.total;
       }
 
-      return { success: true, cached: true, ruleCount: domains.length };
+      return { success: true, cached: true, ruleCount: applied, totalParsed: total, appliedCount: applied };
     }
 
     // Rate limiting per subscription
@@ -392,11 +423,15 @@
       });
 
       // Apply rules
+      let applied = domains.length;
+      let total = domains.length;
       if (sub.enabled) {
-        await applySubscriptionRules(subscriptionId, domains);
+        const result = await applySubscriptionRules(subscriptionId, domains);
+        applied = result.applied;
+        total = result.total;
       }
 
-      return { success: true, ruleCount: domains.length };
+      return { success: true, ruleCount: applied, totalParsed: total, appliedCount: applied };
     } catch (err) {
       const errorMsg = err.name === 'AbortError' ? 'Request timed out' : err.message;
       return { success: false, error: errorMsg };
@@ -433,17 +468,35 @@
       // Remove existing rules for this subscription first
       await removeSubscriptionRules(subscriptionId);
 
-      // Store domain-to-subscription mapping
-      const ruleMapping = await getStorage(['filterRuleMapping']);
-      const mapping = ruleMapping.filterRuleMapping || {};
-
-      // Find next available rule ID
-      let nextId = FILTER_RULE_ID_START;
+      // Query existing dynamic rules to calculate budget
       const existingRules = await api.declarativeNetRequest.getDynamicRules();
       const usedIds = new Set(existingRules.map(r => r.id));
 
+      // Count rules belonging to OTHER subscriptions (from filterRuleMapping)
+      const ruleMapping = await getStorage(['filterRuleMapping']);
+      const mapping = ruleMapping.filterRuleMapping || {};
+      let otherSubRuleCount = 0;
+      for (const [ruleId, subId] of Object.entries(mapping)) {
+        if (subId !== subscriptionId) {
+          otherSubRuleCount++;
+        }
+      }
+
+      // Calculate available budget for this subscription
+      const nonFilterRules = existingRules.filter(r => r.id < FILTER_RULE_ID_START).length;
+      const budgetUsedByOthers = otherSubRuleCount + nonFilterRules;
+      const availableBudget = Math.max(0, FILTER_BUDGET - budgetUsedByOthers);
+
+      const totalParsed = domains.length;
+
+      // Truncate domains to fit budget
+      const domainsToApply = domains.slice(0, availableBudget);
+
+      // Find next available rule ID
+      let nextId = FILTER_RULE_ID_START;
+
       const rules = [];
-      for (const domain of domains) {
+      for (const domain of domainsToApply) {
         // Find next available ID in our range
         while (usedIds.has(nextId) && nextId < FILTER_RULE_ID_START + MAX_FILTER_RULES) {
           nextId++;
@@ -468,18 +521,54 @@
         nextId++;
       }
 
+      let applied = 0;
       if (rules.length > 0) {
         try {
           await api.declarativeNetRequest.updateDynamicRules({
             addRules: rules
           });
           await setStorage({ filterRuleMapping: mapping });
+          applied = rules.length;
+          log('Applied ' + applied + ' of ' + totalParsed + ' rules for subscription ' + subscriptionId);
         } catch (e) {
-          logError('Failed to apply subscription rules:', e);
+          logError('Failed to apply subscription rules (quota?):', e);
+          // Try with fewer rules if quota exceeded
+          if (e.message && e.message.includes('quota') || e.message && e.message.includes('MAX_NUMBER')) {
+            const half = Math.floor(rules.length / 2);
+            if (half > 0) {
+              try {
+                await api.declarativeNetRequest.updateDynamicRules({
+                  addRules: rules.slice(0, half)
+                });
+                const partialMapping = {};
+                rules.slice(0, half).forEach(r => { partialMapping[r.id] = subscriptionId; });
+                Object.assign(mapping, partialMapping);
+                await setStorage({ filterRuleMapping: mapping });
+                applied = half;
+                log('Applied ' + applied + ' rules after quota retry');
+              } catch (e2) {
+                logError('Retry also failed:', e2);
+              }
+            }
+          }
         }
       }
+      const budgetRemaining = availableBudget - applied;
+
+      // Update subscription with both ruleCount (applied) and totalParsed
+      const subStorage = await getStorage(['filterSubscriptions']);
+      const subs = subStorage.filterSubscriptions || [];
+      const sub = subs.find(s => s.id === subscriptionId);
+      if (sub) {
+        sub.ruleCount = applied;
+        sub.totalParsed = totalParsed;
+        await setStorage({ filterSubscriptions: subs });
+      }
+
+      return { applied, total: totalParsed, budgetRemaining };
     } else {
       await rebuildMV2SubscriptionRules();
+      return { applied: domains.length, total: domains.length, budgetRemaining: 0 };
     }
   }
 

@@ -488,12 +488,38 @@
           <p class="section-desc">Manage filter list subscriptions</p>
         </div>
 
+        <div class="protection-level-selector" id="protectionLevelSelector">
+          <button class="protection-level-btn active" data-level="light">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3C11 3.5 6 6.5 5.5 10.5C5 14.5 8 18 12 20C16 18 19 14.5 18.5 10.5C18 6.5 13 3.5 12 3Z" fill="currentColor" fill-opacity="0.15"/></svg>
+            <span class="level-name">Light</span>
+            <span class="level-desc">Built-in rules only</span>
+          </button>
+          <button class="protection-level-btn" data-level="standard">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L4 5V11C4 16.5 7.5 21 12 22.5C16.5 21 20 16.5 20 11V5L12 2Z" fill="currentColor" fill-opacity="0.15"/><polyline points="9 12 11 14 15 10" stroke-width="2"/></svg>
+            <span class="level-name">Standard</span>
+            <span class="level-desc">+ HaGeZi Pro</span>
+          </button>
+          <button class="protection-level-btn" data-level="aggressive">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L4 5V11C4 16.5 7.5 21 12 22.5C16.5 21 20 16.5 20 11V5L12 2Z" fill="currentColor" fill-opacity="0.2"/><path d="M12 2L4 5V11C4 16.5 7.5 21 12 22.5" fill="currentColor" fill-opacity="0.15"/><path d="M8 11L11 14L16 9" stroke-width="2.5"/></svg>
+            <span class="level-name">Aggressive</span>
+            <span class="level-desc">Maximum protection</span>
+          </button>
+        </div>
+
         <div class="card">
           <div class="filter-list-items" id="filterListItems">
             <div class="loading-skeleton">
               <div class="skeleton-row"></div>
               <div class="skeleton-row"></div>
             </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Recommended Lists</h3>
+          <p class="card-desc">Curated protection from trusted sources. Toggle to subscribe.</p>
+          <div class="recommended-filters" id="recommendedFilters">
+            <div class="loading-skeleton"><div class="skeleton-row"></div><div class="skeleton-row"></div></div>
           </div>
         </div>
 

@@ -100,6 +100,29 @@
     'coastal-dark': 'coastal'
   };
 
+  const RECOMMENDED_LISTS = [
+    { id: 'hagezi-pro', name: 'HaGeZi Pro', desc: 'Comprehensive ad & tracker blocking', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt', category: 'ads', icon: '\u{1F6E1}' },
+    { id: 'hagezi-tif', name: 'Threat Intelligence', desc: 'Malware, phishing, C2 protection', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.mini.txt', category: 'security', icon: '\u{1F512}' },
+    { id: 'hagezi-fake', name: 'Fake & Scam Sites', desc: 'Blocks fraud, scam stores, rip-offs', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/fake.txt', category: 'security', icon: '\u{1F6AB}' },
+    { id: 'hagezi-popup', name: 'Pop-Up Ads', desc: 'Aggressive pop-up/under blocking', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/popupads.txt', category: 'ads', icon: '\u2715' },
+    { id: 'hagezi-dyndns', name: 'DynDNS Abuse', desc: 'Blocks dynamic DNS phishing domains', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/dyndns.txt', category: 'security', icon: '\u{1F310}' },
+    { id: 'adguard-dns', name: 'AdGuard DNS', desc: 'Curated DNS-level ad & tracker blocking', url: 'https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt', category: 'ads', icon: '\u{1F530}' },
+    { id: 'phishing-urls', name: 'Phishing Blocklist', desc: 'Community phishing domain list', url: 'https://adguardteam.github.io/HostlistsRegistry/assets/filter_30.txt', category: 'security', icon: '\u{1F3A3}' },
+    { id: 'hagezi-spam-tlds', name: 'Spam TLDs', desc: 'Blocks domains on spam-abused TLDs', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/spam-tlds-adblock.txt', category: 'spam', icon: '\u{1F4E7}' }
+  ];
+
+  const PROTECTION_LEVELS = {
+    light: [],
+    standard: ['https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt'],
+    aggressive: [
+      'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt',
+      'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.mini.txt',
+      'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/fake.txt',
+      'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/popupads.txt',
+      'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/dyndns.txt'
+    ]
+  };
+
   // ============================================
   // CROSS-BROWSER API
   // ============================================
@@ -253,7 +276,9 @@
         loadStats().catch(err => logError('loadStats failed:', err)),
         loadFilterLists().catch(err => logError('loadFilterLists failed:', err)),
         loadRequestLog().catch(err => logError('loadRequestLog failed:', err)),
-        loadPerformanceStats().catch(err => logError('loadPerformanceStats failed:', err))
+        loadPerformanceStats().catch(err => logError('loadPerformanceStats failed:', err)),
+        renderRecommendedLists().catch(err => logError('renderRecommendedLists failed:', err)),
+        loadProtectionLevel().catch(err => logError('loadProtectionLevel failed:', err))
       ]);
       applyCapabilityState();
       // Only start polling if logging is enabled
@@ -1169,6 +1194,175 @@
   }
 
   // ============================================
+  // RECOMMENDED LISTS & PROTECTION LEVELS
+  // ============================================
+  function formatRuleCount(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    return String(n);
+  }
+
+  async function renderRecommendedLists() {
+    const container = document.getElementById('recommendedFilters');
+    if (!container) return;
+
+    let subscriptions = [];
+    try {
+      const resp = await sendMessage({ type: 'GET_FILTER_SUBSCRIPTIONS' });
+      if (resp?.success) subscriptions = resp.subscriptions || [];
+    } catch (_) {}
+
+    const subscribedUrls = new Set(subscriptions.map(s => s.url));
+    container.innerHTML = '';
+
+    for (const list of RECOMMENDED_LISTS) {
+      const isSubscribed = subscribedUrls.has(list.url);
+      const sub = subscriptions.find(s => s.url === list.url);
+
+      const item = document.createElement('div');
+      item.className = 'rec-filter-item';
+      item.dataset.url = list.url;
+
+      const icon = document.createElement('div');
+      icon.className = 'rec-filter-icon ' + list.category;
+      icon.textContent = list.icon;
+
+      const info = document.createElement('div');
+      info.className = 'rec-filter-info';
+
+      const nameRow = document.createElement('div');
+      nameRow.className = 'rec-filter-name';
+      nameRow.textContent = list.name;
+      if (isSubscribed && sub?.ruleCount) {
+        const badge = document.createElement('span');
+        badge.className = 'rec-filter-badge';
+        badge.textContent = formatRuleCount(sub.ruleCount) + ' rules';
+        nameRow.appendChild(badge);
+      }
+
+      const desc = document.createElement('div');
+      desc.className = 'rec-filter-desc';
+      desc.textContent = list.desc;
+
+      info.appendChild(nameRow);
+      info.appendChild(desc);
+
+      const toggleWrap = document.createElement('div');
+      toggleWrap.className = 'rec-filter-toggle';
+      const label = document.createElement('label');
+      label.className = 'toggle-label compact';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = isSubscribed;
+      const toggleSwitch = document.createElement('span');
+      toggleSwitch.className = 'toggle-switch small';
+      toggleSwitch.innerHTML = '<span class="slider"></span>';
+      label.appendChild(input);
+      label.appendChild(toggleSwitch);
+      toggleWrap.appendChild(label);
+
+      item.appendChild(icon);
+      item.appendChild(info);
+      item.appendChild(toggleWrap);
+      container.appendChild(item);
+
+      input.addEventListener('change', async () => {
+        item.classList.add('loading');
+        input.disabled = true;
+        try {
+          if (input.checked) {
+            const resp = await sendMessage({ type: 'ADD_FILTER_SUBSCRIPTION', name: list.name, url: list.url });
+            if (resp?.success) {
+              const count = resp.appliedCount || resp.subscription?.ruleCount || 0;
+              const total = resp.totalParsed || count;
+              let msg = list.name + ' added — ' + formatRuleCount(count) + ' rules applied';
+              if (total > count) msg += ' (of ' + formatRuleCount(total) + ' total, MV3 limit)';
+              showToast(msg, 'success');
+            } else {
+              input.checked = false;
+              showToast(resp?.error || 'Failed to add ' + list.name, 'error');
+            }
+          } else {
+            const subsResp = await sendMessage({ type: 'GET_FILTER_SUBSCRIPTIONS' });
+            if (subsResp?.success) {
+              const sub = subsResp.subscriptions.find(s => s.url === list.url);
+              if (sub) {
+                await sendMessage({ type: 'REMOVE_FILTER_SUBSCRIPTION', subscriptionId: sub.id });
+                showToast(list.name + ' removed', 'success');
+              }
+            }
+          }
+        } catch (_) {
+          input.checked = !input.checked;
+          showToast('Failed — check console for details', 'error');
+        } finally {
+          item.classList.remove('loading');
+          input.disabled = false;
+          await renderRecommendedLists();
+        }
+      });
+    }
+  }
+
+  async function detectProtectionLevel() {
+    try {
+      const resp = await sendMessage({ type: 'GET_FILTER_SUBSCRIPTIONS' });
+      if (!resp?.success) return 'light';
+      const urls = new Set((resp.subscriptions || []).map(s => s.url));
+
+      if (PROTECTION_LEVELS.aggressive.every(u => urls.has(u))) return 'aggressive';
+      if (PROTECTION_LEVELS.standard.every(u => urls.has(u))) return 'standard';
+      return 'light';
+    } catch (_) {
+      return 'light';
+    }
+  }
+
+  async function applyProtectionLevel(level) {
+    const targetUrls = new Set(PROTECTION_LEVELS[level] || []);
+    const allManagedUrls = new Set(Object.values(PROTECTION_LEVELS).flat());
+
+    let subsResp;
+    try {
+      subsResp = await sendMessage({ type: 'GET_FILTER_SUBSCRIPTIONS' });
+    } catch (_) { return; }
+    if (!subsResp?.success) return;
+
+    const currentSubs = subsResp.subscriptions || [];
+    const currentUrls = new Set(currentSubs.map(s => s.url));
+
+    // Remove managed URLs not in target
+    for (const sub of currentSubs) {
+      if (allManagedUrls.has(sub.url) && !targetUrls.has(sub.url)) {
+        try {
+          await sendMessage({ type: 'REMOVE_FILTER_SUBSCRIPTION', subscriptionId: sub.id });
+        } catch (_) {}
+      }
+    }
+
+    // Add target URLs not yet subscribed
+    for (const url of targetUrls) {
+      if (!currentUrls.has(url)) {
+        const list = RECOMMENDED_LISTS.find(r => r.url === url);
+        try {
+          await sendMessage({ type: 'ADD_FILTER_SUBSCRIPTION', name: list?.name || 'Filter', url });
+        } catch (_) {}
+      }
+    }
+
+    await setStorage({ protectionLevel: level });
+    await renderRecommendedLists();
+    await loadFilterLists();
+  }
+
+  async function loadProtectionLevel() {
+    const level = await detectProtectionLevel();
+    document.querySelectorAll('.protection-level-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.level === level);
+    });
+  }
+
+  // ============================================
   // EVENT LISTENERS
   // ============================================
   function setupEventListeners() {
@@ -1309,6 +1503,26 @@
       });
     }
 
+    // Protection level selector
+    document.querySelectorAll('.protection-level-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const level = btn.dataset.level;
+        document.querySelectorAll('.protection-level-btn').forEach(b => {
+          b.classList.remove('active');
+          b.classList.remove('loading');
+        });
+        btn.classList.add('active', 'loading');
+        try {
+          await applyProtectionLevel(level);
+          showToast('Protection set to ' + level.charAt(0).toUpperCase() + level.slice(1), 'success');
+        } catch (e) {
+          showToast('Failed to apply protection level', 'error');
+        } finally {
+          btn.classList.remove('loading');
+        }
+      });
+    });
+
     // Language filters
     if (elements.languageFilters) {
       elements.languageFilters.querySelectorAll('input[type="checkbox"]').forEach(cb => {
@@ -1325,15 +1539,24 @@
             try {
               const response = await sendMessage({ type: 'ADD_FILTER_SUBSCRIPTION', name, url });
               if (response?.success) {
-                const ruleCount = response.subscription?.ruleCount || 0;
-                showToast(name + ' filter added with ' + ruleCount + ' rules', 'success');
+                const ruleCount = response.appliedCount || response.subscription?.ruleCount || 0;
+                const totalParsed = response.totalParsed || ruleCount;
+                let msg = name + ' filter added with ' + formatRuleCount(ruleCount) + ' rules';
+                if (totalParsed > ruleCount) msg += ' (of ' + formatRuleCount(totalParsed) + ' total, MV3 limit)';
+                showToast(msg, 'success');
+                label.classList.add('success');
+                setTimeout(() => label.classList.remove('success'), 1500);
               } else {
                 cb.checked = false;
                 showToast(response?.error || 'Failed to add filter', 'error');
+                label.classList.add('error');
+                setTimeout(() => label.classList.remove('error'), 1500);
               }
             } catch (e) {
               cb.checked = false;
               showToast('Failed to add filter', 'error');
+              label.classList.add('error');
+              setTimeout(() => label.classList.remove('error'), 1500);
             } finally {
               cb.disabled = false;
               label.classList.remove('loading');
@@ -1349,10 +1572,14 @@
                 if (sub) {
                   await sendMessage({ type: 'REMOVE_FILTER_SUBSCRIPTION', subscriptionId: sub.id });
                   showToast(name + ' filter removed', 'success');
+                  label.classList.add('success');
+                  setTimeout(() => label.classList.remove('success'), 1500);
                 }
               }
             } catch (e) {
               showToast('Failed to remove filter', 'error');
+              label.classList.add('error');
+              setTimeout(() => label.classList.remove('error'), 1500);
             } finally {
               cb.disabled = false;
               label.classList.remove('loading');
