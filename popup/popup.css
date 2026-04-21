@@ -955,11 +955,21 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.footer-author:hover {
+  color: var(--text-secondary);
 }
 
 .footer-author strong {
   color: var(--text-secondary);
   font-weight: 600;
+}
+
+.footer-author:hover strong {
+  color: var(--primary);
 }
 
 .footer-coffee {
