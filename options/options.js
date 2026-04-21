@@ -917,9 +917,36 @@
       valueSpan.className = 'bar-value';
       valueSpan.textContent = formatNumber(value);
 
+      labelSpan.style.cursor = 'pointer';
+      labelSpan.title = 'Click to copy: ' + label;
+      labelSpan.addEventListener('click', () => {
+        navigator.clipboard.writeText(label).then(() => {
+          showToast('Copied: ' + label, 'info');
+        });
+      });
+
+      const actionBtn = document.createElement('button');
+      actionBtn.className = 'bar-action-btn';
+      actionBtn.title = 'Unblock this domain';
+      actionBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="4" x2="4" y2="12"/><line x1="4" y1="4" x2="12" y2="12"/></svg>';
+      actionBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const domain = label;
+        if (confirm('Unblock ' + domain + '? This adds it to your allowed domains list.')) {
+          try {
+            await sendMessage({ type: 'UNBLOCK_REQUEST', domain: domain });
+            showToast(domain + ' unblocked', 'success');
+            await loadStats();
+          } catch (err) {
+            showToast('Failed to unblock: ' + (err.message || 'unknown error'), 'error');
+          }
+        }
+      });
+
       row.appendChild(labelSpan);
       row.appendChild(trackDiv);
       row.appendChild(valueSpan);
+      row.appendChild(actionBtn);
 
       container.appendChild(row);
     }
