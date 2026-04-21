@@ -1605,10 +1605,10 @@ body {
 .bar-track {
   flex: 1;
   height: 10px;
-  background: var(--bg-secondary);
+  background: var(--bg-tertiary);
   border-radius: 5px;
   overflow: hidden;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
 .bar-fill {
@@ -1718,6 +1718,9 @@ body {
 .pie-legend-value {
   font-weight: 600;
   margin-left: auto;
+  color: var(--text-primary);
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 12px;
 }
 
 /* ============================================
@@ -1735,19 +1738,19 @@ body {
 
 .trend-line {
   fill: none;
-  stroke: var(--accent-color);
+  stroke: var(--accent);
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 .trend-area {
-  fill: var(--accent-color);
-  opacity: 0.1;
+  fill: var(--accent);
+  opacity: 0.15;
 }
 
 .trend-dot {
-  fill: var(--accent-color);
+  fill: var(--accent);
 }
 
 .trend-labels {

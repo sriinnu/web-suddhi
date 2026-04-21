@@ -837,7 +837,15 @@
           try {
             await sendMessage({ type: 'REMOVE_FILTER_SUBSCRIPTION', subscriptionId: sub.id });
             item.remove();
-          } catch (e) {}
+            showToast(sub.name + ' removed', 'success');
+            // Refresh all related UI
+            await loadFilterLists();
+            await renderRecommendedLists();
+            await loadProtectionLevel();
+            await loadLanguageFilterStates();
+          } catch (e) {
+            logError('Failed to remove subscription:', e);
+          }
         });
       }
 
@@ -1622,8 +1630,10 @@
             enabledLangFilters.push(c.dataset.lang);
           });
           await setStorage({ enabledLanguageFilters: enabledLangFilters });
-          // Refresh main filter list to show/hide the language filter
+          // Refresh all filter-related UI
           await loadFilterLists();
+          await renderRecommendedLists();
+          await loadProtectionLevel();
         });
       });
     }

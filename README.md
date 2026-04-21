@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="#installation"><img src="https://img.shields.io/badge/version-2.1.0-blue?style=flat-square" alt="Version"></a>
+  <a href="#installation"><img src="https://img.shields.io/badge/version-2.2.0-blue?style=flat-square" alt="Version"></a>
   <a href="#supported-browsers"><img src="https://img.shields.io/badge/Chrome-MV3-4285F4?style=flat-square&logo=google-chrome&logoColor=white" alt="Chrome"></a>
   <a href="#supported-browsers"><img src="https://img.shields.io/badge/Firefox-MV2-FF7139?style=flat-square&logo=firefox-browser&logoColor=white" alt="Firefox"></a>
   <a href="#supported-browsers"><img src="https://img.shields.io/badge/Safari-macOS%20%7C%20iOS-000?style=flat-square&logo=safari&logoColor=white" alt="Safari"></a>
@@ -51,7 +51,7 @@ WebSuddhi solves all of this. One extension. Zero data collection. Every browser
 
 | | Feature | What It Does |
 |---|---------|-------------|
-| **1** | **Network Blocking** | Blocks ad & tracking requests *before they load* — saves bandwidth, speeds up pages |
+| **1** | **Network Blocking** | 40,000+ curated rules block ads & trackers *before they load* — compiled from HaGeZi, AdGuard, and PhishTank |
 | **2** | **Cosmetic Blocking** | Hides ad elements from 50+ networks using 200+ CSS selectors |
 | **3** | **URL Cleaning** | Strips 60+ tracking parameters from URLs (utm, fbclid, gclid, msclkid, etc.) |
 | **4** | **Cookie Auto-Dismiss** | Automatically clicks "Reject All" on cookie banners from 9+ CMP frameworks |
@@ -92,7 +92,7 @@ WebSuddhi solves all of this. One extension. Zero data collection. Every browser
         ▼                                ▼
  ┌─────────────────┐             ┌─────────────────┐
  │ Network Blocker  │             │ Cosmetic Blocker │
- │ (223 DNR rules)  │             │ (200+ selectors) │
+ │ (40K+ DNR rules)  │             │ (200+ selectors) │
  │                  │             │                  │
  │ Block ads &      │             │ Hide ad elements │
  │ trackers before  │             │ that weren't     │
@@ -275,7 +275,9 @@ Disable all blocking on sites you trust:
 
 ## What Gets Blocked
 
-### Network Requests (223 Rules)
+> Full details: [What Gets Blocked](docs/what-gets-blocked.md)
+
+### Network Requests (40K+ Rules)
 
 <details>
 <summary><strong>Ad Networks (120 rules)</strong> — click to expand</summary>
@@ -395,9 +397,10 @@ flowchart TB
     end
 
     subgraph Rules["Static DNR Rulesets"]
-        ad["ad-domains.json — 120 rules"]
-        tr["tracking-domains.json — 103 rules"]
+        ad["ad-domains.json — 120 hand-curated"]
+        tr["tracking-domains.json — 103 hand-curated"]
         tp["tracking-params.json — URL params"]
+        gen["generated-*.json — 40K compiled rules"]
     end
 
     utils["shared/utils.js — Storage / DOM / Validation"]
@@ -418,12 +421,13 @@ Safari packaging now comes from the same shared source tree via `npm run build:t
 
 | Range | Purpose |
 |-------|---------|
-| 1 — 4999 | Ad domain blocking rules |
-| 5001 — 9999 | Tracking domain rules |
+| 1 — 4999 | Hand-curated ad domain rules |
+| 5001 — 9999 | Hand-curated tracking rules |
 | 10001 — 19999 | URL parameter stripping |
 | 20001 — 29999 | Dynamic rules (user-added domains) |
 | 30001 — 39999 | Privacy rules (referrer, ping) |
 | 40001 — 69999 | Filter list subscription rules |
+| 100001+ | Generated rules (HaGeZi, AdGuard, PhishTank) |
 
 ---
 
@@ -605,38 +609,30 @@ Make sure you're loading the correct manifest:
 
 ---
 
+## Screenshots
+
+<p align="center">
+  <em>Screenshots coming soon — popup, settings, stats dashboard, theme variants</em>
+</p>
+
+<!-- TODO: Add actual screenshots
+<table>
+  <tr>
+    <td><img src="docs/screenshots/popup-light.png" width="300" alt="Popup - Light theme"></td>
+    <td><img src="docs/screenshots/popup-dark.png" width="300" alt="Popup - Dark theme"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/settings.png" width="400" alt="Settings page"></td>
+    <td><img src="docs/screenshots/stats.png" width="400" alt="Statistics dashboard"></td>
+  </tr>
+</table>
+-->
+
+---
+
 ## Changelog
 
-### v2.1.0 (Current)
-- Fixed XSS vulnerability in phishing warning overlay (safe DOM construction)
-- Added Content Security Policy to both MV3 and MV2 manifests
-- Fixed LRU cache eviction (O(1) using Map delete+re-insert)
-- Fixed pick-element "Block" button not clickable (pointer-events)
-- Fixed punycode false positives in phishing detector
-- Added message validation to background message handler
-- Safe tab messaging (graceful handling of closed/navigated tabs)
-- Configurable toast notification duration
-- Deduplicated storage helpers into shared/utils.js
-- Added ARIA labels to popup UI
-- Network-blocker polling now stops when window is unfocused
-
-### v2.0.0
-- Network-level request blocking (223 declarativeNetRequest rules)
-- URL tracking parameter stripping (60+ params)
-- Cookie consent auto-dismiss (9 CMP frameworks + generic fallback)
-- Annoyance blocking (chat widgets, popups, push prompts, app banners)
-- Enhanced statistics with per-site breakdown and charts
-- Privacy features (referrer stripping, WebRTC protection, ping blocking)
-- Filter list subscriptions with ABP syntax parser
-- Safari iOS full v2 support
-- Redesigned popup and options page
-
-### v1.1.0
-- Initial cosmetic ad blocking
-- Element picker (pick mode)
-- Per-site whitelist
-- Basic statistics
-- Cross-browser support (Chrome, Firefox, Safari)
+See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
 ---
 
