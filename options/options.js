@@ -932,14 +932,26 @@
       actionBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const domain = label;
-        if (confirm('Unblock ' + domain + '? This adds it to your allowed domains list.')) {
-          try {
-            await sendMessage({ type: 'UNBLOCK_REQUEST', domain: domain });
+        if (confirm('Unblock ' + domain + '?')) {
+          // Animate row out immediately — don't wait for full page refresh
+          row.style.transition = 'all 0.3s ease';
+          row.style.opacity = '0';
+          row.style.transform = 'translateX(20px)';
+          row.style.maxHeight = row.offsetHeight + 'px';
+          setTimeout(() => {
+            row.style.maxHeight = '0';
+            row.style.padding = '0';
+            row.style.margin = '0';
+            row.style.overflow = 'hidden';
+          }, 150);
+          setTimeout(() => row.remove(), 400);
+
+          // Fire unblock in background
+          sendMessage({ type: 'UNBLOCK_REQUEST', domain: domain }).then(() => {
             showToast(domain + ' unblocked', 'success');
-            await loadStats();
-          } catch (err) {
-            showToast('Failed to unblock: ' + (err.message || 'unknown error'), 'error');
-          }
+          }).catch(err => {
+            showToast('Failed to unblock: ' + (err.message || 'unknown'), 'error');
+          });
         }
       });
 
