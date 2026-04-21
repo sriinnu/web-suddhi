@@ -243,31 +243,21 @@
     subscriptions.push(subscription);
     await setStorage({ filterSubscriptions: subscriptions });
 
-    // Fetch and apply rules immediately
-    let updateResult;
-    try {
-      updateResult = await updateSubscription(subscription.id);
-      log('addSubscription updateResult:', JSON.stringify(updateResult));
-    } catch (e) {
-      logError('addSubscription updateSubscription threw:', e);
-      updateResult = { success: false, error: e.message };
-    }
+    // Fire fetch+parse in background — do NOT await it here
+    // The message channel times out if we block on a multi-MB download
+    updateSubscription(subscription.id).then(result => {
+      log('Subscription ' + subscription.id + ' updated: ' + (result?.appliedCount || result?.ruleCount || 0) + ' rules applied');
+    }).catch(e => {
+      logError('Background update failed for ' + subscription.id + ':', e);
+    });
 
-    // Re-read the subscription from storage to get the updated ruleCount
-    const updatedStorage = await getStorage(['filterSubscriptions']);
-    const updatedSubscriptions = updatedStorage.filterSubscriptions || [];
-    const updatedSub = updatedSubscriptions.find(s => s.id === subscription.id) || subscription;
-
-    // If update failed, still report the subscription was created but with the error
-    const applied = updateResult?.appliedCount || updatedSub.ruleCount || 0;
-    const totalParsed = updateResult?.totalParsed || updatedSub.totalParsed || 0;
-
+    // Return immediately so the UI gets a fast response
     return {
       success: true,
-      subscription: updatedSub,
-      appliedCount: applied,
-      totalParsed: totalParsed,
-      updateError: updateResult?.success === false ? updateResult.error : null
+      subscription: subscription,
+      appliedCount: 0,
+      totalParsed: 0,
+      pending: true
     };
   }
 

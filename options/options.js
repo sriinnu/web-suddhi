@@ -1202,6 +1202,33 @@
     return String(n);
   }
 
+  function pollSubscriptionUpdate(url, name, element) {
+    let attempts = 0;
+    const maxAttempts = 20; // 20 * 3s = 60s max
+    const interval = setInterval(async () => {
+      attempts++;
+      try {
+        const resp = await sendMessage({ type: 'GET_FILTER_SUBSCRIPTIONS' });
+        if (resp?.success) {
+          const sub = resp.subscriptions.find(s => s.url === url);
+          if (sub && sub.ruleCount > 0) {
+            clearInterval(interval);
+            if (element) element.classList.remove('loading');
+            showToast(name + ' — ' + formatRuleCount(sub.ruleCount) + ' rules active', 'success');
+            await renderRecommendedLists();
+            await loadFilterLists();
+            return;
+          }
+        }
+      } catch (_) {}
+      if (attempts >= maxAttempts) {
+        clearInterval(interval);
+        if (element) element.classList.remove('loading');
+        showToast(name + ' — still loading, check back shortly', 'info');
+      }
+    }, 3000);
+  }
+
   async function renderRecommendedLists() {
     const container = document.getElementById('recommendedFilters');
     if (!container) return;
@@ -1273,11 +1300,14 @@
           if (input.checked) {
             const resp = await sendMessage({ type: 'ADD_FILTER_SUBSCRIPTION', name: list.name, url: list.url });
             if (resp?.success) {
-              const count = resp.appliedCount || resp.subscription?.ruleCount || 0;
-              const total = resp.totalParsed || count;
-              let msg = list.name + ' added — ' + formatRuleCount(count) + ' rules applied';
-              if (total > count) msg += ' (of ' + formatRuleCount(total) + ' total, MV3 limit)';
-              showToast(msg, 'success');
+              if (resp.pending) {
+                showToast(list.name + ' added — fetching rules in background...', 'info');
+                // Poll for completion
+                pollSubscriptionUpdate(list.url, list.name, item);
+              } else {
+                const count = resp.appliedCount || resp.subscription?.ruleCount || 0;
+                showToast(list.name + ' — ' + formatRuleCount(count) + ' rules applied', 'success');
+              }
             } else {
               input.checked = false;
               showToast(resp?.error || 'Failed to add ' + list.name, 'error');
@@ -1292,9 +1322,10 @@
               }
             }
           }
-        } catch (_) {
+        } catch (e) {
           input.checked = !input.checked;
-          showToast('Failed — check console for details', 'error');
+          logError('Subscription toggle failed:', e);
+          showToast('Failed: ' + (e.message || 'unknown error'), 'error');
         } finally {
           item.classList.remove('loading');
           input.disabled = false;
@@ -1539,13 +1570,11 @@
             try {
               const response = await sendMessage({ type: 'ADD_FILTER_SUBSCRIPTION', name, url });
               if (response?.success) {
-                const ruleCount = response.appliedCount || response.subscription?.ruleCount || 0;
-                const totalParsed = response.totalParsed || ruleCount;
-                let msg = name + ' filter added with ' + formatRuleCount(ruleCount) + ' rules';
-                if (totalParsed > ruleCount) msg += ' (of ' + formatRuleCount(totalParsed) + ' total, MV3 limit)';
-                showToast(msg, 'success');
+                showToast(name + ' filter added — fetching rules...', 'info');
                 label.classList.add('success');
                 setTimeout(() => label.classList.remove('success'), 1500);
+                // Poll for completion in background
+                pollSubscriptionUpdate(url, name, label);
               } else {
                 cb.checked = false;
                 showToast(response?.error || 'Failed to add filter', 'error');
@@ -1554,7 +1583,8 @@
               }
             } catch (e) {
               cb.checked = false;
-              showToast('Failed to add filter', 'error');
+              logError('Language filter add failed:', e);
+              showToast('Failed to add filter: ' + (e.message || 'unknown'), 'error');
               label.classList.add('error');
               setTimeout(() => label.classList.remove('error'), 1500);
             } finally {
@@ -1851,13 +1881,16 @@
         if (response?.success) {
           elements.subscriptionNameInput.value = '';
           elements.subscriptionUrlInput.value = '';
-          showStatus('Subscription added with ' + (response.subscription?.ruleCount || 0) + ' rules', 'success');
+          showStatus('Subscription added — fetching rules in background...', 'success');
           await loadFilterLists();
+          // Poll for update completion
+          pollSubscriptionUpdate(url, name || url, null);
         } else {
           showStatus(response?.error || 'Failed to add subscription', 'error');
         }
       } catch (e) {
-        showStatus('Failed to add subscription', 'error');
+        logError('Add subscription failed:', e);
+        showStatus('Failed: ' + (e.message || 'unknown error'), 'error');
       }
     });
 
