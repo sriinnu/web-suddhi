@@ -1,6 +1,6 @@
 // WebSuddhi - Background Service Worker
 // Universal: Chrome, Edge, Firefox, Safari
-// v2.1.0 - Full ad blocker with network blocking, stats, privacy, filter lists
+// v2.2.0 - Full ad blocker with network blocking, stats, privacy, filter lists
 
 // MV3: Import all modules via importScripts
 try {
@@ -890,7 +890,7 @@ try {
     return {
       success: true,
       data: {
-        version: '2.1.0',
+        version: '2.2.0',
         exportDate: new Date().toISOString(),
         blockedSelectors: storage.blockedSelectors || [],
         blockedDomains: storage.blockedDomains || [],

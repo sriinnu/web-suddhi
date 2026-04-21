@@ -1,4 +1,4 @@
-// WebSuddhi v2.1.0 - iOS Safari Background Script
+// WebSuddhi v2.2.0 - iOS Safari Background Script
 
 const DEFAULT_SETTINGS = {
   enabled: true,
@@ -114,7 +114,7 @@ async function handleMessage(msg, sender) {
       return {
         success: true,
         data: {
-          version: '2.1.0',
+          version: '2.2.0',
           exportDate: new Date().toISOString(),
           blockedSelectors: storage.blockedSelectors || [],
           whitelistedSites: storage.whitelistedSites || [],

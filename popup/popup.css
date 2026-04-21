@@ -925,9 +925,38 @@ body {
 }
 
 .version {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-tertiary);
   font-weight: 500;
+  font-family: var(--font-mono, monospace);
+}
+
+.footer-author {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.footer-author strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.footer-coffee {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(255, 200, 0, 0.12);
+  color: #d4a017;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.footer-coffee:hover {
+  background: rgba(255, 200, 0, 0.25);
+  transform: scale(1.15);
 }
 
 .theme-chooser {
