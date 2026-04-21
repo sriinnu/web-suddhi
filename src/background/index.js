@@ -322,6 +322,14 @@ async function handleMessage(message, sender) {
       case 'TOGGLE_URL_CLEANING':
         await setStorage({ urlCleaningEnabled: message.enabled });
         return { success: true };
+      case 'TOGGLE_COOKIE_CONSENT':
+        await setStorage({ cookieConsentEnabled: message.enabled });
+        await notifyAllTabs();
+        return { success: true };
+      case 'TOGGLE_ANNOYANCE_BLOCKING':
+        await setStorage({ annoyanceBlockingEnabled: message.enabled });
+        await notifyAllTabs();
+        return { success: true };
 
       // --- Privacy ---
       case 'GET_PRIVACY_STATUS':

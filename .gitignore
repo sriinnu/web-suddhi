@@ -63,6 +63,8 @@ local-settings.json
 
 # Claude Code / AI tools
 .claude/
+.mcp.json
+mcp.json
 
 # Logs
 logs/

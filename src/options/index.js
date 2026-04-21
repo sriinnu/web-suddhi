@@ -28,18 +28,20 @@ import {
 // ============================================
 
 async function init() {
+  // Set up event listeners FIRST so UI is interactive even if data loading fails
+  setupEventListeners();
+
   try {
     await Promise.all([
-      loadSettings(),
-      loadTheme(),
-      loadRules(),
-      loadWhitelist(),
-      loadStats(),
-      loadFilterLists(),
-      loadRequestLog(),
-      loadPerformanceStats(),
+      loadSettings().catch(err => logError('loadSettings failed:', err)),
+      loadTheme().catch(err => logError('loadTheme failed:', err)),
+      loadRules().catch(err => logError('loadRules failed:', err)),
+      loadWhitelist().catch(err => logError('loadWhitelist failed:', err)),
+      loadStats().catch(err => logError('loadStats failed:', err)),
+      loadFilterLists().catch(err => logError('loadFilterLists failed:', err)),
+      loadRequestLog().catch(err => logError('loadRequestLog failed:', err)),
+      loadPerformanceStats().catch(err => logError('loadPerformanceStats failed:', err)),
     ]);
-    setupEventListeners();
     if (loggingEnabled) startLogPolling();
   } catch (err) {
     logError('Options init error:', err);

@@ -6,7 +6,9 @@
   <title>WebSuddhi - Settings</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../icons/icon32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../icons/icon16.png">
+  <link rel="stylesheet" href="../shared/themes.css">
   <link rel="stylesheet" href="options.css">
+  <script src="../shared/theme-loader.js"></script>
 </head>
 <body>
   <!-- Mobile hamburger -->
@@ -201,6 +203,106 @@
               </span>
               <span class="range-value" id="toastDurationValue">3s</span>
               <input type="range" id="toastDuration" min="1" max="10" step="1" value="3">
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Appearance</h3>
+          <div class="setting">
+            <div class="setting-text" style="margin-bottom: 14px;">
+              <span class="setting-title">Color Theme</span>
+              <span class="setting-desc">Choose a palette for the entire extension</span>
+            </div>
+            <div class="theme-grid" id="themeGrid">
+              <button class="theme-card active" data-theme="light" title="Light">
+                <div class="theme-preview">
+                  <span class="swatch" style="background:#F7F4D5"></span>
+                  <span class="swatch" style="background:#105666"></span>
+                  <span class="swatch" style="background:#0A3323"></span>
+                  <span class="swatch" style="background:#D3968C"></span>
+                </div>
+                <span class="theme-card-name">Light</span>
+              </button>
+              <button class="theme-card" data-theme="dark" title="Dark">
+                <div class="theme-preview">
+                  <span class="swatch" style="background:#0f1f1a"></span>
+                  <span class="swatch" style="background:#1a8a9e"></span>
+                  <span class="swatch" style="background:#e8e2c4"></span>
+                  <span class="swatch" style="background:#a3b87a"></span>
+                </div>
+                <span class="theme-card-name">Dark</span>
+              </button>
+              <button class="theme-card" data-theme="ocean" title="Ocean">
+                <div class="theme-preview">
+                  <span class="swatch" style="background:#0b1929"></span>
+                  <span class="swatch" style="background:#00bcd4"></span>
+                  <span class="swatch" style="background:#e0ecf4"></span>
+                  <span class="swatch" style="background:#4db6ac"></span>
+                </div>
+                <span class="theme-card-name">Ocean</span>
+              </button>
+              <button class="theme-card" data-theme="midnight" title="Midnight">
+                <div class="theme-preview">
+                  <span class="swatch" style="background:#09090f"></span>
+                  <span class="swatch" style="background:#7c4dff"></span>
+                  <span class="swatch" style="background:#e8e6f0"></span>
+                  <span class="swatch" style="background:#536dfe"></span>
+                </div>
+                <span class="theme-card-name">Midnight</span>
+              </button>
+              <button class="theme-card" data-theme="sunset" title="Sunset">
+                <div class="theme-preview">
+                  <span class="swatch" style="background:#fdf5ed"></span>
+                  <span class="swatch" style="background:#e65100"></span>
+                  <span class="swatch" style="background:#3e2723"></span>
+                  <span class="swatch" style="background:#f9a825"></span>
+                </div>
+                <span class="theme-card-name">Sunset</span>
+              </button>
+              <button class="theme-card" data-theme="forest" title="Forest">
+                <div class="theme-preview">
+                  <span class="swatch" style="background:#0d1f0d"></span>
+                  <span class="swatch" style="background:#4caf50"></span>
+                  <span class="swatch" style="background:#d4e8c4"></span>
+                  <span class="swatch" style="background:#81c784"></span>
+                </div>
+                <span class="theme-card-name">Forest</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="setting">
+            <div class="setting-text" style="margin-bottom: 10px;">
+              <span class="setting-title">Font Family</span>
+              <span class="setting-desc">Select a font for the entire UI. Drop <code>.woff2</code> / <code>.ttf</code> / <code>.otf</code> files into the <code>fonts/</code> folder to add more.</span>
+            </div>
+            <select id="fontFamilySelect" class="select-input">
+              <option value="system">System Default</option>
+              <option value="mono">Monospace (SF Mono / Cascadia Code)</option>
+              <!-- Custom fonts from fonts/ folder are appended dynamically -->
+            </select>
+          </div>
+
+          <div class="setting">
+            <label class="range-label">
+              <span class="setting-text">
+                <span class="setting-title">Font Size</span>
+                <span class="setting-desc">Adjust the base font size for the extension UI</span>
+              </span>
+              <span class="range-value" id="fontSizeValue">14px</span>
+              <input type="range" id="fontSizeSlider" min="12" max="18" step="1" value="14">
+            </label>
+          </div>
+
+          <div class="setting">
+            <label class="range-label">
+              <span class="setting-text">
+                <span class="setting-title">Border Radius</span>
+                <span class="setting-desc">Roundness of cards, buttons, and UI elements</span>
+              </span>
+              <span class="range-value" id="borderRadiusValue">10px</span>
+              <input type="range" id="borderRadiusSlider" min="0" max="24" step="2" value="10">
             </label>
           </div>
         </div>

@@ -1,46 +1,22 @@
 /* ============================================
-   WebSuddhi Popup - Nature-Inspired Design
-   Palette: Forest Green, Olive, Cream, Rose, Teal
+   WebSuddhi Popup — Premium Design
+   Theme variables from shared/themes.css
+   Popup-specific aliases & layout tokens
    ============================================ */
 
 :root {
-  --primary: #105666;
-  --primary-light: #1a8a9e;
-  --success: #0A3323;
-  --danger: #D3968C;
-  --warning: #839958;
-  --bg-primary: #F7F4D5;
-  --bg-secondary: #FFFFFF;
-  --bg-tertiary: #ece8c4;
-  --text-primary: #0A3323;
-  --text-secondary: #3d5a4a;
-  --text-tertiary: #6b7f6e;
-  --border: #d4d0a8;
-  --shadow: 0 2px 8px rgba(10, 51, 35, 0.08);
-  --shadow-lg: 0 4px 16px rgba(10, 51, 35, 0.12);
+  /* Aliases for popup — mapped from shared theme vars */
+  --primary: var(--accent, #105666);
+  --primary-light: var(--accent-light, #1a8a9e);
+  --border: var(--border-color, #d4d0a8);
+  --shadow: var(--shadow-sm, 0 2px 8px rgba(10, 51, 35, 0.08));
+  --shadow-lg: var(--shadow-lg, 0 4px 16px rgba(10, 51, 35, 0.12));
+
+  /* Layout tokens (popup-only) */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-full: 20px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --primary: #1a8a9e;
-    --primary-light: #5cc5d8;
-    --success: #1b6b47;
-    --danger: #e8b0a8;
-    --warning: #a3b87a;
-    --bg-primary: #0f1f1a;
-    --bg-secondary: #1a2e27;
-    --bg-tertiary: #253d34;
-    --text-primary: #e8e2c4;
-    --text-secondary: #a8b89e;
-    --text-tertiary: #7d9080;
-    --border: rgba(26, 138, 158, 0.2);
-    --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.4);
-  }
 }
 
 * {
@@ -50,8 +26,8 @@
 }
 
 body {
-  width: 360px;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  width: 370px;
+  font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
   background: var(--bg-primary);
   color: var(--text-primary);
   font-size: 14px;
@@ -262,12 +238,14 @@ body {
 }
 
 .site-domain {
-  font-size: 15px;
+  font-family: var(--font-mono, monospace);
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  letter-spacing: -0.01em;
 }
 
 .site-actions {
@@ -332,6 +310,8 @@ body {
 
 .stat-value {
   display: block;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
   font-size: 24px;
   font-weight: 700;
   color: var(--primary);

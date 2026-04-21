@@ -72,7 +72,7 @@
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
+    "extension_pages": "script-src 'self'; object-src 'self'; font-src 'self'"
   },
   "background": {
     "service_worker": "background/background.js"
@@ -91,6 +91,10 @@
     },
     {
       "resources": ["icons/*.png"],
+      "matches": ["<all_urls>"]
+    },
+    {
+      "resources": ["fonts/*"],
       "matches": ["<all_urls>"]
     }
   ],

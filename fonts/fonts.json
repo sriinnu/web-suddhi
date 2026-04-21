@@ -1,0 +1,50 @@
+[
+  {
+    "name": "JetBrains Mono",
+    "file": "JetBrainsMono-Regular.woff2",
+    "weight": 400,
+    "style": "normal"
+  },
+  {
+    "name": "JetBrains Mono",
+    "file": "JetBrainsMono-Bold.woff2",
+    "weight": 700,
+    "style": "normal"
+  },
+  {
+    "name": "Inter",
+    "file": "Inter-Regular.woff2",
+    "weight": 400,
+    "style": "normal"
+  },
+  {
+    "name": "Inter",
+    "file": "Inter-Bold.woff2",
+    "weight": 700,
+    "style": "normal"
+  },
+  {
+    "name": "Fira Code",
+    "file": "FiraCode-Regular.woff2",
+    "weight": 400,
+    "style": "normal"
+  },
+  {
+    "name": "Fira Code",
+    "file": "FiraCode-Bold.woff2",
+    "weight": 700,
+    "style": "normal"
+  },
+  {
+    "name": "Space Grotesk",
+    "file": "SpaceGrotesk-Regular.woff2",
+    "weight": 400,
+    "style": "normal"
+  },
+  {
+    "name": "Space Grotesk",
+    "file": "SpaceGrotesk-Bold.woff2",
+    "weight": 700,
+    "style": "normal"
+  }
+]
