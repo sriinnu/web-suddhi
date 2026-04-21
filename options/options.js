@@ -1174,7 +1174,7 @@
   function setupEventListeners() {
     // Theme toggle
     if (elements.themeToggle) {
-      elements.themeToggle.addEventListener('click', async () => {
+      elements.themeToggle?.addEventListener('click', async () => {
         const newTheme = getQuickToggleTheme(getActiveTheme());
         applyTheme(newTheme);
         updateThemeButtons(newTheme);
@@ -1183,7 +1183,7 @@
     }
 
     // Toggle protection
-    elements.enableProtection.addEventListener('change', async () => {
+    elements.enableProtection?.addEventListener('change', async () => {
       const enabled = elements.enableProtection.checked;
       await setStorage({ enabled });
       try {
@@ -1192,7 +1192,7 @@
     });
 
     // Toggle paywall
-    elements.enablePaywall.addEventListener('change', async () => {
+    elements.enablePaywall?.addEventListener('change', async () => {
       const enabled = elements.enablePaywall.checked;
       await setStorage({ paywallEnabled: enabled });
       try {
@@ -1201,7 +1201,7 @@
     });
 
     // Toggle network blocking
-    elements.enableNetworkBlocking.addEventListener('change', async () => {
+    elements.enableNetworkBlocking?.addEventListener('change', async () => {
       const enabled = elements.enableNetworkBlocking.checked;
       await setStorage({ networkBlockingEnabled: enabled });
       try {
@@ -1210,7 +1210,7 @@
     });
 
     // Toggle URL cleaning
-    elements.enableUrlCleaning.addEventListener('change', async () => {
+    elements.enableUrlCleaning?.addEventListener('change', async () => {
       const enabled = elements.enableUrlCleaning.checked;
       await setStorage({ urlCleaningEnabled: enabled });
       try {
@@ -1219,7 +1219,7 @@
     });
 
     // Toggle cookie consent
-    elements.enableCookieConsent.addEventListener('change', async () => {
+    elements.enableCookieConsent?.addEventListener('change', async () => {
       const enabled = elements.enableCookieConsent.checked;
       try {
         await sendMessage({ type: 'TOGGLE_COOKIE_CONSENT', enabled });
@@ -1228,7 +1228,7 @@
     });
 
     // Toggle annoyance blocking
-    elements.enableAnnoyanceBlocking.addEventListener('change', async () => {
+    elements.enableAnnoyanceBlocking?.addEventListener('change', async () => {
       const enabled = elements.enableAnnoyanceBlocking.checked;
       try {
         await sendMessage({ type: 'TOGGLE_ANNOYANCE_BLOCKING', enabled });
@@ -1238,7 +1238,7 @@
 
     // Toggle social blocking
     if (elements.enableSocialBlocking) {
-      elements.enableSocialBlocking.addEventListener('change', async () => {
+      elements.enableSocialBlocking?.addEventListener('change', async () => {
         const enabled = elements.enableSocialBlocking.checked;
         await setStorage({ socialBlockingEnabled: enabled });
         try {
@@ -1248,7 +1248,7 @@
     }
 
     // Toggle ping protection
-    elements.enablePingProtection.addEventListener('change', async () => {
+    elements.enablePingProtection?.addEventListener('change', async () => {
       const enabled = elements.enablePingProtection.checked;
       await setStorage({ pingProtectionEnabled: enabled });
       try {
@@ -1257,7 +1257,7 @@
     });
 
     // Toggle referrer stripping
-    elements.enableReferrerStripping.addEventListener('change', async () => {
+    elements.enableReferrerStripping?.addEventListener('change', async () => {
       const enabled = elements.enableReferrerStripping.checked;
       await setStorage({ referrerStrippingEnabled: enabled });
       try {
@@ -1266,7 +1266,7 @@
     });
 
     // Toggle WebRTC protection
-    elements.enableWebRTCProtection.addEventListener('change', async () => {
+    elements.enableWebRTCProtection?.addEventListener('change', async () => {
       const enabled = elements.enableWebRTCProtection.checked;
       await setStorage({ webrtcProtectionEnabled: enabled });
       try {
@@ -1276,7 +1276,7 @@
 
     // Toggle phishing protection
     if (elements.enablePhishingProtection) {
-      elements.enablePhishingProtection.addEventListener('change', async () => {
+      elements.enablePhishingProtection?.addEventListener('change', async () => {
         const enabled = elements.enablePhishingProtection.checked;
         await setStorage({ phishingProtectionEnabled: enabled });
         try {
@@ -1287,7 +1287,7 @@
 
     // Toggle telemetry blocking
     if (elements.enableTelemetryBlocking) {
-      elements.enableTelemetryBlocking.addEventListener('change', async () => {
+      elements.enableTelemetryBlocking?.addEventListener('change', async () => {
         const enabled = elements.enableTelemetryBlocking.checked;
         await setStorage({ telemetryBlockingEnabled: enabled });
         try {
@@ -1299,7 +1299,7 @@
 
     // Toggle third-party cookie blocking
     if (elements.enableThirdPartyCookieBlocking) {
-      elements.enableThirdPartyCookieBlocking.addEventListener('change', async () => {
+      elements.enableThirdPartyCookieBlocking?.addEventListener('change', async () => {
         const enabled = elements.enableThirdPartyCookieBlocking.checked;
         await setStorage({ thirdPartyCookieBlockingEnabled: enabled });
         try {
@@ -1419,7 +1419,7 @@
 
     // Toggle sync settings
     if (elements.enableSync) {
-      elements.enableSync.addEventListener('change', async () => {
+      elements.enableSync?.addEventListener('change', async () => {
         const enabled = elements.enableSync.checked;
         if (!supportsSyncStorage()) {
           elements.enableSync.checked = false;
@@ -1443,13 +1443,13 @@
 
     // Toast duration slider
     if (elements.toastDuration) {
-      elements.toastDuration.addEventListener('input', () => {
+      elements.toastDuration?.addEventListener('input', () => {
         const val = elements.toastDuration.value;
         if (elements.toastDurationValue) {
           elements.toastDurationValue.textContent = val + 's';
         }
       });
-      elements.toastDuration.addEventListener('change', async () => {
+      elements.toastDuration?.addEventListener('change', async () => {
         const val = parseInt(elements.toastDuration.value, 10);
         await setStorage({ toastDuration: val });
       });
@@ -1575,7 +1575,7 @@
     sections.forEach(section => observer.observe(section));
 
     // Request log controls
-    elements.enableLogging.addEventListener('change', async () => {
+    elements.enableLogging?.addEventListener('change', async () => {
       loggingEnabled = elements.enableLogging.checked;
       // Persist the setting to storage
       await setStorage({ loggingEnabled });
@@ -1586,7 +1586,7 @@
       }
     });
 
-    elements.clearLogBtn.addEventListener('click', async () => {
+    elements.clearLogBtn?.addEventListener('click', async () => {
       try {
         await sendMessage({ type: 'CLEAR_REQUEST_LOG' });
         renderRequestLog([]);
@@ -1612,7 +1612,7 @@
     });
 
     // Add filter subscription
-    elements.addSubscriptionBtn.addEventListener('click', async () => {
+    elements.addSubscriptionBtn?.addEventListener('click', async () => {
       const name = elements.subscriptionNameInput.value.trim();
       const url = elements.subscriptionUrlInput.value.trim();
       if (!url) {
@@ -1635,7 +1635,7 @@
     });
 
     // Update all filter lists
-    elements.updateAllFiltersBtn.addEventListener('click', async () => {
+    elements.updateAllFiltersBtn?.addEventListener('click', async () => {
       try {
         await sendMessage({ type: 'UPDATE_ALL_FILTER_SUBSCRIPTIONS' });
         showStatus('All filter lists updated', 'success');
@@ -1646,7 +1646,7 @@
     });
 
     // Add site to whitelist
-    elements.addSiteBtn.addEventListener('click', async () => {
+    elements.addSiteBtn?.addEventListener('click', async () => {
       const site = elements.siteInput.value.trim().toLowerCase();
       if (!site) return;
 
@@ -1669,14 +1669,14 @@
     });
 
     // Enter key for adding site
-    elements.siteInput.addEventListener('keydown', (e) => {
+    elements.siteInput?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         elements.addSiteBtn.click();
       }
     });
 
     // Reset stats
-    elements.resetStatsBtn.addEventListener('click', async () => {
+    elements.resetStatsBtn?.addEventListener('click', async () => {
       if (confirm('Are you sure you want to reset all statistics?')) {
         try {
           await sendMessage({ type: 'RESET_STATS' });
@@ -1747,7 +1747,7 @@
     });
 
     // Export rules
-    elements.exportBtn.addEventListener('click', async () => {
+    elements.exportBtn?.addEventListener('click', async () => {
       try {
         const response = await sendMessage({ type: 'EXPORT_RULES' });
         if (response?.success && response.data) {
@@ -1768,12 +1768,12 @@
     });
 
     // Import rules - trigger file picker
-    elements.importBtn.addEventListener('click', () => {
+    elements.importBtn?.addEventListener('click', () => {
       elements.importFile.click();
     });
 
     // Handle file selection
-    elements.importFile.addEventListener('change', async (e) => {
+    elements.importFile?.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
