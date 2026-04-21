@@ -349,20 +349,20 @@
 
       const text = await response.text();
 
-      // Limit response size (2MB max)
-      if (text.length > 2 * 1024 * 1024) {
-        throw new Error('Filter list too large (max 2MB)');
+      // Limit response size (10MB max)
+      if (text.length > 10 * 1024 * 1024) {
+        throw new Error('Filter list too large (max 10MB)');
       }
 
-      // Limit line count (50,000 lines max)
+      // Limit line count (200,000 lines max)
       const lines = text.split('\n');
-      if (lines.length > 50000) {
-        throw new Error('Filter list has too many lines (max 50,000)');
+      if (lines.length > 200000) {
+        throw new Error('Filter list has too many lines (max 200,000)');
       }
 
       // Parse with timeout (5 seconds)
       const parsePromise = new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Filter parsing timed out')), 5000);
+        const timeout = setTimeout(() => reject(new Error('Filter parsing timed out')), 30000);
         try {
           const domains = parseABPFilterList(text);
           clearTimeout(timeout);
@@ -375,9 +375,9 @@
 
       const domains = await parsePromise;
 
-      // Limit domain count (10,000 domains max)
-      if (domains.length > 10000) {
-        throw new Error('Filter list has too many rules (max 10,000)');
+      // Limit domain count (100,000 domains max)
+      if (domains.length > 100000) {
+        throw new Error('Filter list has too many rules (max 100,000)');
       }
 
       sub.ruleCount = domains.length;

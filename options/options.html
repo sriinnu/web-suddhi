@@ -4,9 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WebSuddhi - Settings</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../icons/icon32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="../icons/icon16.png">
   <link rel="stylesheet" href="../fonts/fonts.css">
   <link rel="stylesheet" href="../shared/themes.css">
   <link rel="stylesheet" href="options.css">
+  <script src="../shared/theme-loader.js"></script>
 </head>
 <body>
   <div class="app-layout">
@@ -16,7 +19,7 @@
         <img src="../icons/icon48.png" alt="WebSuddhi" class="logo">
         <div class="brand">
           <h1>WebSuddhi</h1>
-          <span class="version">v2.1.0</span>
+          <span class="version">v2.2.0</span>
         </div>
         <button id="themeToggle" class="theme-toggle" title="Toggle dark mode">
           <svg class="sun-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -66,6 +69,12 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
           </svg>
           <span>Activity Log</span>
+        </a>
+        <a href="#support" class="nav-item" data-section="support">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"/>
+          </svg>
+          <span>Support</span>
         </a>
       </nav>
 
@@ -225,6 +234,106 @@
               </span>
               <span class="range-value" id="toastDurationValue">3s</span>
               <input type="range" id="toastDuration" min="1" max="10" step="1" value="3">
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Appearance</h3>
+          <div class="setting">
+            <div class="setting-text" style="margin-bottom: 14px;">
+              <span class="setting-title">Color Theme</span>
+              <span class="setting-desc">Choose a palette for the entire extension</span>
+            </div>
+            <div class="theme-grid" id="themeGrid">
+              <button class="theme-card active" data-theme="light" title="Light">
+                <div class="theme-preview">
+                  <span class="swatch" style="background:#F7F4D5"></span>
+                  <span class="swatch" style="background:#105666"></span>
+                  <span class="swatch" style="background:#0A3323"></span>
+                  <span class="swatch" style="background:#D3968C"></span>
+                </div>
+                <span class="theme-card-name">Light</span>
+              </button>
+              <button class="theme-card" data-theme="dark" title="Dark">
+                <div class="theme-preview">
+                  <span class="swatch" style="background:#0f1f1a"></span>
+                  <span class="swatch" style="background:#1a8a9e"></span>
+                  <span class="swatch" style="background:#e8e2c4"></span>
+                  <span class="swatch" style="background:#a3b87a"></span>
+                </div>
+                <span class="theme-card-name">Dark</span>
+              </button>
+              <button class="theme-card" data-theme="ocean" title="Ocean">
+                <div class="theme-preview">
+                  <span class="swatch" style="background:#0b1929"></span>
+                  <span class="swatch" style="background:#00bcd4"></span>
+                  <span class="swatch" style="background:#e0ecf4"></span>
+                  <span class="swatch" style="background:#4db6ac"></span>
+                </div>
+                <span class="theme-card-name">Ocean</span>
+              </button>
+              <button class="theme-card" data-theme="midnight" title="Midnight">
+                <div class="theme-preview">
+                  <span class="swatch" style="background:#09090f"></span>
+                  <span class="swatch" style="background:#7c4dff"></span>
+                  <span class="swatch" style="background:#e8e6f0"></span>
+                  <span class="swatch" style="background:#536dfe"></span>
+                </div>
+                <span class="theme-card-name">Midnight</span>
+              </button>
+              <button class="theme-card" data-theme="sunset" title="Sunset">
+                <div class="theme-preview">
+                  <span class="swatch" style="background:#fdf5ed"></span>
+                  <span class="swatch" style="background:#e65100"></span>
+                  <span class="swatch" style="background:#3e2723"></span>
+                  <span class="swatch" style="background:#f9a825"></span>
+                </div>
+                <span class="theme-card-name">Sunset</span>
+              </button>
+              <button class="theme-card" data-theme="forest" title="Forest">
+                <div class="theme-preview">
+                  <span class="swatch" style="background:#0d1f0d"></span>
+                  <span class="swatch" style="background:#4caf50"></span>
+                  <span class="swatch" style="background:#d4e8c4"></span>
+                  <span class="swatch" style="background:#81c784"></span>
+                </div>
+                <span class="theme-card-name">Forest</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="setting">
+            <div class="setting-text" style="margin-bottom: 10px;">
+              <span class="setting-title">Font Family</span>
+              <span class="setting-desc">Select a font for the entire UI. To add more fonts, place <code>.woff2</code> / <code>.ttf</code> / <code>.otf</code> files in the <code>fonts/</code> folder and add a corresponding entry to <code>fonts/fonts.json</code>.</span>
+            </div>
+            <select id="fontFamilySelect" class="select-input">
+              <option value="system">System Default</option>
+              <option value="mono">Monospace (SF Mono / Cascadia Code)</option>
+              <!-- Custom fonts from fonts/ folder are appended dynamically -->
+            </select>
+          </div>
+
+          <div class="setting">
+            <label class="range-label">
+              <span class="setting-text">
+                <span class="setting-title">Font Size</span>
+                <span class="setting-desc">Adjust the base font size for the extension UI</span>
+              </span>
+              <span class="range-value" id="fontSizeValue">14px</span>
+              <input type="range" id="fontSizeSlider" min="12" max="18" step="1" value="14">
+            </label>
+          </div>
+
+          <div class="setting">
+            <label class="range-label">
+              <span class="setting-text">
+                <span class="setting-title">Border Radius</span>
+                <span class="setting-desc">Roundness of cards, buttons, and UI elements</span>
+              </span>
+              <span class="range-value" id="borderRadiusValue">10px</span>
+              <input type="range" id="borderRadiusSlider" min="0" max="24" step="2" value="10">
             </label>
           </div>
         </div>
@@ -580,12 +689,72 @@
         </div>
       </section>
 
+      <!-- Support Section -->
+      <section class="section" id="support">
+        <div class="section-header">
+          <h2>Support WebSuddhi</h2>
+          <p class="section-desc">Help keep WebSuddhi free and open source</p>
+        </div>
+
+        <div class="card support-card">
+          <div class="support-hero">
+            <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"/>
+            </svg>
+            <p>If you find WebSuddhi useful, consider supporting its development.</p>
+          </div>
+
+          <div class="support-options">
+            <a href="https://buymeacoffee.com/sriinnu" target="_blank" rel="noopener noreferrer" class="support-option">
+              <span class="support-icon coffee">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M2 21h18v-2H2v2zM20 8h-2V5h2v3zm0-5H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-4 10c0 1.1-.9 2-2 2H8c-1.1 0-2-.9-2-2V5h10v8zm4-5h-2V5h2v3z"/></svg>
+              </span>
+              <div class="support-option-text">
+                <strong>Buy Me a Coffee</strong>
+                <span>A one-time gesture of appreciation</span>
+              </div>
+              <svg class="support-arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+            </a>
+            <a href="https://github.com/sponsors/sriinnu" target="_blank" rel="noopener noreferrer" class="support-option">
+              <span class="support-icon heart">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+              </span>
+              <div class="support-option-text">
+                <strong>GitHub Sponsors</strong>
+                <span>Become a recurring sponsor</span>
+              </div>
+              <svg class="support-arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+            </a>
+            <a href="https://github.com/sriinnu/web-suddhi" target="_blank" rel="noopener noreferrer" class="support-option">
+              <span class="support-icon star">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              </span>
+              <div class="support-option-text">
+                <strong>Star on GitHub</strong>
+                <span>Free and helps others discover us</span>
+              </div>
+              <svg class="support-arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+            </a>
+            <a href="https://github.com/sriinnu/web-suddhi/issues" target="_blank" rel="noopener noreferrer" class="support-option">
+              <span class="support-icon issue">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16h.01M12 8v4"/></svg>
+              </span>
+              <div class="support-option-text">
+                <strong>Report Issue / Feature Request</strong>
+                <span>Help improve WebSuddhi</span>
+              </div>
+              <svg class="support-arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+            </a>
+          </div>
+        </div>
+      </section>
+
       <!-- About Section -->
       <section class="section section-about">
         <div class="about-content">
           <img src="../icons/icon48.png" alt="WebSuddhi" class="about-logo">
           <div class="about-text">
-            <strong>WebSuddhi</strong> v2.1.0
+            <strong>WebSuddhi</strong> v2.2.0
             <p>Privacy-first ad blocker by <strong>Srinivas Pendela</strong></p>
           </div>
           <div class="about-links">

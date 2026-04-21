@@ -6,6 +6,7 @@
 
   // Logging helpers
   const logError = (...args) => {
+    console.error('[WebSuddhi]', ...args);
     if (self.WebSuddhi && self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
       self.WebSuddhi.utils.error(...args);
     } else {
@@ -240,19 +241,21 @@
   let logPollInterval = null;
 
   async function init() {
+    // Set up event listeners FIRST so UI is interactive even if data loading fails
+    setupEventListeners();
+
     try {
       await Promise.all([
-        loadSettings(),
-        loadTheme(),
-        loadRules(),
-        loadWhitelist(),
-        loadStats(),
-        loadFilterLists(),
-        loadRequestLog(),
-        loadPerformanceStats()
+        loadSettings().catch(err => logError('loadSettings failed:', err)),
+        loadTheme().catch(err => logError('loadTheme failed:', err)),
+        loadRules().catch(err => logError('loadRules failed:', err)),
+        loadWhitelist().catch(err => logError('loadWhitelist failed:', err)),
+        loadStats().catch(err => logError('loadStats failed:', err)),
+        loadFilterLists().catch(err => logError('loadFilterLists failed:', err)),
+        loadRequestLog().catch(err => logError('loadRequestLog failed:', err)),
+        loadPerformanceStats().catch(err => logError('loadPerformanceStats failed:', err))
       ]);
       applyCapabilityState();
-      setupEventListeners();
       // Only start polling if logging is enabled
       if (loggingEnabled) {
         startLogPolling();
@@ -348,11 +351,39 @@
     }
   }
 
+  const FONT_STACKS = {
+    system: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', Roboto, sans-serif",
+    mono: "'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Consolas', 'Liberation Mono', monospace"
+  };
+
   async function loadTheme() {
-    const storage = await getStorage(['theme']);
+    const storage = await getStorage(['theme', 'fontSize', 'fontFamily', 'borderRadius']);
     const theme = storage.theme || 'system';
     applyTheme(theme);
     updateThemeButtons(theme);
+    updateThemeOptionButtons(theme);
+
+    // Font size
+    const fontSize = storage.fontSize || 14;
+    document.documentElement.style.fontSize = fontSize + 'px';
+    const fontSizeSlider = document.getElementById('fontSizeSlider');
+    const fontSizeValue = document.getElementById('fontSizeValue');
+    if (fontSizeSlider) fontSizeSlider.value = fontSize;
+    if (fontSizeValue) fontSizeValue.textContent = fontSize + 'px';
+
+    // Font family
+    const fontFamily = storage.fontFamily || 'system';
+    applyFontFamily(fontFamily);
+    const fontFamilySelect = document.getElementById('fontFamilySelect');
+    if (fontFamilySelect) fontFamilySelect.value = fontFamily;
+
+    // Border radius
+    const borderRadius = typeof storage.borderRadius === 'number' ? storage.borderRadius : 10;
+    applyBorderRadius(borderRadius);
+    const borderRadiusSlider = document.getElementById('borderRadiusSlider');
+    const borderRadiusValue = document.getElementById('borderRadiusValue');
+    if (borderRadiusSlider) borderRadiusSlider.value = borderRadius;
+    if (borderRadiusValue) borderRadiusValue.textContent = borderRadius + 'px';
   }
 
   function applyCapabilityState() {
@@ -396,14 +427,93 @@
 
   function applyTheme(theme) {
     if (theme === 'system') {
-      document.documentElement.removeAttribute('data-theme');
+      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
     } else {
       document.documentElement.setAttribute('data-theme', theme);
+    }
+    document.documentElement.classList.add('theme-loaded');
+  }
+
+  function applyFontFamily(fontFamily) {
+    if (!fontFamily || fontFamily === 'system') {
+      document.documentElement.style.removeProperty('font-family');
+      document.documentElement.style.removeProperty('--font-active');
+      return;
+    }
+    var stack = FONT_STACKS[fontFamily];
+    if (!stack) {
+      // Custom font — name from fonts.json
+      stack = "'" + fontFamily + "', " + FONT_STACKS.system;
+    }
+    document.documentElement.style.setProperty('--font-active', stack);
+    document.documentElement.style.fontFamily = stack;
+  }
+
+  function applyBorderRadius(val) {
+    document.documentElement.style.setProperty('--radius-sm', Math.max(val - 4, 0) + 'px');
+    document.documentElement.style.setProperty('--radius-md', val + 'px');
+    document.documentElement.style.setProperty('--radius-lg', Math.min(val + 6, 30) + 'px');
+  }
+
+  async function loadCustomFonts(selectEl) {
+    try {
+      const url = api.runtime.getURL('fonts/fonts.json');
+      const resp = await fetch(url);
+      if (!resp.ok) return;
+      const fonts = await resp.json();
+
+      // Deduplicate font family names
+      const families = [...new Set(fonts.map(f => f.name))];
+
+      // Register @font-face for each entry
+      for (const entry of fonts) {
+        const fontUrl = api.runtime.getURL('fonts/' + entry.file);
+        // Check if file exists (fetch HEAD)
+        try {
+          const check = await fetch(fontUrl, { method: 'HEAD' });
+          if (!check.ok) continue;
+        } catch (_) { continue; }
+
+        const face = new FontFace(entry.name, 'url(' + fontUrl + ')', {
+          weight: String(entry.weight || 400),
+          style: entry.style || 'normal'
+        });
+        try {
+          await face.load();
+          document.fonts.add(face);
+        } catch (_) { /* font file missing or corrupt — skip */ }
+      }
+
+      // Add available families to select
+      for (const name of families) {
+        // Only add if at least one face loaded
+        if (document.fonts.check('12px "' + name + '"')) {
+          const opt = document.createElement('option');
+          opt.value = name;
+          opt.textContent = name;
+          selectEl.appendChild(opt);
+        }
+      }
+
+      // Restore saved selection
+      const storage = await getStorage(['fontFamily']);
+      if (storage.fontFamily && selectEl) {
+        selectEl.value = storage.fontFamily;
+      }
+    } catch (_) {
+      // fonts.json not found or invalid — no custom fonts
     }
   }
 
   function updateThemeButtons(activeTheme) {
     document.querySelectorAll('.theme-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.theme === activeTheme);
+    });
+  }
+
+  function updateThemeOptionButtons(activeTheme) {
+    document.querySelectorAll('.theme-card').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.theme === activeTheme);
     });
   }
@@ -1064,7 +1174,7 @@
   function setupEventListeners() {
     // Theme toggle
     if (elements.themeToggle) {
-      elements.themeToggle.addEventListener('click', async () => {
+      elements.themeToggle?.addEventListener('click', async () => {
         const newTheme = getQuickToggleTheme(getActiveTheme());
         applyTheme(newTheme);
         updateThemeButtons(newTheme);
@@ -1073,7 +1183,7 @@
     }
 
     // Toggle protection
-    elements.enableProtection.addEventListener('change', async () => {
+    elements.enableProtection?.addEventListener('change', async () => {
       const enabled = elements.enableProtection.checked;
       await setStorage({ enabled });
       try {
@@ -1082,7 +1192,7 @@
     });
 
     // Toggle paywall
-    elements.enablePaywall.addEventListener('change', async () => {
+    elements.enablePaywall?.addEventListener('change', async () => {
       const enabled = elements.enablePaywall.checked;
       await setStorage({ paywallEnabled: enabled });
       try {
@@ -1091,7 +1201,7 @@
     });
 
     // Toggle network blocking
-    elements.enableNetworkBlocking.addEventListener('change', async () => {
+    elements.enableNetworkBlocking?.addEventListener('change', async () => {
       const enabled = elements.enableNetworkBlocking.checked;
       await setStorage({ networkBlockingEnabled: enabled });
       try {
@@ -1100,7 +1210,7 @@
     });
 
     // Toggle URL cleaning
-    elements.enableUrlCleaning.addEventListener('change', async () => {
+    elements.enableUrlCleaning?.addEventListener('change', async () => {
       const enabled = elements.enableUrlCleaning.checked;
       await setStorage({ urlCleaningEnabled: enabled });
       try {
@@ -1109,7 +1219,7 @@
     });
 
     // Toggle cookie consent
-    elements.enableCookieConsent.addEventListener('change', async () => {
+    elements.enableCookieConsent?.addEventListener('change', async () => {
       const enabled = elements.enableCookieConsent.checked;
       try {
         await sendMessage({ type: 'TOGGLE_COOKIE_CONSENT', enabled });
@@ -1118,7 +1228,7 @@
     });
 
     // Toggle annoyance blocking
-    elements.enableAnnoyanceBlocking.addEventListener('change', async () => {
+    elements.enableAnnoyanceBlocking?.addEventListener('change', async () => {
       const enabled = elements.enableAnnoyanceBlocking.checked;
       try {
         await sendMessage({ type: 'TOGGLE_ANNOYANCE_BLOCKING', enabled });
@@ -1128,7 +1238,7 @@
 
     // Toggle social blocking
     if (elements.enableSocialBlocking) {
-      elements.enableSocialBlocking.addEventListener('change', async () => {
+      elements.enableSocialBlocking?.addEventListener('change', async () => {
         const enabled = elements.enableSocialBlocking.checked;
         await setStorage({ socialBlockingEnabled: enabled });
         try {
@@ -1138,7 +1248,7 @@
     }
 
     // Toggle ping protection
-    elements.enablePingProtection.addEventListener('change', async () => {
+    elements.enablePingProtection?.addEventListener('change', async () => {
       const enabled = elements.enablePingProtection.checked;
       await setStorage({ pingProtectionEnabled: enabled });
       try {
@@ -1147,7 +1257,7 @@
     });
 
     // Toggle referrer stripping
-    elements.enableReferrerStripping.addEventListener('change', async () => {
+    elements.enableReferrerStripping?.addEventListener('change', async () => {
       const enabled = elements.enableReferrerStripping.checked;
       await setStorage({ referrerStrippingEnabled: enabled });
       try {
@@ -1156,7 +1266,7 @@
     });
 
     // Toggle WebRTC protection
-    elements.enableWebRTCProtection.addEventListener('change', async () => {
+    elements.enableWebRTCProtection?.addEventListener('change', async () => {
       const enabled = elements.enableWebRTCProtection.checked;
       await setStorage({ webrtcProtectionEnabled: enabled });
       try {
@@ -1166,7 +1276,7 @@
 
     // Toggle phishing protection
     if (elements.enablePhishingProtection) {
-      elements.enablePhishingProtection.addEventListener('change', async () => {
+      elements.enablePhishingProtection?.addEventListener('change', async () => {
         const enabled = elements.enablePhishingProtection.checked;
         await setStorage({ phishingProtectionEnabled: enabled });
         try {
@@ -1177,7 +1287,7 @@
 
     // Toggle telemetry blocking
     if (elements.enableTelemetryBlocking) {
-      elements.enableTelemetryBlocking.addEventListener('change', async () => {
+      elements.enableTelemetryBlocking?.addEventListener('change', async () => {
         const enabled = elements.enableTelemetryBlocking.checked;
         await setStorage({ telemetryBlockingEnabled: enabled });
         try {
@@ -1189,7 +1299,7 @@
 
     // Toggle third-party cookie blocking
     if (elements.enableThirdPartyCookieBlocking) {
-      elements.enableThirdPartyCookieBlocking.addEventListener('change', async () => {
+      elements.enableThirdPartyCookieBlocking?.addEventListener('change', async () => {
         const enabled = elements.enableThirdPartyCookieBlocking.checked;
         await setStorage({ thirdPartyCookieBlockingEnabled: enabled });
         try {
@@ -1309,7 +1419,7 @@
 
     // Toggle sync settings
     if (elements.enableSync) {
-      elements.enableSync.addEventListener('change', async () => {
+      elements.enableSync?.addEventListener('change', async () => {
         const enabled = elements.enableSync.checked;
         if (!supportsSyncStorage()) {
           elements.enableSync.checked = false;
@@ -1333,27 +1443,102 @@
 
     // Toast duration slider
     if (elements.toastDuration) {
-      elements.toastDuration.addEventListener('input', () => {
+      elements.toastDuration?.addEventListener('input', () => {
         const val = elements.toastDuration.value;
         if (elements.toastDurationValue) {
           elements.toastDurationValue.textContent = val + 's';
         }
       });
-      elements.toastDuration.addEventListener('change', async () => {
+      elements.toastDuration?.addEventListener('change', async () => {
         const val = parseInt(elements.toastDuration.value, 10);
         await setStorage({ toastDuration: val });
       });
     }
 
-    // Theme buttons
+    // Theme buttons (sidebar footer)
     document.querySelectorAll('.theme-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         const theme = btn.dataset.theme;
         applyTheme(theme);
         updateThemeButtons(theme);
+        updateThemeOptionButtons(theme);
         await setStorage({ theme });
       });
     });
+
+    // Theme grid cards (in General > Appearance)
+    document.querySelectorAll('.theme-card').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const theme = btn.dataset.theme;
+        applyTheme(theme);
+        updateThemeButtons(theme);
+        updateThemeOptionButtons(theme);
+        await setStorage({ theme });
+      });
+    });
+
+    // Font family select
+    const fontFamilySelect = document.getElementById('fontFamilySelect');
+    if (fontFamilySelect) {
+      // Load custom fonts from fonts.json manifest
+      loadCustomFonts(fontFamilySelect);
+
+      fontFamilySelect.addEventListener('change', async () => {
+        const val = fontFamilySelect.value;
+        applyFontFamily(val);
+        await setStorage({ fontFamily: val });
+      });
+    }
+
+    // Font size slider
+    const fontSizeSlider = document.getElementById('fontSizeSlider');
+    const fontSizeValue = document.getElementById('fontSizeValue');
+    if (fontSizeSlider) {
+      fontSizeSlider.addEventListener('input', () => {
+        const val = fontSizeSlider.value;
+        if (fontSizeValue) fontSizeValue.textContent = val + 'px';
+        document.documentElement.style.fontSize = val + 'px';
+      });
+      fontSizeSlider.addEventListener('change', async () => {
+        await setStorage({ fontSize: parseInt(fontSizeSlider.value, 10) });
+      });
+    }
+
+    // Border radius slider
+    const borderRadiusSlider = document.getElementById('borderRadiusSlider');
+    const borderRadiusValue = document.getElementById('borderRadiusValue');
+    if (borderRadiusSlider) {
+      borderRadiusSlider.addEventListener('input', () => {
+        const val = parseInt(borderRadiusSlider.value, 10);
+        if (borderRadiusValue) borderRadiusValue.textContent = val + 'px';
+        applyBorderRadius(val);
+      });
+      borderRadiusSlider.addEventListener('change', async () => {
+        await setStorage({ borderRadius: parseInt(borderRadiusSlider.value, 10) });
+      });
+    }
+
+    // Mobile sidebar toggle
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+    function closeSidebar() {
+      if (sidebar) sidebar.classList.remove('open');
+      if (sidebarOverlay) sidebarOverlay.classList.remove('active');
+      if (sidebarToggle) sidebarToggle.setAttribute('aria-expanded', 'false');
+    }
+
+    if (sidebarToggle) {
+      sidebarToggle.addEventListener('click', () => {
+        const isOpen = sidebar?.classList.toggle('open');
+        if (sidebarOverlay) sidebarOverlay.classList.toggle('active', isOpen);
+        sidebarToggle.setAttribute('aria-expanded', String(!!isOpen));
+      });
+    }
+    if (sidebarOverlay) {
+      sidebarOverlay.addEventListener('click', closeSidebar);
+    }
 
     // Sidebar navigation
     document.querySelectorAll('.nav-item').forEach(item => {
@@ -1390,7 +1575,7 @@
     sections.forEach(section => observer.observe(section));
 
     // Request log controls
-    elements.enableLogging.addEventListener('change', async () => {
+    elements.enableLogging?.addEventListener('change', async () => {
       loggingEnabled = elements.enableLogging.checked;
       // Persist the setting to storage
       await setStorage({ loggingEnabled });
@@ -1401,7 +1586,7 @@
       }
     });
 
-    elements.clearLogBtn.addEventListener('click', async () => {
+    elements.clearLogBtn?.addEventListener('click', async () => {
       try {
         await sendMessage({ type: 'CLEAR_REQUEST_LOG' });
         renderRequestLog([]);
@@ -1427,7 +1612,7 @@
     });
 
     // Add filter subscription
-    elements.addSubscriptionBtn.addEventListener('click', async () => {
+    elements.addSubscriptionBtn?.addEventListener('click', async () => {
       const name = elements.subscriptionNameInput.value.trim();
       const url = elements.subscriptionUrlInput.value.trim();
       if (!url) {
@@ -1450,7 +1635,7 @@
     });
 
     // Update all filter lists
-    elements.updateAllFiltersBtn.addEventListener('click', async () => {
+    elements.updateAllFiltersBtn?.addEventListener('click', async () => {
       try {
         await sendMessage({ type: 'UPDATE_ALL_FILTER_SUBSCRIPTIONS' });
         showStatus('All filter lists updated', 'success');
@@ -1461,7 +1646,7 @@
     });
 
     // Add site to whitelist
-    elements.addSiteBtn.addEventListener('click', async () => {
+    elements.addSiteBtn?.addEventListener('click', async () => {
       const site = elements.siteInput.value.trim().toLowerCase();
       if (!site) return;
 
@@ -1484,14 +1669,14 @@
     });
 
     // Enter key for adding site
-    elements.siteInput.addEventListener('keydown', (e) => {
+    elements.siteInput?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         elements.addSiteBtn.click();
       }
     });
 
     // Reset stats
-    elements.resetStatsBtn.addEventListener('click', async () => {
+    elements.resetStatsBtn?.addEventListener('click', async () => {
       if (confirm('Are you sure you want to reset all statistics?')) {
         try {
           await sendMessage({ type: 'RESET_STATS' });
@@ -1562,7 +1747,7 @@
     });
 
     // Export rules
-    elements.exportBtn.addEventListener('click', async () => {
+    elements.exportBtn?.addEventListener('click', async () => {
       try {
         const response = await sendMessage({ type: 'EXPORT_RULES' });
         if (response?.success && response.data) {
@@ -1583,12 +1768,12 @@
     });
 
     // Import rules - trigger file picker
-    elements.importBtn.addEventListener('click', () => {
+    elements.importBtn?.addEventListener('click', () => {
       elements.importFile.click();
     });
 
     // Handle file selection
-    elements.importFile.addEventListener('change', async (e) => {
+    elements.importFile?.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 

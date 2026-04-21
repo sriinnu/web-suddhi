@@ -1,4 +1,4 @@
-// WebSuddhi v2.1.0 - iOS Safari Content Script
+// WebSuddhi v2.2.0 - iOS Safari Content Script
 // Ad blocking, paywall removal, cookie consent, annoyance blocking
 (function() {
   'use strict';
