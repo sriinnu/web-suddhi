@@ -20,8 +20,7 @@
     // Theme
     var theme = result.theme || 'system';
     if (theme === 'system') {
-      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+      document.documentElement.removeAttribute('data-theme');
     } else {
       document.documentElement.setAttribute('data-theme', theme);
     }
