@@ -1724,7 +1724,12 @@ try {
       // Avoid calling module init functions here to prevent duplicate listeners/timers.
 
       // Set up listeners
-      api.runtime.onMessage.addListener(handleMessage);
+      api.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        handleMessage(message, sender, sendResponse)
+          .then(result => sendResponse(result))
+          .catch(err => sendResponse({ success: false, error: err.message }));
+        return true; // Keep port open for async response
+      });
       api.runtime.onUpdateCheckStatus && api.runtime.onUpdateCheckStatus.addListener((status) => {
         if (status === 'update_available') {
           log('Update available');
