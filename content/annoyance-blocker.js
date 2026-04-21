@@ -8,6 +8,8 @@
   const logError = (...args) => {
     if (self.WebSuddhi && self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
       self.WebSuddhi.utils.error(...args);
+    } else {
+      console.error('[WebSuddhi]', ...args);
     }
   };
 
@@ -242,6 +244,45 @@
     return self.WebSuddhi.utils.getStorage(keys);
   }
 
+  async function refreshState() {
+    try {
+      const storage = await getStorage(['annoyanceBlockingEnabled', 'whitelistedSites']);
+      const nextEnabled = storage.annoyanceBlockingEnabled !== false;
+      const hostname = getCurrentHostname();
+      const whitelisted = (storage.whitelistedSites || []).some(site => {
+        const normalized = site.replace(/^www\./, '');
+        return hostname === normalized || hostname.endsWith('.' + normalized);
+      });
+
+      if (nextEnabled === enabled && !whitelisted && nextEnabled) {
+        return;
+      }
+
+      enabled = nextEnabled;
+
+      if (!enabled || whitelisted) {
+        if (observer) {
+          observer.disconnect();
+          observer = null;
+        }
+        return;
+      }
+
+      applyBlocking();
+      setupObserver();
+    } catch (err) {
+      logError('annoyance blocker refresh error:', err);
+    }
+  }
+
+  function getCurrentHostname() {
+    try {
+      return window.location.hostname.replace(/^www\./, '');
+    } catch (e) {
+      return '';
+    }
+  }
+
   // ============================================
   // MESSAGE LISTENER
   // ============================================
@@ -250,8 +291,24 @@
       if (message.type === 'TOGGLE_ANNOYANCE_BLOCKING') {
         enabled = message.enabled;
         if (enabled) {
+          if (!observer) setupObserver();
           applyBlocking();
+        } else if (observer) {
+          observer.disconnect();
+          observer = null;
         }
+        sendResponse({ success: true });
+      } else if (message.type === 'SETTINGS_CHANGED') {
+        const relevantKeys = message?.changed || [];
+        const shouldRefresh = !Array.isArray(relevantKeys) || relevantKeys.length === 0 ||
+          relevantKeys.some(key => key === 'annoyanceBlockingEnabled' || key === 'whitelistedSites');
+
+        if (!shouldRefresh) {
+          sendResponse({ success: true });
+          return;
+        }
+
+        refreshState();
         sendResponse({ success: true });
       }
       return false;

@@ -9,6 +9,8 @@
     console.error('[WebSuddhi]', ...args);
     if (self.WebSuddhi && self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
       self.WebSuddhi.utils.error(...args);
+    } else {
+      console.error('[WebSuddhi]', ...args);
     }
   };
 
@@ -31,6 +33,7 @@
     enableUrlCleaning: document.getElementById('enableUrlCleaning'),
     enableCookieConsent: document.getElementById('enableCookieConsent'),
     enableAnnoyanceBlocking: document.getElementById('enableAnnoyanceBlocking'),
+    enableSocialBlocking: document.getElementById('enableSocialBlocking'),
     enablePingProtection: document.getElementById('enablePingProtection'),
     enableReferrerStripping: document.getElementById('enableReferrerStripping'),
     enableWebRTCProtection: document.getElementById('enableWebRTCProtection'),
@@ -38,6 +41,7 @@
     enableTelemetryBlocking: document.getElementById('enableTelemetryBlocking'),
     enableThirdPartyCookieBlocking: document.getElementById('enableThirdPartyCookieBlocking'),
     enableSync: document.getElementById('enableSync'),
+    syncDescription: document.getElementById('syncDescription'),
     languageFilters: document.getElementById('languageFilters'),
     // Rules
     rulesList: document.getElementById('rulesList'),
@@ -60,8 +64,11 @@
     // Import/Export
     themeToggle: document.getElementById('themeToggle'),
     exportBtn: document.getElementById('exportBtn'),
+    exportBackupBtn: document.getElementById('exportBackupBtn'),
     importBtn: document.getElementById('importBtn'),
+    importBackupBtn: document.getElementById('importBackupBtn'),
     importFile: document.getElementById('importFile'),
+    importBackupFile: document.getElementById('importBackupFile'),
     importExportStatus: document.getElementById('importExportStatus'),
     // Filter lists
     filterListItems: document.getElementById('filterListItems'),
@@ -84,34 +91,59 @@
     toastContainer: document.getElementById('toastContainer')
   };
 
+  const QUICK_THEME_TOGGLE = {
+    light: 'dark',
+    dark: 'light',
+    forest: 'forest-dark',
+    'forest-dark': 'forest',
+    coastal: 'coastal-dark',
+    'coastal-dark': 'coastal'
+  };
+
   // ============================================
   // CROSS-BROWSER API
   // ============================================
   function getStorage(keys) {
+    const sharedGetStorage = self.WebSuddhi?.utils?.getStorage;
+    if (sharedGetStorage) {
+      return sharedGetStorage(keys);
+    }
+
     return new Promise((resolve, reject) => {
-      const result = api.storage.local.get(keys);
-      if (result && typeof result.then === 'function') {
-        result.then(resolve).catch(reject);
-      } else {
-        api.storage.local.get(keys, (data) => {
-          if (api.runtime.lastError) reject(api.runtime.lastError);
-          else resolve(data);
-        });
+      if (api.storage) {
+        if (typeof browser !== 'undefined' && browser.runtime) {
+          api.storage.local.get(keys).then(resolve).catch(reject);
+        } else {
+          api.storage.local.get(keys, (data) => {
+            if (api.runtime.lastError) reject(api.runtime.lastError);
+            else resolve(data);
+          });
+        }
+        return;
       }
+      reject(new Error('No storage API'));
     });
   }
 
   function setStorage(data) {
+    const sharedSetStorage = self.WebSuddhi?.utils?.setStorage;
+    if (sharedSetStorage) {
+      return sharedSetStorage(data);
+    }
+
     return new Promise((resolve, reject) => {
-      const result = api.storage.local.set(data);
-      if (result && typeof result.then === 'function') {
-        result.then(resolve).catch(reject);
-      } else {
-        api.storage.local.set(data, () => {
-          if (api.runtime.lastError) reject(api.runtime.lastError);
-          else resolve();
-        });
+      if (api.storage) {
+        if (typeof browser !== 'undefined' && browser.runtime) {
+          api.storage.local.set(data).then(resolve).catch(reject);
+        } else {
+          api.storage.local.set(data, () => {
+            if (api.runtime.lastError) reject(api.runtime.lastError);
+            else resolve();
+          });
+        }
+        return;
       }
+      reject(new Error('No storage API'));
     });
   }
 
@@ -161,6 +193,38 @@
     return [];
   }
 
+  function supportsSyncStorage() {
+    return !!(
+      api.storage &&
+      api.storage.sync &&
+      typeof api.storage.sync.get === 'function' &&
+      typeof api.storage.sync.set === 'function'
+    );
+  }
+
+  function getEffectiveSystemTheme() {
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light';
+  }
+
+  function getActiveTheme() {
+    const activeThemeButton = document.querySelector('.theme-btn.active');
+    if (activeThemeButton?.dataset.theme) {
+      return activeThemeButton.dataset.theme;
+    }
+
+    return document.documentElement.getAttribute('data-theme') || 'system';
+  }
+
+  function getQuickToggleTheme(currentTheme) {
+    if (currentTheme === 'system') {
+      return getEffectiveSystemTheme() === 'dark' ? 'light' : 'dark';
+    }
+
+    return QUICK_THEME_TOGGLE[currentTheme] || 'dark';
+  }
+
   function getHistoryTotal(entry) {
     if (!entry) return 0;
     if (typeof entry.blocked === 'number') return entry.blocked;
@@ -191,6 +255,7 @@
         loadRequestLog().catch(err => logError('loadRequestLog failed:', err)),
         loadPerformanceStats().catch(err => logError('loadPerformanceStats failed:', err))
       ]);
+      applyCapabilityState();
       // Only start polling if logging is enabled
       if (loggingEnabled) {
         startLogPolling();
@@ -206,7 +271,7 @@
   async function loadSettings() {
     const storage = await getStorage([
       'enabled', 'paywallEnabled', 'networkBlockingEnabled', 'urlCleaningEnabled',
-      'cookieConsentEnabled', 'annoyanceBlockingEnabled',
+      'cookieConsentEnabled', 'annoyanceBlockingEnabled', 'socialBlockingEnabled',
       'pingProtectionEnabled', 'referrerStrippingEnabled', 'webrtcProtectionEnabled',
       'phishingProtectionEnabled', 'telemetryBlockingEnabled', 'thirdPartyCookieBlockingEnabled',
       'syncEnabled', 'enabledLanguageFilters', 'loggingEnabled', 'toastDuration'
@@ -223,6 +288,9 @@
     elements.enableUrlCleaning.checked = storage.urlCleaningEnabled !== false;
     elements.enableCookieConsent.checked = storage.cookieConsentEnabled !== false;
     elements.enableAnnoyanceBlocking.checked = storage.annoyanceBlockingEnabled !== false;
+    if (elements.enableSocialBlocking) {
+      elements.enableSocialBlocking.checked = storage.socialBlockingEnabled === true;
+    }
     elements.enablePingProtection.checked = storage.pingProtectionEnabled !== false;
     elements.enableReferrerStripping.checked = storage.referrerStrippingEnabled === true;
     elements.enableWebRTCProtection.checked = storage.webrtcProtectionEnabled === true;
@@ -316,6 +384,45 @@
     const borderRadiusValue = document.getElementById('borderRadiusValue');
     if (borderRadiusSlider) borderRadiusSlider.value = borderRadius;
     if (borderRadiusValue) borderRadiusValue.textContent = borderRadius + 'px';
+  }
+
+  function applyCapabilityState() {
+    if (!elements.enableSync) return;
+
+    const syncSupported = supportsSyncStorage();
+    elements.enableSync.disabled = !syncSupported;
+    if (!syncSupported) {
+      elements.enableSync.checked = false;
+    }
+
+    if (elements.syncDescription) {
+      elements.syncDescription.textContent = syncSupported
+        ? 'Sync rules and settings across devices'
+        : 'This browser does not expose extension sync storage, so settings stay local.';
+    }
+  }
+
+  function getImportExportApi() {
+    return self.WebSuddhi?.importExport || null;
+  }
+
+  async function refreshOptionState() {
+    await Promise.all([
+      loadSettings(),
+      loadTheme(),
+      loadRules(),
+      loadWhitelist(),
+      loadStats(),
+      loadFilterLists(),
+      loadRequestLog(),
+      loadPerformanceStats()
+    ]);
+    applyCapabilityState();
+    if (loggingEnabled) {
+      startLogPolling();
+    } else {
+      stopLogPolling();
+    }
   }
 
   function applyTheme(theme) {
@@ -502,6 +609,8 @@
   }
 
   function startLogPolling() {
+    stopLogPolling();
+
     // Poll every 2 seconds for new log entries
     logPollInterval = setInterval(async () => {
       if (loggingEnabled) {
@@ -1066,9 +1175,9 @@
     // Theme toggle
     if (elements.themeToggle) {
       elements.themeToggle.addEventListener('click', async () => {
-        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        const newTheme = isDark ? 'light' : 'dark';
+        const newTheme = getQuickToggleTheme(getActiveTheme());
         applyTheme(newTheme);
+        updateThemeButtons(newTheme);
         await setStorage({ theme: newTheme });
       });
     }
@@ -1112,20 +1221,31 @@
     // Toggle cookie consent
     elements.enableCookieConsent.addEventListener('change', async () => {
       const enabled = elements.enableCookieConsent.checked;
-      await setStorage({ cookieConsentEnabled: enabled });
       try {
         await sendMessage({ type: 'TOGGLE_COOKIE_CONSENT', enabled });
       } catch (e) {}
+      await setStorage({ cookieConsentEnabled: enabled });
     });
 
     // Toggle annoyance blocking
     elements.enableAnnoyanceBlocking.addEventListener('change', async () => {
       const enabled = elements.enableAnnoyanceBlocking.checked;
-      await setStorage({ annoyanceBlockingEnabled: enabled });
       try {
         await sendMessage({ type: 'TOGGLE_ANNOYANCE_BLOCKING', enabled });
       } catch (e) {}
+      await setStorage({ annoyanceBlockingEnabled: enabled });
     });
+
+    // Toggle social blocking
+    if (elements.enableSocialBlocking) {
+      elements.enableSocialBlocking.addEventListener('change', async () => {
+        const enabled = elements.enableSocialBlocking.checked;
+        await setStorage({ socialBlockingEnabled: enabled });
+        try {
+          await sendMessage({ type: 'TOGGLE_SOCIAL_BLOCKING', enabled });
+        } catch (e) {}
+      });
+    }
 
     // Toggle ping protection
     elements.enablePingProtection.addEventListener('change', async () => {
@@ -1301,6 +1421,11 @@
     if (elements.enableSync) {
       elements.enableSync.addEventListener('change', async () => {
         const enabled = elements.enableSync.checked;
+        if (!supportsSyncStorage()) {
+          elements.enableSync.checked = false;
+          showStatus('Sync storage is not available in this browser', 'error');
+          return;
+        }
         try {
           const response = await sendMessage({ type: 'TOGGLE_SYNC', enabled });
           if (response?.success) {
@@ -1568,6 +1693,59 @@
       }
     });
 
+    // Export full backup
+    elements.exportBackupBtn?.addEventListener('click', async () => {
+      const importExportApi = getImportExportApi();
+      if (!importExportApi) {
+        showStatus('Backup module is not available', 'error');
+        return;
+      }
+
+      try {
+        const result = await importExportApi.downloadExport(
+          'websuddhi-backup-' + new Date().toISOString().slice(0, 10) + '.json'
+        );
+        if (result?.success) {
+          showStatus('Full settings backup exported', 'success');
+        } else {
+          showStatus(result?.error || 'Failed to export backup', 'error');
+        }
+      } catch (err) {
+        showStatus('Failed to export backup', 'error');
+      }
+    });
+
+    // Import full backup - trigger file picker
+    elements.importBackupBtn?.addEventListener('click', () => {
+      elements.importBackupFile?.click();
+    });
+
+    elements.importBackupFile?.addEventListener('change', async (e) => {
+      const importExportApi = getImportExportApi();
+      const file = e.target.files[0];
+      if (!file) return;
+
+      if (!importExportApi) {
+        showStatus('Backup module is not available', 'error');
+        elements.importBackupFile.value = '';
+        return;
+      }
+
+      try {
+        const result = await importExportApi.uploadImport(file);
+        if (result?.success) {
+          await refreshOptionState();
+          showStatus('Imported full settings backup', 'success');
+        } else {
+          showStatus(result?.error || 'Backup import failed', 'error');
+        }
+      } catch (err) {
+        showStatus('Failed to parse backup file', 'error');
+      }
+
+      elements.importBackupFile.value = '';
+    });
+
     // Export rules
     elements.exportBtn.addEventListener('click', async () => {
       try {
@@ -1603,25 +1781,15 @@
         const text = await file.text();
         const data = JSON.parse(text);
 
-        const hasValidData = Array.isArray(data.blockedSelectors) ||
-                             Array.isArray(data.blockedDomains) ||
-                             Array.isArray(data.allowedDomains) ||
-                             Array.isArray(data.whitelistedSites);
-
-        if (!hasValidData) {
+        if (!data.blockedSelectors || !Array.isArray(data.blockedSelectors)) {
           showStatus('Invalid file format. Expected a WebSuddhi export file.', 'error');
           return;
         }
 
         const response = await sendMessage({ type: 'IMPORT_RULES', data });
         if (response?.success) {
-          const totalImported = (data.blockedSelectors?.length || 0) +
-                                (data.blockedDomains?.length || 0) +
-                                (data.allowedDomains?.length || 0) +
-                                (data.whitelistedSites?.length || 0);
-          showStatus('Imported ' + totalImported + ' entries. Total rules: ' + response.totalRules, 'success');
-          await loadRules();
-          await loadWhitelist();
+          showStatus('Imported ' + (data.blockedSelectors.length) + ' rules. Total: ' + response.totalRules, 'success');
+          await refreshOptionState();
         } else {
           showStatus(response?.error || 'Import failed', 'error');
         }
@@ -1639,8 +1807,7 @@
     elements.rateExtension?.addEventListener('click', (e) => {
       e.preventDefault();
       if (api.tabs) {
-        // Chrome Web Store review page (update this URL when published)
-        api.tabs.create({ url: 'https://github.com/sriinnu/web-suddhi' });
+        api.tabs.create({ url: GITHUB_URL + '/issues' });
       }
     });
 
@@ -1650,31 +1817,6 @@
         api.tabs.create({ url: GITHUB_URL });
       }
     });
-
-    // Share extension link
-    const shareExtension = document.getElementById('shareExtension');
-    if (shareExtension) {
-      shareExtension.addEventListener('click', (e) => {
-        e.preventDefault();
-        const shareUrl = 'https://github.com/sriinnu/web-suddhi';
-        if (navigator.share) {
-          navigator.share({
-            title: 'WebSuddhi - Privacy-first Ad Blocker',
-            text: 'Check out WebSuddhi, a free and open-source ad blocker!',
-            url: shareUrl
-          }).catch(() => {
-            // User cancelled or share failed, fallback to clipboard
-            navigator.clipboard.writeText(shareUrl).then(() => {
-              showToast('Link copied to clipboard!');
-            });
-          });
-        } else {
-          navigator.clipboard.writeText(shareUrl).then(() => {
-            showToast('Link copied to clipboard!');
-          });
-        }
-      });
-    }
   }
 
   // ============================================
@@ -1683,7 +1825,7 @@
   function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
-    return div.innerHTML;
+    return div.textContent;
   }
 
   function formatNumber(num) {

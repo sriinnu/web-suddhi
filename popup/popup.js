@@ -8,6 +8,8 @@
   const logError = (...args) => {
     if (self.WebSuddhi && self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
       self.WebSuddhi.utils.error(...args);
+    } else {
+      console.error('[WebSuddhi]', ...args);
     }
   };
 
@@ -67,6 +69,12 @@
     securityText: document.getElementById('securityText'),
     certProtocol: document.getElementById('certProtocol'),
     certType: document.getElementById('certType'),
+    phishingRiskSection: document.getElementById('phishingRiskSection'),
+    phishingRiskBadge: document.getElementById('phishingRiskBadge'),
+    phishingRiskText: document.getElementById('phishingRiskText'),
+    phishingRiskDetails: document.getElementById('phishingRiskDetails'),
+    copyDomainBtn: document.getElementById('copyDomainBtn'),
+    reportPhishingBtn: document.getElementById('reportPhishingBtn'),
     // Certificate owner elements
     certOwnerSection: document.getElementById('certOwnerSection'),
     certOwnerName: document.getElementById('certOwnerName'),
@@ -87,7 +95,8 @@
     whitelistBtn: document.getElementById('whitelistBtn'),
     blacklistBtn: document.getElementById('blacklistBtn'),
     statusBadge: document.getElementById('statusBadge'),
-    whitelistToggleBtn: document.getElementById('whitelistToggleBtn')
+    whitelistToggleBtn: document.getElementById('whitelistToggleBtn'),
+    themeSelect: document.getElementById('themeSelect')
   };
 
   // Cross-browser API
@@ -98,35 +107,82 @@
   let isZapMode = false;
   let currentSettings = {};
   let isWhitelisted = false;
+  let currentSecurityContext = null;
+
+  // ============================================
+  // THEME
+  // ============================================
+  async function loadPopupTheme() {
+    try {
+      const storage = await getStorage(['theme']);
+      const theme = storage.theme || 'system';
+      applyPopupTheme(theme);
+      syncThemeControl(theme);
+    } catch (e) {
+      // Default to system
+      syncThemeControl('system');
+    }
+  }
+
+  function applyPopupTheme(theme) {
+    const root = document.documentElement;
+    if (theme === 'system' || !theme) {
+      root.removeAttribute('data-theme');
+    } else {
+      root.setAttribute('data-theme', theme);
+    }
+  }
+
+  function syncThemeControl(theme) {
+    if (elements.themeSelect) {
+      elements.themeSelect.value = theme || 'system';
+    }
+  }
 
   // ============================================
   // CROSS-BROWSER API
   // ============================================
   function getStorage(keys) {
+    const sharedGetStorage = self.WebSuddhi?.utils?.getStorage;
+    if (sharedGetStorage) {
+      return sharedGetStorage(keys);
+    }
+
     return new Promise((resolve, reject) => {
-      const result = api.storage.local.get(keys);
-      if (result && typeof result.then === 'function') {
-        result.then(resolve).catch(reject);
-      } else {
-        api.storage.local.get(keys, (data) => {
-          if (api.runtime.lastError) reject(api.runtime.lastError);
-          else resolve(data);
-        });
+      if (api.storage) {
+        if (typeof browser !== 'undefined' && browser.runtime) {
+          api.storage.local.get(keys).then(resolve).catch(reject);
+        } else {
+          api.storage.local.get(keys, (data) => {
+            if (api.runtime.lastError) reject(api.runtime.lastError);
+            else resolve(data);
+          });
+        }
+        return;
       }
+      reject(new Error('No storage API'));
     });
   }
 
   function setStorage(data) {
+    const sharedSetStorage = self.WebSuddhi?.utils?.setStorage;
+    if (sharedSetStorage) {
+      return sharedSetStorage(data);
+    }
+
     return new Promise((resolve, reject) => {
-      const result = api.storage.local.set(data);
-      if (result && typeof result.then === 'function') {
-        result.then(resolve).catch(reject);
-      } else {
-        api.storage.local.set(data, () => {
-          if (api.runtime.lastError) reject(api.runtime.lastError);
-          else resolve();
-        });
+      if (api.storage) {
+        if (typeof browser !== 'undefined' && browser.runtime) {
+          api.storage.local.set(data).then(resolve).catch(reject);
+        } else {
+          api.storage.local.set(data, () => {
+            if (api.runtime.lastError) reject(api.runtime.lastError);
+            else resolve();
+          });
+        }
+        return;
       }
+      reject(new Error('No storage API'));
     });
   }
 
@@ -169,6 +225,38 @@
     return null;
   }
 
+  function setStatusBadgeState(enabled) {
+    if (!elements.statusBadge) return;
+
+    const dot = document.createElement('span');
+    dot.className = 'status-dot';
+    const text = enabled ? 'Active' : 'Disabled';
+
+    elements.statusBadge.className = enabled ? 'status-badge' : 'status-badge disabled';
+    elements.statusBadge.style.background = enabled ? 'rgba(52, 199, 89, 0.15)' : 'rgba(255, 59, 48, 0.15)';
+    elements.statusBadge.style.color = enabled ? '#34C759' : '#FF3B30';
+    elements.statusBadge.textContent = '';
+    elements.statusBadge.appendChild(dot);
+    elements.statusBadge.appendChild(document.createTextNode(' ' + text));
+  }
+
+  function normalizeRiskLevel(riskLevel) {
+    const normalized = (riskLevel || '').toString().toLowerCase();
+    if (normalized === 'high' || normalized === 'medium' || normalized === 'low') {
+      return normalized;
+    }
+    return 'unknown';
+  }
+
+  function getPrimaryDomainFromTab(tab) {
+    if (!tab?.url) return '';
+    try {
+      return new URL(tab.url).hostname || '';
+    } catch (e) {
+      return '';
+    }
+  }
+
   function extractRequestLog(response) {
     if (Array.isArray(response)) return response;
     if (Array.isArray(response?.log)) return response.log;
@@ -203,19 +291,18 @@
       null;
   }
 
-  function sendToContentScript(message, frameId = 0) {
+  function sendToContentScript(message) {
     return new Promise((resolve, reject) => {
       if (!currentTab || !currentTab.id) {
         reject(new Error('No active tab'));
         return;
       }
 
-      // Send to specific frame (0 = main/top frame)
-      const result = api.tabs.sendMessage(currentTab.id, message, { frameId });
+      const result = api.tabs.sendMessage(currentTab.id, message);
       if (result && typeof result.then === 'function') {
         result.then(resolve).catch(reject);
       } else {
-        api.tabs.sendMessage(currentTab.id, message, { frameId }, (response) => {
+        api.tabs.sendMessage(currentTab.id, message, (response) => {
           if (api.runtime.lastError) reject(api.runtime.lastError);
           else resolve(response);
         });
@@ -233,6 +320,7 @@
     if (elements.enableToggle) {
       elements.enableToggle.checked = settings.enabled !== false;
       elements.enableToggle.parentElement.classList.toggle('disabled', settings.enabled === false);
+      setStatusBadgeState(settings.enabled !== false);
     }
 
     // Update feature toggles
@@ -279,18 +367,7 @@
     }
 
     // Update status badge
-    if (elements.statusBadge) {
-      const textEl = elements.statusBadge.querySelector('.status-text');
-      const label = settings.enabled === false ? 'Disabled' : 'Active';
-      if (textEl) textEl.textContent = label;
-      elements.statusBadge.classList.toggle('disabled', settings.enabled === false);
-    }
-
-    // Show/hide protection disabled banner
-    updateProtectionBanner(settings.enabled !== false);
-
-    // Update Allow/Block button active states
-    updateSiteActions();
+    setStatusBadgeState(settings.enabled !== false);
   }
 
   // ============================================
@@ -299,83 +376,83 @@
 
   // Toggle main protection
   async function toggleEnabled() {
+    if (!elements.enableToggle) return;
     const enabled = elements.enableToggle.checked;
 
-    // Persist directly to storage AND notify background (belt-and-suspenders)
-    await setStorage({ enabled });
     try {
       await sendToBackground({ type: 'TOGGLE_ENABLED', enabled });
-    } catch (e) {
-      // Background message failed, but storage was already written above
-    }
 
-    // Update status badge
-    if (elements.statusBadge) {
-      const textEl = elements.statusBadge.querySelector('.status-text');
-      if (textEl) {
-        textEl.textContent = enabled ? 'Active' : 'Disabled';
+      // Update status badge
+      setStatusBadgeState(enabled);
+
+      // Notify content script IMMEDIATELY
+      try {
+        await sendToContentScript({ type: 'TOGGLE', enabled });
+      } catch (e) {
+        console.log('Content script not available');
       }
-      elements.statusBadge.classList.toggle('disabled', !enabled);
+
+      showToast(enabled ? 'Protection enabled' : 'Protection disabled');
+    } catch (err) {
+      elements.enableToggle.checked = !enabled;
+      setStatusBadgeState(!enabled);
+      showToast('Failed to change protection state');
     }
-
-    // Show/hide protection disabled banner
-    updateProtectionBanner(enabled);
-
-    // Notify content script IMMEDIATELY
-    try {
-      await sendToContentScript({ type: 'TOGGLE', enabled });
-    } catch (e) {
-      // Content script not available
-    }
-
-    showToast(enabled ? 'Protection enabled' : 'Protection disabled');
   }
 
   // Toggle features - change event fires after checkbox toggled, so use checked directly
   async function toggleNetworkBlocking() {
     const enabled = elements.networkBlockingToggle.checked;
-    await setStorage({ networkBlockingEnabled: enabled });
-    try { await sendToBackground({ type: 'TOGGLE_NETWORK_BLOCKING', enabled }); } catch (e) {}
+    await sendToBackground({ type: 'TOGGLE_NETWORK_BLOCKING', enabled });
     showToast(`Network blocking ${enabled ? 'enabled' : 'disabled'}`);
   }
 
   async function toggleUrlCleaning() {
     const enabled = elements.urlCleaningToggle.checked;
-    await setStorage({ urlCleaningEnabled: enabled });
-    try { await sendToBackground({ type: 'TOGGLE_URL_CLEANING', enabled }); } catch (e) {}
+    await sendToBackground({ type: 'TOGGLE_URL_CLEANING', enabled });
     showToast(`URL cleaning ${enabled ? 'enabled' : 'disabled'}`);
   }
 
   async function toggleCookieConsent() {
     const enabled = elements.cookieConsentToggle.checked;
-    await setStorage({ cookieConsentEnabled: enabled });
     try {
-      await sendToContentScript({ type: 'TOGGLE_COOKIE_CONSENT', enabled });
-    } catch (e) {}
+      await sendToBackground({ type: 'TOGGLE_COOKIE_CONSENT', enabled });
+    } catch (e) {
+      await setStorage({ cookieConsentEnabled: enabled });
+      try {
+        await sendToContentScript({ type: 'TOGGLE_COOKIE_CONSENT', enabled });
+      } catch (innerErr) {}
+    }
     showToast(`Cookie blocking ${enabled ? 'enabled' : 'disabled'}`);
   }
 
   async function toggleAnnoyanceBlocking() {
     const enabled = elements.annoyanceToggle.checked;
-    await setStorage({ annoyanceBlockingEnabled: enabled });
     try {
-      await sendToContentScript({ type: 'TOGGLE_ANNOYANCE_BLOCKING', enabled });
-    } catch (e) {}
+      await sendToBackground({ type: 'TOGGLE_ANNOYANCE_BLOCKING', enabled });
+    } catch (e) {
+      await setStorage({ annoyanceBlockingEnabled: enabled });
+      try {
+        await sendToContentScript({ type: 'TOGGLE_ANNOYANCE_BLOCKING', enabled });
+      } catch (innerErr) {}
+    }
     showToast(`Annoyance blocking ${enabled ? 'enabled' : 'disabled'}`);
   }
 
   async function togglePaywall() {
     const enabled = elements.paywallToggle.checked;
-    await setStorage({ paywallEnabled: enabled });
-    try { await sendToBackground({ type: 'TOGGLE_PAYWALL', enabled }); } catch (e) {}
-    try { await sendToContentScript({ type: 'TOGGLE_PAYWALL', enabled }); } catch (e) {}
+    await sendToBackground({ type: 'TOGGLE_PAYWALL', enabled });
+    await sendToContentScript({ type: 'TOGGLE_PAYWALL', enabled });
   }
 
   async function toggleSocialBlocking() {
     const enabled = elements.socialBlockingToggle.checked;
-    await setStorage({ socialBlockingEnabled: enabled });
-    try { await sendToBackground({ type: 'TOGGLE_SOCIAL_BLOCKING', enabled }); } catch (e) {}
-    try { await sendToContentScript({ type: 'TOGGLE_SOCIAL_BLOCKING', enabled }); } catch (e) {}
+    await sendToBackground({ type: 'TOGGLE_SOCIAL_BLOCKING', enabled });
+    try {
+      await sendToContentScript({ type: 'TOGGLE_SOCIAL_BLOCKING', enabled });
+    } catch (e) {
+      console.log('Content script not available');
+    }
     showToast(`Social blocking ${enabled ? 'enabled' : 'disabled'}`);
   }
 
@@ -384,6 +461,11 @@
 
     const hostname = new URL(currentTab.url).hostname;
     const response = await sendToBackground({ type: 'TOGGLE_WHITELIST', hostname });
+    if (!response || response.success === false) {
+      showToast(response?.error || 'Failed to change whitelist');
+      return;
+    }
+
     isWhitelisted = response.whitelisted;
 
     // Update UI - update button text
@@ -391,9 +473,6 @@
     if (btnText) {
       btnText.textContent = isWhitelisted ? 'Allowed' : 'Whitelist';
     }
-
-    // Update Allow/Block active state
-    updateSiteActions();
 
     // Show toast notification
     showToast(isWhitelisted ? `Whitelisted: ${hostname}` : `Removed from whitelist: ${hostname}`);
@@ -406,11 +485,8 @@
         await sendToContentScript({ type: 'UNWHITELIST_SITE', hostname });
       }
     } catch (e) {
-      // Content script not available
+      console.log('Content script not available');
     }
-
-    // Reload the page so changes take effect
-    reloadCurrentTab();
   }
 
   // Quick whitelist from header button
@@ -422,31 +498,18 @@
 
     if (response.success) {
       isWhitelisted = true;
-      // Also persist directly to storage
-      try {
-        const data = await getStorage(['whitelistedSites']);
-        const sites = data.whitelistedSites || [];
-        if (!sites.includes(hostname)) {
-          sites.push(hostname);
-          await setStorage({ whitelistedSites: sites });
-        }
-      } catch (e) {}
       // Update button text
       const btnText = elements.whitelistToggleBtn?.querySelector('#whitelistBtnText');
       if (btnText) {
         btnText.textContent = 'Allowed';
       }
-      // Update Allow/Block active state
-      updateSiteActions();
       showToast(`Whitelisted: ${hostname}`);
       // Notify content script IMMEDIATELY using correct message type
       try {
         await sendToContentScript({ type: 'WHITELIST_SITE', hostname });
       } catch (e) {
-        // Content script not available
+        console.log('Content script not available');
       }
-      // Reload the page so changes take effect
-      reloadCurrentTab();
     } else {
       showToast(response.error || 'Failed to whitelist');
     }
@@ -461,10 +524,9 @@
 
     if (response.success) {
       showToast(`Blocked: ${hostname}`);
-      // Update Allow/Block active state
-      updateSiteActions();
-      // Reload the page so blocking takes effect
-      reloadCurrentTab();
+      // Blacklisting doesn't need immediate content script update
+      // DNR rules will handle network blocking
+      // Cosmetic blocking can be refreshed by reloading
     } else {
       showToast(response.error || 'Failed to block');
     }
@@ -474,10 +536,7 @@
   // PICK MODE (Element Picker)
   // ============================================
   async function togglePickMode() {
-    if (!currentTab?.id) {
-      showToast('No active tab');
-      return;
-    }
+    if (!currentTab?.id) return;
 
     isPickMode = !isPickMode;
 
@@ -485,20 +544,11 @@
       setButtonContent(elements.pickModeBtn, SVG_PATHS.cancel, 'Cancel Pick');
       elements.pickModeBtn.classList.add('active');
       showToast('Pick mode: Click an element to block');
-      try {
-        await sendToContentScript({ type: 'START_PICK_MODE' });
-      } catch (e) {
-        // Pick mode error
-        showToast('Error: ' + e.message);
-      }
+      await sendToContentScript({ type: 'START_PICK_MODE' });
     } else {
       setButtonContent(elements.pickModeBtn, SVG_PATHS.pick, 'Pick Element');
       elements.pickModeBtn.classList.remove('active');
-      try {
-        await sendToContentScript({ type: 'STOP_PICK_MODE' });
-      } catch (e) {
-        // Stop pick mode error
-      }
+      await sendToContentScript({ type: 'STOP_PICK_MODE' });
     }
   }
 
@@ -545,15 +595,27 @@
   // OPTIONS & REPORTING
   // ============================================
   function openOptions(anchor) {
+    const url = api.runtime.getURL('options/options.html');
+    const targetUrl = anchor ? (url + '#' + anchor) : url;
+
+    if (anchor) {
+      if (api.tabs?.create) {
+        api.tabs.create({ url: targetUrl });
+      } else {
+        window.open(targetUrl, '_blank');
+      }
+      return;
+    }
+
     if (api.runtime.openOptionsPage) {
       api.runtime.openOptionsPage();
+      return;
+    }
+
+    if (api.tabs?.create) {
+      api.tabs.create({ url: targetUrl });
     } else {
-      const url = api.runtime.getURL('options/options.html');
-      if (anchor) {
-        window.open(url + '#' + anchor, '_blank');
-      } else {
-        window.open(url, '_blank');
-      }
+      window.open(targetUrl, '_blank');
     }
   }
 
@@ -638,7 +700,7 @@
           <div class="blocked-item" title="${escapeHtml(url)}">
             <div class="blocked-item-info">
               <div class="blocked-item-url">${escapeHtml(shortUrl)}</div>
-              <div class="blocked-item-type ${type}">${escapeHtml(domain)} • ${escapeHtml(category)}</div>
+              <div class="blocked-item-type ${type}">${escapeHtml(domain)} • ${category}</div>
             </div>
             <button class="blocked-unblock" data-url="${escapeHtml(url)}">Unblock</button>
           </div>
@@ -730,7 +792,7 @@
   function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
-    return div.innerHTML;
+    return div.textContent;
   }
 
   function extractDomain(url) {
@@ -748,42 +810,120 @@
     return bytes + ' B';
   }
 
-  // Update Allow/Block button active states based on whitelist/blacklist status
-  function updateSiteActions() {
-    if (!elements.whitelistBtn || !elements.blacklistBtn) return;
+  function setPhishingRiskState(connection = {}, phishing = {}) {
+    if (!elements.phishingRiskSection) return;
 
-    if (isWhitelisted) {
-      elements.whitelistBtn.classList.add('active');
-      elements.blacklistBtn.classList.remove('active');
+    currentSecurityContext = {
+      connection,
+      phishing: phishing || {}
+    };
+
+    if (!elements.phishingRiskBadge || !elements.phishingRiskText || !elements.phishingRiskDetails) {
+      return;
+    }
+
+    const hostname = connection.host || connection.normalizedHost || getPrimaryDomainFromTab(currentTab);
+    const risk = phishing || {};
+    const level = normalizeRiskLevel(risk.riskLevel);
+    const isSuspicious = risk.isSuspicious === true;
+    const protectionEnabled = risk.protectionEnabled !== false;
+    const hasHostname = !!hostname;
+
+    let badgeClass = 'unknown';
+    let badgeText = 'Checking';
+    let statusText = 'Evaluating destination';
+    let detailsText = 'No risk signal available yet.';
+    let canReport = hasHostname;
+    let canCopy = hasHostname;
+
+    if (!hostname) {
+      badgeClass = 'unknown';
+      badgeText = 'Unknown';
+      statusText = 'No host context';
+      detailsText = 'The current tab URL is not available for security checks.';
+      canReport = false;
+      canCopy = false;
+    } else if (!protectionEnabled) {
+      badgeClass = 'disabled';
+      badgeText = 'Protection Off';
+      statusText = 'AI-scam checks disabled';
+      detailsText = 'Enable phishing protection in settings to run similarity checks.';
+    } else if (risk.evaluationError) {
+      badgeClass = 'disabled';
+      badgeText = 'Evaluation Error';
+      statusText = 'Could not evaluate risk';
+      detailsText = risk.reason || 'Re-run security checks on next load.';
+    } else if (isSuspicious) {
+      badgeClass = level === 'high' ? 'high' : (level === 'medium' ? 'medium' : 'low');
+      badgeText = `${level.toUpperCase()} risk`;
+      statusText = 'High chance of AI-based spoofing';
+      const matchedBrand = risk.matchedBrand || risk.brand || 'Unknown brand';
+      const matchedDomain = risk.matchedDomain || risk.suspectedDomain || '';
+      detailsText = [
+        risk.reason || `Domain resembles ${matchedBrand}.`,
+        matchedDomain ? `Similar to: ${matchedDomain}` : null
+      ].filter(Boolean).join(' ');
     } else {
-      elements.whitelistBtn.classList.remove('active');
-      elements.blacklistBtn.classList.remove('active');
+      badgeClass = 'safe';
+      badgeText = 'Low risk';
+      statusText = 'No spoofing signals detected';
+      const reason = risk.reason || 'No phishing patterns detected.';
+      detailsText = reason;
+    }
+
+    elements.phishingRiskBadge.className = 'phishing-risk-badge ' + badgeClass;
+    elements.phishingRiskBadge.textContent = badgeText;
+    elements.phishingRiskText.textContent = statusText;
+    elements.phishingRiskDetails.textContent = detailsText;
+    elements.phishingRiskSection.style.display = 'block';
+
+    if (elements.copyDomainBtn) {
+      elements.copyDomainBtn.style.display = canCopy ? 'inline-flex' : 'none';
+    }
+    if (elements.reportPhishingBtn) {
+      elements.reportPhishingBtn.style.display = canReport ? 'inline-flex' : 'none';
     }
   }
 
-  // Reload the current tab after a toggle action
-  function reloadCurrentTab() {
-    if (currentTab?.id) {
-      try {
-        api.tabs.reload(currentTab.id);
-      } catch (e) {
-        // Tab may have been closed
+  async function copyCurrentDomain() {
+    const domain = currentSecurityContext?.connection?.host || getPrimaryDomainFromTab(currentTab);
+    if (!domain) {
+      showToast('No domain available');
+      return;
+    }
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(domain);
+        showToast('Domain copied');
+      } else {
+        throw new Error('Clipboard unavailable');
       }
+    } catch (e) {
+      showToast('Could not copy domain');
     }
   }
 
-  // Show/hide the protection disabled banner
-  function updateProtectionBanner(enabled) {
-    const banner = document.getElementById('protectionBanner');
-    const content = document.querySelector('.main-content');
-    if (!banner) return;
+  async function reportCurrentSiteAsPhishing() {
+    const domain = currentSecurityContext?.connection?.host || getPrimaryDomainFromTab(currentTab);
+    if (!domain) {
+      showToast('No domain available');
+      return;
+    }
 
-    if (!enabled) {
-      banner.style.display = 'flex';
-      if (content) content.classList.add('protection-off');
-    } else {
-      banner.style.display = 'none';
-      if (content) content.classList.remove('protection-off');
+    const phishing = currentSecurityContext?.phishing || {};
+    try {
+      await sendToBackground({
+        type: 'REPORT_PHISHING',
+        domain,
+        matchedBrand: phishing.matchedBrand || phishing.brand || 'Unknown',
+        realDomain: phishing.matchedDomain || domain,
+        reason: phishing.reason || 'User reported',
+        brand: phishing.brand
+      });
+      showToast('Report submitted');
+    } catch (e) {
+      showToast('Failed to submit report');
     }
   }
 
@@ -925,18 +1065,41 @@
   // Load certificate owner info and third-party frames
   async function loadSecurityDetails() {
     if (!currentTab || !currentTab.id) return;
+    const fallbackConnection = (() => {
+      try {
+        if (!currentTab.url) return {};
+        const parsedUrl = new URL(currentTab.url);
+        return {
+          protocol: parsedUrl.protocol,
+          host: parsedUrl.hostname || '',
+          normalizedHost: getPrimaryDomainFromTab(currentTab) || '',
+          isSecure: parsedUrl.protocol === 'https:',
+          isLocal: parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1',
+          isFile: parsedUrl.protocol === 'file:'
+        };
+      } catch (e) {
+        return {};
+      }
+    })();
 
     try {
       // Get security info from background
-      const securityInfo = await sendToBackgroundWithFallback(
+      const rawSecurityInfo = await sendToBackgroundWithFallback(
         ['GET_SECURITY_INFO', 'GET_TAB_SECURITY_INFO', 'GET_TAB_SECURITY'],
         { tabId: currentTab.id }
       ) || {};
+      const securityInfo = rawSecurityInfo;
+
+      const connection = securityInfo?.connection || fallbackConnection;
+      const phishing = securityInfo?.phishing || {};
+
+      setPhishingRiskState(connection, phishing);
 
       // Update certificate owner section
       if (elements.certOwnerSection) {
         const cert = extractCertificate(securityInfo);
-        const org = cert?.organization || cert?.org || securityInfo?.organization || '';
+        const derivedOrg = getCertOrganization(connection.host || '');
+        const org = cert?.organization || cert?.org || connection?.organization || derivedOrg || '';
 
         if (org) {
           elements.certOwnerName.textContent = org;
@@ -955,9 +1118,10 @@
           if (validTo) {
             details.push('Until: ' + validTo);
           }
-          // Note: Protocol, cipher, and fingerprint details are not available
-          // (requires Chrome 144+ with WebRequestSecurityInfo developer flag)
           elements.certOwnerDetails.textContent = details.join(' | ');
+          if (details.length === 0) {
+            elements.certOwnerDetails.textContent = `Host: ${connection.host || connection.normalizedHost || getPrimaryDomainFromTab(currentTab) || 'Unknown'}`;
+          }
 
           // Show the section
           elements.certOwnerSection.style.display = 'block';
@@ -998,12 +1162,27 @@
         elements.framesSection.style.display = 'none';
       }
     } catch (err) {
-      // Silently fail - security info is not critical
+      setPhishingRiskState(fallbackConnection, {
+        isSuspicious: false,
+        reason: err?.message || 'Could not load security info',
+        evaluationError: true,
+        protectionEnabled: false
+      });
+
+      if (elements.framesSection) {
+        elements.framesSection.style.display = 'none';
+      }
+
+      if (elements.certOwnerSection) {
+        elements.certOwnerSection.style.display = 'none';
+      }
     }
   }
 
   // Get organization from hostname
   function getCertOrganization(hostname) {
+    if (!hostname) return '';
+
     const knownOrgs = {
       'google.com': 'Google LLC',
       'accounts.google.com': 'Google LLC',
@@ -1181,6 +1360,9 @@
 
   async function init() {
     try {
+      // Apply saved theme immediately
+      await loadPopupTheme();
+
       // Get current tab
       const tabs = await new Promise((resolve) => {
         api.tabs.query({ active: true, currentWindow: true }, resolve);
@@ -1214,31 +1396,9 @@
         }
       }
 
-      // Load settings - try background first, fall back to direct storage read
-      let settings = {};
-      try {
-        const settingsResponse = await sendToBackground({ type: 'GET_ALL_SETTINGS' });
-        settings = settingsResponse?.settings || {};
-      } catch (e) {
-        // Background not available, read directly from storage
-      }
-
-      // Direct storage read as authoritative source of truth
-      const directStorage = await getStorage([
-        'enabled', 'networkBlockingEnabled', 'urlCleaningEnabled',
-        'cookieConsentEnabled', 'annoyanceBlockingEnabled', 'paywallEnabled',
-        'socialBlockingEnabled'
-      ]);
-
-      // Merge: direct storage overrides defaults but background fills in gaps
-      if (directStorage.enabled !== undefined) settings.enabled = directStorage.enabled;
-      if (directStorage.networkBlockingEnabled !== undefined) settings.networkBlockingEnabled = directStorage.networkBlockingEnabled;
-      if (directStorage.urlCleaningEnabled !== undefined) settings.urlCleaningEnabled = directStorage.urlCleaningEnabled;
-      if (directStorage.cookieConsentEnabled !== undefined) settings.cookieConsentEnabled = directStorage.cookieConsentEnabled;
-      if (directStorage.annoyanceBlockingEnabled !== undefined) settings.annoyanceBlockingEnabled = directStorage.annoyanceBlockingEnabled;
-      if (directStorage.paywallEnabled !== undefined) settings.paywallEnabled = directStorage.paywallEnabled;
-      if (directStorage.socialBlockingEnabled !== undefined) settings.socialBlockingEnabled = directStorage.socialBlockingEnabled;
-
+      // Load settings
+      const settingsResponse = await sendToBackground({ type: 'GET_ALL_SETTINGS' });
+      const settings = settingsResponse?.settings || {};
       currentSettings = settings;
 
       // Update UI
@@ -1256,11 +1416,8 @@
           if (btnText) {
             btnText.textContent = isWhitelisted ? 'Allowed' : 'Whitelist';
           }
-
-          // Update Allow/Block active state now that we know whitelist status
-          updateSiteActions();
         } catch (e) {
-          // Whitelist check failed
+          console.error('Whitelist check failed:', e);
         }
       }
 
@@ -1287,6 +1444,13 @@
       elements.viewAllBlocked?.addEventListener('click', () => openOptions('stats'));
       elements.networkStatBtn?.addEventListener('click', showNetworkStats);
       elements.cosmeticStatBtn?.addEventListener('click', showCosmeticStats);
+      elements.copyDomainBtn?.addEventListener('click', copyCurrentDomain);
+      elements.reportPhishingBtn?.addEventListener('click', reportCurrentSiteAsPhishing);
+      elements.themeSelect?.addEventListener('change', async () => {
+        const theme = elements.themeSelect.value || 'system';
+        applyPopupTheme(theme);
+        await setStorage({ theme });
+      });
       // Header action buttons
       elements.whitelistBtn?.addEventListener('click', quickWhitelist);
       elements.blacklistBtn?.addEventListener('click', quickBlacklist);

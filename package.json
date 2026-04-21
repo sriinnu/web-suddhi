@@ -1,14 +1,17 @@
 {
   "name": "websuddhi",
   "version": "2.1.0",
-  "type": "module",
   "description": "Block ads, remove paywalls, strip trackers, and clean up any website",
   "main": "background/background.js",
   "scripts": {
+    "build": "rollup -c",
+    "build:targets": "node scripts/build-browser-targets.mjs",
+    "build:watch": "rollup -c -w",
     "lint": "eslint . --ext .js",
     "lint:fix": "eslint . --ext .js --fix",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "ad-blocker",
@@ -28,7 +31,6 @@
     "jsdom": "^28.0.0",
     "prettier": "^3.2.5",
     "rollup": "^4.13.0",
-    "sharp": "^0.34.5",
     "typescript": "^5.4.3",
     "vitest": "^1.4.0"
   },

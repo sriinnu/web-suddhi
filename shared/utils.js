@@ -49,9 +49,8 @@
   };
 
   utils.error = function(...args) {
-    if (debugEnabled) {
-      console.error('[WebSuddhi]', ...args);
-    }
+    // Always log errors
+    console.error('[WebSuddhi]', ...args);
   };
 
   utils.setDebug = function(enabled) {
@@ -423,11 +422,6 @@
     'sentry.io': { category: 'Error Tracking', severity: 'low', desc: 'Error monitoring' }
   };
 
-  // Expose the tracker database for other modules to use
-  utils.getTrackerDatabase = function() {
-    return TRACKER_DATABASE;
-  };
-
   // Get tracker info by domain (supports subdomain matching)
   utils.getTrackerInfo = function(domain) {
     if (!domain || typeof domain !== 'string') {
@@ -497,7 +491,7 @@
     if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
-    return div.innerHTML;
+    return div.textContent;  // Return textContent, not innerHTML
   };
 
   // Format large numbers with K/M suffix
@@ -566,80 +560,173 @@
   // ============================================
   // Shared get/set storage to avoid duplication across background modules
 
-  const storageApi = (typeof browser !== 'undefined' && browser.runtime) ? browser : (typeof chrome !== 'undefined' ? chrome : null);
+  const hasPromiseExtensionApi = typeof browser !== 'undefined' && browser.runtime;
+  const storageApi = hasPromiseExtensionApi
+    ? browser
+    : (typeof chrome !== 'undefined' ? chrome : null);
+  const SYNCABLE_STORAGE_KEYS = new Set([
+    'enabled',
+    'paywallEnabled',
+    'socialBlockingEnabled',
+    'networkBlockingEnabled',
+    'urlCleaningEnabled',
+    'cookieConsentEnabled',
+    'annoyanceBlockingEnabled',
+    'phishingProtectionEnabled',
+    'pingProtectionEnabled',
+    'referrerStrippingEnabled',
+    'webrtcProtectionEnabled',
+    'telemetryBlockingEnabled',
+    'thirdPartyCookieBlockingEnabled',
+    'loggingEnabled',
+    'theme',
+    'toastDuration',
+    'enabledLanguageFilters',
+    'shortcuts',
+    'aggressiveAntiAdblockEnabled',
+    'whitelistedSites',
+    'blockedDomains',
+    'allowedDomains',
+    'blockedSelectors',
+    'filterSubscriptions',
+    'maxBlockedCount',
+    'maxLogEntries',
+    'maxWhitelistSize',
+    'maxBlockedDomains',
+    'maxBlockedSelectors'
+  ]);
 
-  utils.getStorage = function(keys) {
+  let syncEnabledCache = false;
+  let syncEnabledLoaded = false;
+
+  function supportsSyncStorage() {
+    return !!(
+      storageApi &&
+      storageApi.storage &&
+      storageApi.storage.sync &&
+      typeof storageApi.storage.sync.get === 'function' &&
+      typeof storageApi.storage.sync.set === 'function'
+    );
+  }
+
+  function callStorageArea(areaName, method, value) {
     return new Promise((resolve, reject) => {
-      if (storageApi && storageApi.storage) {
-        const result = storageApi.storage.local.get(keys);
-        if (result && typeof result.then === 'function') {
-          result.then(resolve).catch(reject);
-        } else {
-          storageApi.storage.local.get(keys, (data) => {
-            if (storageApi.runtime.lastError) reject(storageApi.runtime.lastError);
-            else resolve(data);
-          });
-        }
+      const area = storageApi?.storage?.[areaName];
+      if (!area || typeof area[method] !== 'function') {
+        resolve(method === 'get' ? {} : undefined);
         return;
       }
-      resolve({});
+
+      try {
+        if (hasPromiseExtensionApi) {
+          area[method](value)
+            .then((data) => resolve(method === 'get' ? (data || {}) : data))
+            .catch(reject);
+          return;
+        }
+
+        area[method](value, (data) => {
+          if (storageApi.runtime.lastError) {
+            reject(storageApi.runtime.lastError);
+          } else {
+            resolve(method === 'get' ? (data || {}) : data);
+          }
+        });
+      } catch (err) {
+        reject(err);
+      }
     });
+  }
+
+  async function getSyncEnabledPreference() {
+    if (syncEnabledLoaded) {
+      return syncEnabledCache;
+    }
+
+    try {
+      const data = await callStorageArea('local', 'get', ['syncEnabled']);
+      syncEnabledCache = data.syncEnabled === true;
+      syncEnabledLoaded = true;
+    } catch (err) {
+      syncEnabledCache = false;
+      syncEnabledLoaded = true;
+    }
+
+    return syncEnabledCache;
+  }
+
+  utils.supportsSyncStorage = supportsSyncStorage;
+  utils.isSyncableStorageKey = function(key) {
+    return SYNCABLE_STORAGE_KEYS.has(key);
+  };
+  utils.pickSyncableStorageData = function(data) {
+    const syncData = {};
+
+    for (const [key, value] of Object.entries(data || {})) {
+      if (key === 'syncEnabled') continue;
+      if (!utils.isSyncableStorageKey(key)) continue;
+      if (value === undefined) continue;
+      syncData[key] = value;
+    }
+
+    return syncData;
+  };
+  utils.getStorageArea = function(areaName, keys) {
+    return callStorageArea(areaName, 'get', keys);
+  };
+  utils.setStorageArea = function(areaName, data) {
+    return callStorageArea(areaName, 'set', data);
   };
 
-  utils.setStorage = function(data) {
-    return new Promise((resolve, reject) => {
-      if (storageApi && storageApi.storage) {
-        const result = storageApi.storage.local.set(data);
-        if (result && typeof result.then === 'function') {
-          result.then(resolve).catch(reject);
-        } else {
-          storageApi.storage.local.set(data, () => {
-            if (storageApi.runtime.lastError) reject(storageApi.runtime.lastError);
-            else resolve();
-          });
-        }
-        return;
-      }
-      resolve();
-    });
+  utils.getStorage = async function(keys) {
+    const data = await callStorageArea('local', 'get', keys);
+    if (Object.prototype.hasOwnProperty.call(data, 'syncEnabled')) {
+      syncEnabledCache = data.syncEnabled === true;
+      syncEnabledLoaded = true;
+    }
+    return data;
+  };
+
+  utils.setStorage = async function(data) {
+    await callStorageArea('local', 'set', data);
+
+    if (Object.prototype.hasOwnProperty.call(data || {}, 'syncEnabled')) {
+      syncEnabledCache = data.syncEnabled === true;
+      syncEnabledLoaded = true;
+    }
+
+    if (!supportsSyncStorage()) {
+      return;
+    }
+
+    const syncData = utils.pickSyncableStorageData(data);
+    if (Object.keys(syncData).length === 0) {
+      return;
+    }
+
+    const shouldMirror = Object.prototype.hasOwnProperty.call(data || {}, 'syncEnabled')
+      ? data.syncEnabled === true
+      : await getSyncEnabledPreference();
+
+    if (!shouldMirror) {
+      return;
+    }
+
+    try {
+      await callStorageArea('sync', 'set', syncData);
+    } catch (err) {
+      utils.error('Sync mirror failed:', err);
+    }
   };
 
   // Get storage with sync support (for settings that can sync across devices)
   utils.getSyncStorage = function(keys) {
-    return new Promise((resolve, reject) => {
-      if (storageApi && storageApi.storage && storageApi.storage.sync) {
-        const result = storageApi.storage.sync.get(keys);
-        if (result && typeof result.then === 'function') {
-          result.then(resolve).catch(reject);
-        } else {
-          storageApi.storage.sync.get(keys, (data) => {
-            if (storageApi.runtime.lastError) reject(storageApi.runtime.lastError);
-            else resolve(data);
-          });
-        }
-        return;
-      }
-      resolve({});
-    });
+    return callStorageArea('sync', 'get', keys);
   };
 
   // Set storage with sync support
   utils.setSyncStorage = function(data) {
-    return new Promise((resolve, reject) => {
-      if (storageApi && storageApi.storage && storageApi.storage.sync) {
-        const result = storageApi.storage.sync.set(data);
-        if (result && typeof result.then === 'function') {
-          result.then(resolve).catch(reject);
-        } else {
-          storageApi.storage.sync.set(data, () => {
-            if (storageApi.runtime.lastError) reject(storageApi.runtime.lastError);
-            else resolve();
-          });
-        }
-        return;
-      }
-      resolve();
-    });
+    return callStorageArea('sync', 'set', data);
   };
 
   // ============================================

@@ -9,6 +9,8 @@
   const logError = (...args) => {
     if (self.WebSuddhi && self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
       self.WebSuddhi.utils.error(...args);
+    } else {
+      console.error('[WebSuddhi]', ...args);
     }
   };
 
@@ -42,6 +44,42 @@
       attemptDismiss();
     } catch (err) {
       logError('cookie consent init error:', err);
+    }
+  }
+
+  async function refreshState() {
+    try {
+      const storage = await getStorage(['cookieConsentEnabled', 'whitelistedSites']);
+      const nextEnabled = storage.cookieConsentEnabled !== false;
+      if (nextEnabled === enabled) {
+        if (!nextEnabled) return;
+      }
+
+      enabled = nextEnabled;
+      if (!enabled) return;
+
+      const hostname = getCurrentHostname();
+      if (!hostname) return;
+
+      const whitelisted = (storage.whitelistedSites || []).some(site => {
+        const normalized = site.replace(/^www\./, '');
+        return hostname === normalized || hostname.endsWith('.' + normalized);
+      });
+
+      if (!whitelisted) {
+        attempts = 0;
+        tryDismiss();
+      }
+    } catch (err) {
+      logError('cookie consent refresh error:', err);
+    }
+  }
+
+  function getCurrentHostname() {
+    try {
+      return window.location.hostname.replace(/^www\./, '');
+    } catch (e) {
+      return '';
     }
   }
 
@@ -355,6 +393,18 @@
     const handler = (message, sender, sendResponse) => {
       if (message.type === 'TOGGLE_COOKIE_CONSENT') {
         enabled = message.enabled;
+        sendResponse({ success: true });
+      } else if (message.type === 'SETTINGS_CHANGED') {
+        const relevantKeys = message?.changed || [];
+        const shouldRefresh = !Array.isArray(relevantKeys) || relevantKeys.length === 0 ||
+          relevantKeys.some(key => key === 'cookieConsentEnabled' || key === 'whitelistedSites');
+
+        if (!shouldRefresh) {
+          sendResponse({ success: true });
+          return;
+        }
+
+        refreshState();
         sendResponse({ success: true });
       } else if (message.type === 'DISMISS_COOKIES_NOW') {
         attempts = 0;

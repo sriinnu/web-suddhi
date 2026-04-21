@@ -15,14 +15,17 @@
 
   // Get storage
   function getStorage(keys) {
-    return new Promise((resolve, reject) => {
-      const result = api.storage.local.get(keys);
-      if (result && typeof result.then === 'function') {
-        result.then(resolve).catch(reject);
+    const sharedGetStorage = self.WebSuddhi?.utils?.getStorage;
+    if (sharedGetStorage) {
+      return sharedGetStorage(keys);
+    }
+
+    return new Promise((resolve) => {
+      if (typeof browser !== 'undefined' && browser.runtime) {
+        api.storage.local.get(keys).then((data) => resolve(data || {})).catch(() => resolve({}));
       } else {
         api.storage.local.get(keys, (data) => {
-          if (api.runtime.lastError) reject(api.runtime.lastError);
-          else resolve(data || {});
+          resolve(data || {});
         });
       }
     });
@@ -30,14 +33,17 @@
 
   // Set storage
   function setStorage(data) {
-    return new Promise((resolve, reject) => {
-      const result = api.storage.local.set(data);
-      if (result && typeof result.then === 'function') {
-        result.then(resolve).catch(reject);
+    const sharedSetStorage = self.WebSuddhi?.utils?.setStorage;
+    if (sharedSetStorage) {
+      return sharedSetStorage(data);
+    }
+
+    return new Promise((resolve) => {
+      if (typeof browser !== 'undefined' && browser.runtime) {
+        api.storage.local.set(data).then(resolve).catch(resolve);
       } else {
         api.storage.local.set(data, () => {
-          if (api.runtime.lastError) reject(api.runtime.lastError);
-          else resolve();
+          resolve();
         });
       }
     });
@@ -148,7 +154,7 @@
       } catch (err) {
         element.textContent = 'Error';
         element.classList.remove('recording');
-        // Failed to update shortcut
+        console.error('Failed to update shortcut:', err);
       }
 
       document.removeEventListener('keydown', handleKeyDown);

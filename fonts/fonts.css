@@ -1,0 +1,54 @@
+/* ============================================
+   WebSuddhi - Local Font Definitions
+
+   Variable fonts — one file covers every weight
+   from 100 to 900. Drop new .ttf/.woff2 files
+   here, add an @font-face block, and override
+   --font-family in the theme you want to use it.
+   ============================================ */
+
+/* --- Inter — clean, modern UI sans-serif ------ */
+@font-face {
+  font-family: 'Inter';
+  src: url('Inter.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* --- DM Sans — geometric, friendly sans-serif - */
+@font-face {
+  font-family: 'DM Sans';
+  src: url('DMSans.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* --- Playfair Display — elegant serif --------- */
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('PlayfairDisplay.ttf') format('truetype');
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* --- Space Grotesk — distinctive geometric sans */
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('SpaceGrotesk.ttf') format('truetype');
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ============================================
+   Font-family variables
+   Themes override --font-family to switch fonts.
+   ============================================ */
+:root {
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont,
+    'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'SF Mono', 'Consolas', 'Monaco', 'Menlo', monospace;
+}
