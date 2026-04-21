@@ -46,5 +46,53 @@
     "file": "SpaceGrotesk-Bold.woff2",
     "weight": 700,
     "style": "normal"
+  },
+  {
+    "name": "Outfit",
+    "file": "Outfit-Regular.woff2",
+    "weight": 400,
+    "style": "normal"
+  },
+  {
+    "name": "Outfit",
+    "file": "Outfit-Bold.woff2",
+    "weight": 700,
+    "style": "normal"
+  },
+  {
+    "name": "Sora",
+    "file": "Sora-Regular.woff2",
+    "weight": 400,
+    "style": "normal"
+  },
+  {
+    "name": "Sora",
+    "file": "Sora-Bold.woff2",
+    "weight": 700,
+    "style": "normal"
+  },
+  {
+    "name": "Plus Jakarta Sans",
+    "file": "PlusJakartaSans-Regular.woff2",
+    "weight": 400,
+    "style": "normal"
+  },
+  {
+    "name": "Plus Jakarta Sans",
+    "file": "PlusJakartaSans-Bold.woff2",
+    "weight": 700,
+    "style": "normal"
+  },
+  {
+    "name": "Geist",
+    "file": "Geist-Regular.woff2",
+    "weight": 400,
+    "style": "normal"
+  },
+  {
+    "name": "Geist",
+    "file": "Geist-Bold.woff2",
+    "weight": 700,
+    "style": "normal"
   }
 ]
