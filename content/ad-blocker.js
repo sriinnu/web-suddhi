@@ -5,23 +5,12 @@
 (function() {
   'use strict';
 
-  // Deduplication guard: when this script is injected via two manifest entries
-  // (all_frames + top-frame-only), the top frame executes the IIFE twice.
-  // Skip the second execution — the first already handled everything.
-  if (window.__websuddhiScriptRunning) return;
-  window.__websuddhiScriptRunning = true;
-
-  // Debug log
-  const log = (...args) => {
-    if (self.WebSuddhi && self.WebSuddhi.utils && self.WebSuddhi.utils.log) {
-      self.WebSuddhi.utils.log(...args);
-    }
-  };
-
-  // Logging helpers (use utils if available)
+  // Logging helpers (use utils if available, fallback to console)
   const logError = (...args) => {
     if (self.WebSuddhi && self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
       self.WebSuddhi.utils.error(...args);
+    } else {
+      console.error('[WebSuddhi]', ...args);
     }
   };
 
@@ -60,26 +49,55 @@
     return !pageContainsPasswordField();
   }
 
+  const phishingWarningState = {
+    overlay: null,
+    observer: null,
+    domain: null
+  };
+
+  function normalizeWarningDomain(domain) {
+    return (domain || '').toLowerCase().replace(/^www\./, '');
+  }
+
   // ============================================
   // PHISHING PROTECTION - Check early before page renders
   // ============================================
 
-  // Check for phishing immediately on script load
-  (async function checkForPhishing() {
+  async function checkForPhishing(forceRefresh = false) {
     if (!isTopFrame() || !isHttpOrHttpsPage()) return;
 
-    const hostname = window.location.hostname;
-    if (!hostname) return;
+    const domain = normalizeWarningDomain(window.location.hostname);
+    if (!domain) return;
+
+    const storageKey = 'websuddhi_phishing_dismissed_' + domain;
+    if (!forceRefresh) {
+      try {
+        if (sessionStorage.getItem(storageKey) === 'true') {
+          return;
+        }
+      } catch (e) {
+        // Session storage might not be available
+      }
+    }
 
     try {
-      const response = await sendMessageEarly({ type: 'CHECK_PHISHING', domain: hostname });
+      const response = await sendMessageEarly({ type: 'CHECK_PHISHING', domain });
 
       if (response?.isSuspicious) {
         showPhishingWarning(response);
+      } else if (forceRefresh) {
+        // If not suspicious now, ensure no stale warning remains.
+        hidePhishingWarning({ persistDismissal: false });
       }
     } catch (e) {
       // Silently fail - phishing check is non-critical
     }
+  }
+
+  // Check for phishing immediately on script load
+  (async function checkForPhishingOnLoad() {
+    if (!isTopFrame() || !isHttpOrHttpsPage()) return;
+    await checkForPhishing();
   })();
 
   // Early message sending function (before full init)
@@ -102,14 +120,68 @@
   function escapeHtmlPhishing(text) {
     const div = document.createElement('div');
     div.textContent = text || '';
-    return div.innerHTML;
+    return div.textContent;  // Return textContent, not innerHTML
+  }
+
+  // Highlight suspicious characters (homoglyphs) in domain
+  function highlightSuspiciousChars(domain) {
+    if (!domain) return '';
+
+    // Common homoglyph mappings (suspicious char -> normal char it mimics)
+    const homoglyphs = {
+      '0': 'o', 'О': 'O', 'о': 'o', // Cyrillic O
+      '1': 'l', 'І': 'I', 'і': 'i', // Cyrillic I
+      'а': 'a', 'А': 'A', // Cyrillic A
+      'е': 'e', 'Е': 'E', // Cyrillic E
+      'р': 'p', 'Р': 'P', // Cyrillic P
+      'с': 'c', 'С': 'C', // Cyrillic C
+      'у': 'y', 'У': 'Y', // Cyrillic Y
+      'х': 'x', 'Х': 'X', // Cyrillic X
+      'ѕ': 's', 'Ѕ': 'S', // Cyrillic S
+      'ј': 'j', 'Ј': 'J', // Cyrillic J
+      'ԁ': 'd', // Cyrillic D
+      'ɡ': 'g', // Latin small letter script G
+      'ո': 'n', // Armenian N
+      'ɑ': 'a', // Latin alpha
+      'ß': 'ss', // German eszett
+      'ı': 'i', // Dotless I
+      'ｇ': 'g', 'ｏ': 'o', 'ｌ': 'l', 'ｅ': 'e', // Fullwidth chars
+      'ⅰ': 'i', 'ⅼ': 'l', // Roman numerals
+      'ɴ': 'n', 'ᴍ': 'm', 'ᴀ': 'a', // Small caps
+      'ⓐ': 'a', 'ⓑ': 'b', 'ⓒ': 'c', 'ⓓ': 'd', 'ⓔ': 'e', // Circled letters
+      'ⓕ': 'f', 'ⓖ': 'g', 'ⓗ': 'h', 'ⓘ': 'i', 'ⓙ': 'j',
+      'ⓚ': 'k', 'ⓛ': 'l', 'ⓜ': 'm', 'ⓝ': 'n', 'ⓞ': 'o',
+      'ⓟ': 'p', 'ⓠ': 'q', 'ⓡ': 'r', 'ⓢ': 's', 'ⓣ': 't',
+      'ⓤ': 'u', 'ⓥ': 'v', 'ⓦ': 'w', 'ⓧ': 'x', 'ⓨ': 'y', 'ⓩ': 'z',
+      'rn': 'm' // Common trick: rn looks like m
+    };
+
+    let result = '';
+    for (let i = 0; i < domain.length; i++) {
+      const char = domain[i];
+      if (homoglyphs[char]) {
+        result += '<span class="websuddhi-suspicious-char">' + escapeHtmlPhishing(char) + '</span>';
+      } else if (char.charCodeAt(0) > 127) {
+        // Non-ASCII character - potentially suspicious
+        result += '<span class="websuddhi-suspicious-char">' + escapeHtmlPhishing(char) + '</span>';
+      } else {
+        result += escapeHtmlPhishing(char);
+      }
+    }
+    return result;
   }
 
   // Show full-page phishing warning overlay
   function showPhishingWarning(data) {
+    const originalDomain = normalizeWarningDomain(data?.originalDomain || window.location.hostname);
+    if (!originalDomain) return;
+
+    // Remove stale overlay before creating a fresh one.
+    hidePhishingWarning({ persistDismissal: false });
+
     // Check if user already dismissed warning for this domain in this session
     try {
-      if (sessionStorage.getItem('websuddhi_phishing_dismissed_' + data.originalDomain) === 'true') {
+      if (sessionStorage.getItem('websuddhi_phishing_dismissed_' + originalDomain) === 'true') {
         return; // Don't show warning again
       }
     } catch (e) {
@@ -119,7 +191,7 @@
     // Normalize data fields (phishing detector uses matchedDomain, we want realDomain for display)
     const realDomain = data.realDomain || data.matchedDomain || 'unknown';
     const matchedBrand = data.matchedBrand || 'Unknown';
-    const originalDomain = data.originalDomain || window.location.hostname;
+    const displayDomain = data.originalDomain || window.location.hostname;
     const riskLevel = (data.riskLevel || '').toString().toLowerCase();
     const isHighRisk = riskLevel === 'high';
     const proceedCooldownSeconds = isHighRisk ? 10 : 5;
@@ -157,7 +229,7 @@
     const alertP = document.createElement('p');
     alertP.appendChild(document.createTextNode('This website '));
     const strong = document.createElement('strong');
-    strong.textContent = originalDomain;
+    strong.textContent = displayDomain;
     alertP.appendChild(strong);
     alertP.appendChild(document.createTextNode(" looks like it's trying to impersonate:"));
     alertDiv.appendChild(alertP);
@@ -179,7 +251,7 @@
     fakeDiv.appendChild(fakeLabel);
     const fakeValue = document.createElement('span');
     fakeValue.className = 'websuddhi-domain-value';
-    fakeValue.textContent = originalDomain;
+    fakeValue.textContent = displayDomain;
     fakeDiv.appendChild(fakeValue);
     compDiv.appendChild(fakeDiv);
 
@@ -267,7 +339,7 @@
     const proceedBtn = document.createElement('button');
     proceedBtn.className = 'websuddhi-btn-danger';
     proceedBtn.id = 'websuddhiProceed';
-    const proceedBaseText = 'Proceed to ' + originalDomain;
+    const proceedBaseText = 'Proceed to ' + displayDomain;
     proceedBtn.textContent = proceedBaseText;
     proceedBtn.disabled = true;
     proceedBtn.setAttribute('aria-disabled', 'true');
@@ -287,14 +359,14 @@
     if (isHighRisk) {
       const confirmLabel = document.createElement('label');
       confirmLabel.className = 'websuddhi-phishing-advanced-warning';
-      confirmLabel.textContent = 'Type "' + originalDomain + '" to confirm you want to continue:';
+      confirmLabel.textContent = 'Type "' + displayDomain + '" to confirm you want to continue:';
       details.appendChild(confirmLabel);
 
       domainConfirmInput = document.createElement('input');
       domainConfirmInput.type = 'text';
       domainConfirmInput.autocomplete = 'off';
       domainConfirmInput.spellcheck = false;
-      domainConfirmInput.placeholder = originalDomain;
+      domainConfirmInput.placeholder = displayDomain;
       domainConfirmInput.setAttribute('aria-label', 'Type domain to confirm proceeding');
       details.appendChild(domainConfirmInput);
     }
@@ -318,11 +390,19 @@
     overlay.appendChild(modal);
 
     // Insert at very beginning of document
-    if (document.documentElement) {
-      document.documentElement.insertBefore(overlay, document.documentElement.firstChild);
+    const rootNode = document.documentElement || document;
+    if (rootNode && rootNode.insertBefore) {
+      try {
+        rootNode.insertBefore(overlay, rootNode.firstChild);
+      } catch (e) {
+        rootNode.appendChild(overlay);
+      }
     } else {
-      document.appendChild(overlay);
+      return;
     }
+    phishingWarningState.overlay = overlay;
+    phishingWarningState.observer = null;
+    phishingWarningState.domain = originalDomain;
 
     // Hide original page content
     if (document.body) {
@@ -336,7 +416,9 @@
         document.body.style.setProperty('display', 'none', 'important');
       }
     });
-    bodyObserver.observe(document.documentElement, { childList: true, subtree: true });
+    const observerTarget = document.documentElement || document.body || document;
+    bodyObserver.observe(observerTarget, { childList: true, subtree: true });
+    phishingWarningState.observer = bodyObserver;
 
     let cooldownRemaining = proceedCooldownSeconds;
     const updateProceedButtonState = () => {
@@ -392,15 +474,25 @@
   }
 
   // Dismiss the phishing warning and show the page
-  function dismissPhishingWarning(overlay, observer, domain) {
+  function dismissPhishingWarning(overlay, observer, domain, options = {}) {
+    const targetOverlay = overlay || phishingWarningState.overlay;
+    const targetObserver = observer || phishingWarningState.observer;
+    const targetDomain = normalizeWarningDomain(domain || phishingWarningState.domain);
+    const persistDismissal = options.persistDismissal !== false;
+
     // Stop the observer
-    if (observer) {
-      observer.disconnect();
+    if (targetObserver) {
+      targetObserver.disconnect();
     }
 
     // Remove the overlay
-    if (overlay && overlay.parentNode) {
-      overlay.parentNode.removeChild(overlay);
+    if (targetOverlay && targetOverlay.parentNode) {
+      targetOverlay.parentNode.removeChild(targetOverlay);
+    }
+    if (phishingWarningState.overlay === targetOverlay) {
+      phishingWarningState.overlay = null;
+      phishingWarningState.observer = null;
+      phishingWarningState.domain = null;
     }
 
     // Restore body display
@@ -411,7 +503,11 @@
 
     // Store in session that user dismissed for this domain
     try {
-      sessionStorage.setItem('websuddhi_phishing_dismissed_' + domain, 'true');
+      if (targetDomain && persistDismissal) {
+        sessionStorage.setItem('websuddhi_phishing_dismissed_' + targetDomain, 'true');
+      } else if (targetDomain) {
+        sessionStorage.removeItem('websuddhi_phishing_dismissed_' + targetDomain);
+      }
     } catch (e) {
       // Session storage might not be available
     }
@@ -421,6 +517,21 @@
       sendMessageEarly({ type: 'STOP_PHISHING_ALERT' }).catch(() => {});
     } catch (e) {
       // Silently fail
+    }
+  }
+
+  function hidePhishingWarning(options = {}) {
+    return dismissPhishingWarning(null, null, null, options);
+  }
+
+  function clearPhishingDismissalForDomain(domain) {
+    const normalizedDomain = normalizeWarningDomain(domain);
+    if (!normalizedDomain) return;
+
+    try {
+      sessionStorage.removeItem('websuddhi_phishing_dismissed_' + normalizedDomain);
+    } catch (e) {
+      // Session storage might not be available
     }
   }
 
@@ -722,8 +833,6 @@
     enabled: true,
     paywallEnabled: true,
     socialBlockingEnabled: false,
-    cookieConsentEnabled: false,
-    annoyancesEnabled: false,
     whitelistedSites: [],
     blockedSelectors: new Map(),
     pickMode: false,
@@ -764,55 +873,10 @@
   // ============================================
   async function init() {
     try {
-      // Load settings
-      const storage = await getStorage();
-      state.enabled = storage.enabled !== false;
-      state.paywallEnabled = storage.paywallEnabled !== false;
-      state.socialBlockingEnabled = storage.socialBlockingEnabled === true;
-      state.cookieConsentEnabled = storage.cookieConsentEnabled === true;
-      state.annoyancesEnabled = storage.annoyancesEnabled === true;
-      state.whitelistedSites = storage.whitelistedSites || [];
-      state.toastDuration = storage.toastDuration || 3;
-      state.blockedSelectors = new Map();
-      for (const entry of (storage.blockedSelectors || [])) {
-        if (Array.isArray(entry)) {
-          state.blockedSelectors.set(entry[0], entry[1]);
-        } else if (entry && entry.selector) {
-          state.blockedSelectors.set(entry.selector, { url: entry.hostname, date: entry.date });
-        }
-      }
-
-      // Skip blocking if site is whitelisted
-      if (isSiteWhitelisted()) {
-        state.enabled = false;
-      }
-
-      // ── LIGHTWEIGHT (runs in ALL frames) ──────────────────────
-      // Immediate CSS-based hiding of ad selectors.
-      // This is the only work child iframes need to do.
-      if (state.enabled) {
-        applyBlocking();
-        removePingAttributes();
-      }
-
-      // ── HEAVY (top frame ONLY) ────────────────────────────────
-      // MutationObserver, anti-adblock bypass, paywall removal,
-      // element picker, social widget blocking, message listeners,
-      // visibility-change re-blocking, frame reporting, etc.
-      if (!isTopFrame()) return;
-
-      // Setup anti-anti-adblock EARLY (only when explicitly enabled and safe to run)
-      if (state.enabled && shouldRunAggressiveAntiAdblock(storage)) {
-        setupAntiAntiAdblock();
-      }
-
-      // Apply social widget blocking if enabled
-      if (state.socialBlockingEnabled && !isSiteWhitelisted()) {
-        applySocialBlocking();
-      }
+      const { whitelisted } = await refreshLocalSettings();
 
       // Auto-detect and remove paywalls (only if not whitelisted)
-      if (state.paywallEnabled && !isSiteWhitelisted()) {
+      if (state.paywallEnabled && !whitelisted) {
         setTimeout(() => detectAndRemovePaywall(), 1000);
         setTimeout(() => detectAndRemovePaywall(), 3000);
       }
@@ -828,33 +892,15 @@
 
       // Setup listeners
       setupMessageListener();
-
-      // Re-apply blocking when page becomes visible (e.g., user switches back to tab)
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && state.enabled && !isSiteWhitelisted()) {
-          applyBlocking();
-        }
-      });
-
-      // Apply blocking both immediately and after DOM is ready
-      // This ensures selectors persist even if DOM isn't ready on first load
-      const applyBlockingWhenReady = () => {
-        if (state.enabled && !isSiteWhitelisted()) {
-          applyBlocking();
-        }
-        // Also setup observer after DOM is ready
-        setupMutationObserver();
-        setTimeout(reportFramesToBackground, 2000);
-      };
-
       // Only start observer when body exists
       if (document.body) {
-        // Apply blocking immediately AND after a short delay to ensure persistence
-        setTimeout(applyBlockingWhenReady, 100);
+        setupMutationObserver();
+        // Report frames after a delay to let page load
+        setTimeout(reportFramesToBackground, 2000);
       } else {
         document.addEventListener('DOMContentLoaded', () => {
-          // Apply blocking after DOM is ready
-          setTimeout(applyBlockingWhenReady, 100);
+          setupMutationObserver();
+          setTimeout(reportFramesToBackground, 2000);
         });
       }
 
@@ -871,15 +917,100 @@
   }
 
   function setStorage(data) {
-    return self.WebSuddhi.utils.setStorage(data);
+    const sharedSetStorage = self.WebSuddhi?.utils?.setStorage;
+    if (sharedSetStorage) {
+      return sharedSetStorage(data);
+    }
+
+    return new Promise((resolve, reject) => {
+      if (typeof browser !== 'undefined' && browser.storage) {
+        browser.storage.local.set(data).then(resolve).catch(reject);
+        return;
+      }
+      if (typeof chrome !== 'undefined' && chrome.storage) {
+        chrome.storage.local.set(data, () => {
+          if (chrome.runtime.lastError) reject(chrome.runtime.lastError);
+          else resolve();
+        });
+        return;
+      }
+      try {
+        if (data.blockedSelectors) {
+          localStorage.setItem('websuddhi_selectors', JSON.stringify(data.blockedSelectors));
+        }
+        if (data.enabled !== undefined) {
+          localStorage.setItem('websuddhi_enabled', data.enabled);
+        }
+        if (data.paywallEnabled !== undefined) {
+          localStorage.setItem('websuddhi_paywall', data.paywallEnabled);
+        }
+        if (data.socialBlockingEnabled !== undefined) {
+          localStorage.setItem('websuddhi_social', data.socialBlockingEnabled);
+        }
+        if (data.whitelistedSites) {
+          localStorage.setItem('websuddhi_whitelist', JSON.stringify(data.whitelistedSites));
+        }
+        resolve();
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  async function refreshLocalSettings() {
+    const storage = await getStorage();
+    state.enabled = storage.enabled !== false;
+    state.paywallEnabled = storage.paywallEnabled !== false;
+    state.socialBlockingEnabled = storage.socialBlockingEnabled === true;
+    state.whitelistedSites = storage.whitelistedSites || [];
+    state.toastDuration = storage.toastDuration || 3;
+    state.blockedSelectors = new Map();
+
+    for (const entry of (storage.blockedSelectors || [])) {
+      if (Array.isArray(entry)) {
+        state.blockedSelectors.set(entry[0], entry[1]);
+      } else if (entry && entry.selector) {
+        state.blockedSelectors.set(entry.selector, { url: entry.hostname, date: entry.date });
+      }
+    }
+
+    const whitelisted = isSiteWhitelisted();
+    if (whitelisted) {
+      state.enabled = false;
+    }
+
+    if (state.enabled) {
+      applyBlocking();
+      removePingAttributes();
+      if (shouldRunAggressiveAntiAdblock(storage)) {
+        setupAntiAntiAdblock();
+      }
+      handleAntiAdblock();
+      if (state.socialBlockingEnabled) {
+        applySocialBlocking();
+      }
+      if (state.paywallEnabled) {
+        detectAndRemovePaywall();
+      }
+    } else {
+      unblockAll();
+      hidePhishingWarning({ persistDismissal: false });
+      if (!whitelisted) {
+        unblockSocialWidgets();
+      }
+    }
+
+    if (!state.socialBlockingEnabled) {
+      unblockSocialWidgets();
+    }
+
+    return { whitelisted };
   }
 
   // ============================================
   // MESSAGE HANDLING
   // ============================================
   function setupMessageListener() {
-    if (!isTopFrame()) return;
-    log('Setting up message listener');
     const handler = (message, sender, sendResponse) => {
       handleMessage(message, sender)
         .then(sendResponse)
@@ -892,11 +1023,9 @@
     } else if (typeof chrome !== 'undefined' && chrome.runtime) {
       chrome.runtime.onMessage.addListener(handler);
     }
-    log('Message listener set up');
   }
 
   async function handleMessage(message, sender) {
-    log('Received message:', message.type);
     switch (message.type) {
       case 'TOGGLE':
         state.enabled = message.enabled;
@@ -905,6 +1034,7 @@
         } else {
           unblockAll();
         }
+        hidePhishingWarning({ persistDismissal: !state.enabled });
         await setStorage({ enabled: state.enabled });
         return { success: true, enabled: state.enabled };
 
@@ -928,40 +1058,64 @@
         return { success: true, socialBlockingEnabled: state.socialBlockingEnabled };
 
       case 'WHITELIST_SITE': {
-        const hostname = message.hostname || getCurrentHostname();
-        if (hostname && !state.whitelistedSites.includes(hostname)) {
+        const hostname = normalizeWarningDomain(message.hostname || getCurrentHostname());
+        if (!hostname) {
+          return { success: false, error: 'No hostname provided' };
+        }
+
+        const normalizedWhitelist = state.whitelistedSites.map(normalizeWarningDomain);
+        if (!normalizedWhitelist.includes(hostname)) {
           state.whitelistedSites.push(hostname);
           await setStorage({ whitelistedSites: state.whitelistedSites });
-          unblockAll();
-          state.enabled = false;
         }
+
+        await refreshLocalSettings();
+        hidePhishingWarning({ persistDismissal: false });
         return { success: true, whitelisted: true };
       }
 
       case 'UNWHITELIST_SITE': {
-        const unlistHostname = message.hostname || getCurrentHostname();
-        state.whitelistedSites = state.whitelistedSites.filter(s => s !== unlistHostname);
+        const unlistHostname = normalizeWarningDomain(message.hostname || getCurrentHostname());
+        if (!unlistHostname) {
+          return { success: false, error: 'No hostname provided' };
+        }
+
+        state.whitelistedSites = state.whitelistedSites.filter(s =>
+          normalizeWarningDomain(s) !== unlistHostname
+        );
         await setStorage({ whitelistedSites: state.whitelistedSites });
+        await refreshLocalSettings();
+        clearPhishingDismissalForDomain(unlistHostname);
+        await checkForPhishing(true);
         return { success: true, whitelisted: false };
       }
+
+      case 'SETTINGS_CHANGED':
+        const relevantKeys = message?.changed || [];
+        const shouldRefresh = !Array.isArray(relevantKeys) || relevantKeys.length === 0 ||
+          relevantKeys.some(key => (
+            key === 'enabled' ||
+            key === 'paywallEnabled' ||
+            key === 'socialBlockingEnabled' ||
+            key === 'blockedSelectors' ||
+            key === 'whitelistedSites' ||
+            key === 'toastDuration' ||
+            key === 'aggressiveAntiAdblockEnabled'
+          ));
+
+        if (!shouldRefresh) return { success: true, enabled: state.enabled };
+
+        await refreshLocalSettings();
+        if (!isSiteWhitelisted()) {
+          await checkForPhishing(true);
+        }
+        return { success: true, enabled: state.enabled };
 
       case 'GET_WHITELIST':
         return { success: true, sites: state.whitelistedSites };
 
       case 'START_PICK_MODE':
         startPickMode();
-        return { success: true };
-
-      case 'STOP_PICK_MODE':
-        stopPickMode();
-        return { success: true };
-
-      case 'START_ZAP_MODE':
-        startZapMode();
-        return { success: true };
-
-      case 'STOP_ZAP_MODE':
-        stopZapMode();
         return { success: true };
 
       case 'TOGGLE_PICK_MODE':
@@ -972,6 +1126,14 @@
         }
         return { success: true, pickMode: state.pickMode };
 
+      case 'STOP_PICK_MODE':
+        stopPickMode();
+        return { success: true };
+
+      case 'START_ZAP_MODE':
+        startZapMode();
+        return { success: true };
+
       case 'TOGGLE_ZAP_MODE':
         if (state.zapMode) {
           stopZapMode();
@@ -980,21 +1142,9 @@
         }
         return { success: true, zapMode: state.zapMode };
 
-      case 'TOGGLE_COOKIE_CONSENT':
-        state.cookieConsentEnabled = message.enabled;
-        await setStorage({ cookieConsentEnabled: state.cookieConsentEnabled });
-        if (state.cookieConsentEnabled) {
-          applyBlocking();
-        }
-        return { success: true, cookieConsentEnabled: state.cookieConsentEnabled };
-
-      case 'TOGGLE_ANNOYANCE_BLOCKING':
-        state.annoyancesEnabled = message.enabled;
-        await setStorage({ annoyancesEnabled: state.annoyancesEnabled });
-        if (state.annoyancesEnabled) {
-          applyBlocking();
-        }
-        return { success: true, annoyancesEnabled: state.annoyancesEnabled };
+      case 'STOP_ZAP_MODE':
+        stopZapMode();
+        return { success: true };
 
       case 'REMOVE_PAYWALL':
         const removed = removePaywall();
@@ -1159,7 +1309,6 @@
 
   // Report detected third-party frames to popup/background
   function reportFramesToBackground() {
-    if (!isTopFrame()) return;
     const frames = detectThirdPartyFrames();
     if (frames.length === 0) return;
 
@@ -1184,7 +1333,6 @@
   // PAYWALL DETECTION & REMOVAL
   // ============================================
   function detectAndRemovePaywall() {
-    if (!isTopFrame()) return;
     if (!state.paywallEnabled) return;
 
     // Method 1: Check for common paywall class names
@@ -1432,7 +1580,6 @@
   // ANTI-ADBLOCK DETECTION
   // ============================================
   function handleAntiAdblock() {
-    if (!isTopFrame()) return;
     if (!state.enabled) return;
 
     // Remove anti-adblock overlays
@@ -1453,7 +1600,6 @@
   // ANTI-ANTI-ADBLOCK BYPASS
   // ============================================
   function setupAntiAntiAdblock() {
-    if (!isTopFrame()) return;
     if (!state.enabled) return;
 
     try {
@@ -1706,7 +1852,6 @@
   }
 
   function removeAntiAdblockOverlays() {
-    if (!isTopFrame()) return;
     const overlaySelectors = ANTI_ADBLOCK_SELECTORS.join(',');
 
     try {
@@ -1758,7 +1903,6 @@
   // SOCIAL WIDGET BLOCKING
   // ============================================
   function applySocialBlocking() {
-    if (!isTopFrame()) return;
     if (!state.socialBlockingEnabled || isSiteWhitelisted()) return;
 
     for (const selector of SOCIAL_WIDGET_SELECTORS) {
@@ -1978,7 +2122,6 @@
   // SHADOW DOM SUPPORT
   // ============================================
   function handleShadowDOM(container) {
-    if (!isTopFrame()) return;
     container = container || document.body;
     if (!container) return;
 
@@ -2014,7 +2157,6 @@
   // DYNAMIC CONTENT
   // ============================================
   function setupMutationObserver() {
-    if (!isTopFrame()) return;
     if (!document.body) return;
     if (state.observer) return;
 
@@ -2072,8 +2214,10 @@
   // PICK MODE - Select & Save Elements
   // ============================================
   function startPickMode() {
-    if (!isTopFrame()) return;
-    log('startPickMode called');
+    // Only run pick mode in the top/main frame to avoid conflicts with iframes
+    if (window !== window.top) {
+      return;
+    }
 
     if (state.zapMode) stopZapMode();
     state.pickMode = true;
@@ -2377,7 +2521,7 @@
   // ============================================
   function startZapMode() {
     // Only run zap mode in the top/main frame to avoid conflicts with iframes
-    if (!isTopFrame()) {
+    if (window !== window.top) {
       return;
     }
 
@@ -2427,36 +2571,8 @@
     const el = e.target;
     if (el.classList.contains('websuddhi-pick-preview') || el.closest('.websuddhi-pick-preview')) return;
 
-    // Generate a unique selector so the block persists across page loads
-    const selector = getUniqueSelector(el);
-    hideElement(el, selector);
-
-    if (!selector) {
-      showToast('Element hidden (could not generate selector)');
-      return;
-    }
-
-    // Persist the rule — same flow as Pick Mode but without the confirm dialog
-    (async () => {
-      try {
-        if (state.blockedSelectors.size >= 500) {
-          showToast('Element hidden — rule limit reached (500). Remove old rules first.');
-          return;
-        }
-        state.blockedSelectors.set(selector, {
-          url: window.location.hostname,
-          date: Date.now(),
-          source: 'zap'
-        });
-        await saveSelectors();
-        blockSelector(selector);
-        try { await sendMessage({ type: 'ADD_SELECTOR', selector }); } catch (_) {}
-        showToast('Element zapped and rule saved');
-      } catch (err) {
-        logError('Zap mode: failed to save selector:', err);
-        showToast('Element hidden (save failed)');
-      }
-    })();
+    hideElement(el);
+    showToast('Element hidden (not saved)');
   }
 
   function handleZapEscape(e) {
@@ -2744,8 +2860,7 @@
         }
         state.blockedSelectors.set(selector, {
           url: window.location.hostname,
-          date: Date.now(),
-          source: 'pick'
+          date: Date.now()
         });
         await saveSelectors();
         blockSelector(selector);
@@ -2845,7 +2960,7 @@
   function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
-    return div.innerHTML;
+    return div.textContent;
   }
 
   // ============================================

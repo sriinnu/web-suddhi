@@ -4,24 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WebSuddhi - Settings</title>
-  <link rel="icon" type="image/png" sizes="32x32" href="../icons/icon32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="../icons/icon16.png">
+  <link rel="stylesheet" href="../fonts/fonts.css">
+  <link rel="stylesheet" href="../shared/themes.css">
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
-  <!-- Mobile hamburger -->
-  <button class="sidebar-toggle" id="sidebarToggle" aria-label="Open navigation menu" aria-expanded="false">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-      <line x1="3" y1="6" x2="21" y2="6"/>
-      <line x1="3" y1="12" x2="21" y2="12"/>
-      <line x1="3" y1="18" x2="21" y2="18"/>
-    </svg>
-  </button>
-  <div class="sidebar-overlay" id="sidebarOverlay"></div>
-
   <div class="app-layout">
     <!-- Sidebar Navigation -->
-    <aside class="sidebar" id="sidebar" role="navigation" aria-label="Settings navigation">
+    <aside class="sidebar">
       <div class="sidebar-header">
         <img src="../icons/icon48.png" alt="WebSuddhi" class="logo">
         <div class="brand">
@@ -38,54 +28,49 @@
         </button>
       </div>
 
-      <nav class="sidebar-nav" role="tablist" aria-label="Settings sections">
-        <a href="#general" class="nav-item active" data-section="general" role="tab" aria-selected="true" aria-controls="general">
+      <nav class="sidebar-nav">
+        <a href="#general" class="nav-item active" data-section="general">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z"/>
             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
           </svg>
           <span>General</span>
         </a>
-        <a href="#privacy" class="nav-item" data-section="privacy" role="tab" aria-selected="false" aria-controls="privacy">
+        <a href="#privacy" class="nav-item" data-section="privacy">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"/>
           </svg>
           <span>Privacy</span>
         </a>
-        <a href="#rules" class="nav-item" data-section="rules" role="tab" aria-selected="false" aria-controls="rules">
+        <a href="#rules" class="nav-item" data-section="rules">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"/>
           </svg>
           <span>Rules</span>
           <span class="nav-badge" id="navRulesCount">0</span>
         </a>
-        <a href="#filters" class="nav-item" data-section="filters" role="tab" aria-selected="false" aria-controls="filters">
+        <a href="#filters" class="nav-item" data-section="filters">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/>
           </svg>
           <span>Filter Lists</span>
         </a>
-        <a href="#stats" class="nav-item" data-section="stats" role="tab" aria-selected="false" aria-controls="stats">
+        <a href="#stats" class="nav-item" data-section="stats">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"/>
           </svg>
           <span>Statistics</span>
         </a>
-        <a href="#logs" class="nav-item" data-section="logs" role="tab" aria-selected="false" aria-controls="logs">
+        <a href="#logs" class="nav-item" data-section="logs">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
           </svg>
           <span>Activity Log</span>
         </a>
-        <a href="#support" class="nav-item" data-section="support" role="tab" aria-selected="false" aria-controls="support">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"/>
-          </svg>
-          <span>Support</span>
-        </a>
       </nav>
 
       <div class="sidebar-footer">
+        <span class="theme-label">Theme</span>
         <div class="theme-switcher">
           <button class="theme-btn" data-theme="light" title="Light">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -102,14 +87,42 @@
               <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z"/>
             </svg>
           </button>
+          <button class="theme-btn theme-swatch" data-theme="forest" title="Forest">
+            <span class="swatch-dots">
+              <span class="swatch-dot" style="background:#105666"></span>
+              <span class="swatch-dot" style="background:#839958"></span>
+              <span class="swatch-dot" style="background:#D3968C"></span>
+            </span>
+          </button>
+          <button class="theme-btn theme-swatch" data-theme="forest-dark" title="Forest Dark">
+            <span class="swatch-dots">
+              <span class="swatch-dot" style="background:#0A3323"></span>
+              <span class="swatch-dot" style="background:#839958"></span>
+              <span class="swatch-dot" style="background:#F7F4D5"></span>
+            </span>
+          </button>
+          <button class="theme-btn theme-swatch" data-theme="coastal" title="Coastal">
+            <span class="swatch-dots">
+              <span class="swatch-dot" style="background:#933B5B"></span>
+              <span class="swatch-dot" style="background:#AABAAE"></span>
+              <span class="swatch-dot" style="background:#E3D6BF"></span>
+            </span>
+          </button>
+          <button class="theme-btn theme-swatch" data-theme="coastal-dark" title="Coastal Dark">
+            <span class="swatch-dots">
+              <span class="swatch-dot" style="background:#1E1218"></span>
+              <span class="swatch-dot" style="background:#B5728A"></span>
+              <span class="swatch-dot" style="background:#E3D6BF"></span>
+            </span>
+          </button>
         </div>
       </div>
     </aside>
 
     <!-- Main Content -->
-    <main class="main-content" role="main">
+    <main class="main-content">
       <!-- General Section -->
-      <section class="section" id="general" role="tabpanel" aria-labelledby="general-tab">
+      <section class="section" id="general">
         <div class="section-header">
           <h2>General Settings</h2>
           <p class="section-desc">Configure protection and blocking features</p>
@@ -122,7 +135,7 @@
                 <span class="setting-title">Enable Protection</span>
                 <span class="setting-desc">Block ads and trackers across all websites</span>
               </span>
-              <input type="checkbox" id="enableProtection" checked role="switch" aria-label="Enable ad and tracker protection">
+              <input type="checkbox" id="enableProtection" checked>
               <span class="toggle-switch"><span class="slider"></span></span>
             </label>
           </div>
@@ -133,7 +146,7 @@
                 <span class="setting-title">Paywall Removal</span>
                 <span class="setting-desc">Automatically detect and remove paywall overlays</span>
               </span>
-              <input type="checkbox" id="enablePaywall" checked role="switch" aria-label="Enable paywall removal">
+              <input type="checkbox" id="enablePaywall" checked>
               <span class="toggle-switch"><span class="slider"></span></span>
             </label>
           </div>
@@ -144,7 +157,7 @@
                 <span class="setting-title">Network Blocking</span>
                 <span class="setting-desc">Block ad and tracking requests at the network level</span>
               </span>
-              <input type="checkbox" id="enableNetworkBlocking" checked role="switch" aria-label="Enable network request blocking">
+              <input type="checkbox" id="enableNetworkBlocking" checked>
               <span class="toggle-switch"><span class="slider"></span></span>
             </label>
           </div>
@@ -155,7 +168,7 @@
                 <span class="setting-title">URL Cleaning</span>
                 <span class="setting-desc">Strip tracking parameters from URLs (utm, fbclid, etc.)</span>
               </span>
-              <input type="checkbox" id="enableUrlCleaning" checked role="switch" aria-label="Enable URL tracking parameter removal">
+              <input type="checkbox" id="enableUrlCleaning" checked>
               <span class="toggle-switch"><span class="slider"></span></span>
             </label>
           </div>
@@ -166,7 +179,7 @@
                 <span class="setting-title">Cookie Auto-Dismiss</span>
                 <span class="setting-desc">Automatically reject cookie consent banners</span>
               </span>
-              <input type="checkbox" id="enableCookieConsent" checked role="switch" aria-label="Enable cookie consent auto-dismiss">
+              <input type="checkbox" id="enableCookieConsent" checked>
               <span class="toggle-switch"><span class="slider"></span></span>
             </label>
           </div>
@@ -177,7 +190,18 @@
                 <span class="setting-title">Annoyance Blocker</span>
                 <span class="setting-desc">Hide chat widgets, newsletter popups, push prompts</span>
               </span>
-              <input type="checkbox" id="enableAnnoyanceBlocking" checked role="switch" aria-label="Enable annoyance blocking">
+              <input type="checkbox" id="enableAnnoyanceBlocking" checked>
+              <span class="toggle-switch"><span class="slider"></span></span>
+            </label>
+          </div>
+
+          <div class="setting">
+            <label class="toggle-label">
+              <span class="setting-text">
+                <span class="setting-title">Social Blocker</span>
+                <span class="setting-desc">Hide social login and social share widgets</span>
+              </span>
+              <input type="checkbox" id="enableSocialBlocking">
               <span class="toggle-switch"><span class="slider"></span></span>
             </label>
           </div>
@@ -186,9 +210,9 @@
             <label class="toggle-label">
               <span class="setting-text">
                 <span class="setting-title">Sync Settings</span>
-                <span class="setting-desc">Sync rules and settings across devices</span>
+                <span class="setting-desc" id="syncDescription">Sync rules and settings across devices</span>
               </span>
-              <input type="checkbox" id="enableSync" role="switch" aria-label="Enable cross-device sync">
+              <input type="checkbox" id="enableSync">
               <span class="toggle-switch"><span class="slider"></span></span>
             </label>
           </div>
@@ -207,7 +231,7 @@
       </section>
 
       <!-- Privacy Section -->
-      <section class="section" id="privacy" role="tabpanel" aria-labelledby="privacy-tab">
+      <section class="section" id="privacy">
         <div class="section-header">
           <h2>Privacy Protection</h2>
           <p class="section-desc">Advanced privacy and anti-tracking features</p>
@@ -220,7 +244,7 @@
                 <span class="setting-title">Phishing Protection</span>
                 <span class="setting-desc">Detect suspicious lookalike domains</span>
               </span>
-              <input type="checkbox" id="enablePhishingProtection" checked role="switch" aria-label="Enable phishing protection">
+              <input type="checkbox" id="enablePhishingProtection" checked>
               <span class="toggle-switch"><span class="slider"></span></span>
             </label>
           </div>
@@ -231,7 +255,7 @@
                 <span class="setting-title">Ping Protection</span>
                 <span class="setting-desc">Block hyperlink auditing (ping attributes)</span>
               </span>
-              <input type="checkbox" id="enablePingProtection" checked role="switch" aria-label="Enable ping and beacon protection">
+              <input type="checkbox" id="enablePingProtection" checked>
               <span class="toggle-switch"><span class="slider"></span></span>
             </label>
           </div>
@@ -242,7 +266,7 @@
                 <span class="setting-title">Referrer Stripping</span>
                 <span class="setting-desc">Remove Referer header on third-party requests</span>
               </span>
-              <input type="checkbox" id="enableReferrerStripping" role="switch" aria-label="Enable referrer stripping">
+              <input type="checkbox" id="enableReferrerStripping">
               <span class="toggle-switch"><span class="slider"></span></span>
             </label>
           </div>
@@ -253,7 +277,7 @@
                 <span class="setting-title">WebRTC Protection</span>
                 <span class="setting-desc">Prevent WebRTC IP address leaks</span>
               </span>
-              <input type="checkbox" id="enableWebRTCProtection" role="switch" aria-label="Enable WebRTC leak protection">
+              <input type="checkbox" id="enableWebRTCProtection">
               <span class="toggle-switch"><span class="slider"></span></span>
             </label>
           </div>
@@ -264,7 +288,7 @@
                 <span class="setting-title">Block Telemetry</span>
                 <span class="setting-desc">Block analytics, crash reports, and usage data collection</span>
               </span>
-              <input type="checkbox" id="enableTelemetryBlocking" role="switch" aria-label="Enable telemetry blocking">
+              <input type="checkbox" id="enableTelemetryBlocking">
               <span class="toggle-switch"><span class="slider"></span></span>
             </label>
           </div>
@@ -275,7 +299,7 @@
                 <span class="setting-title">Block Third-Party Cookies</span>
                 <span class="setting-desc">Prevent cross-site tracking via cookies</span>
               </span>
-              <input type="checkbox" id="enableThirdPartyCookieBlocking" role="switch" aria-label="Enable third-party cookie blocking">
+              <input type="checkbox" id="enableThirdPartyCookieBlocking">
               <span class="toggle-switch"><span class="slider"></span></span>
             </label>
           </div>
@@ -283,7 +307,7 @@
       </section>
 
       <!-- Rules Section -->
-      <section class="section" id="rules" role="tabpanel" aria-labelledby="rules-tab">
+      <section class="section" id="rules">
         <div class="section-header">
           <h2>Blocked Elements</h2>
           <span class="badge" id="rulesCount">0</span>
@@ -307,28 +331,41 @@
         <div class="card">
           <h3>Whitelisted Sites</h3>
           <div class="add-input-group">
-            <input type="text" id="siteInput" placeholder="example.com" autocomplete="off" aria-label="Site domain to whitelist">
+            <input type="text" id="siteInput" placeholder="example.com" autocomplete="off">
             <button id="addSiteBtn" class="btn btn-primary">Add Site</button>
           </div>
           <div class="whitelist-list" id="whitelistList"></div>
         </div>
 
         <div class="card">
-          <h3>Import / Export</h3>
-          <p class="card-desc">Backup your rules or import from another device</p>
+          <h3>Backup / Restore</h3>
+          <p class="card-desc">Export custom rules only, or create a full settings backup with themes, subscriptions, and privacy preferences.</p>
           <div class="btn-group">
+            <button id="exportBackupBtn" class="btn btn-primary">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V3m0 13.5 4.5-4.5M12 16.5 7.5 12M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5"/>
+              </svg>
+              Export Backup
+            </button>
+            <button id="importBackupBtn" class="btn btn-secondary">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 7.5v13.5m0-13.5 4.5 4.5M12 7.5 7.5 12M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5"/>
+              </svg>
+              Import Backup
+            </button>
             <button id="exportBtn" class="btn btn-primary">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/>
               </svg>
-              Export
+              Export Rules
             </button>
             <button id="importBtn" class="btn btn-secondary">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/>
               </svg>
-              Import
+              Import Rules
             </button>
+            <input type="file" id="importBackupFile" accept=".json" style="display:none">
             <input type="file" id="importFile" accept=".json" style="display:none">
           </div>
           <div id="importExportStatus" class="status-message"></div>
@@ -336,7 +373,7 @@
       </section>
 
       <!-- Filters Section -->
-      <section class="section" id="filters" role="tabpanel" aria-labelledby="filters-tab">
+      <section class="section" id="filters">
         <div class="section-header">
           <h2>Filter Lists</h2>
           <p class="section-desc">Manage filter list subscriptions</p>
@@ -415,8 +452,8 @@
         <div class="card">
           <h3>Add Custom List</h3>
           <div class="add-subscription-form">
-            <input type="text" id="subscriptionNameInput" placeholder="List name" autocomplete="off" aria-label="Filter list name">
-            <input type="text" id="subscriptionUrlInput" placeholder="https://example.com/filters.txt" autocomplete="off" aria-label="Filter list URL">
+            <input type="text" id="subscriptionNameInput" placeholder="List name" autocomplete="off">
+            <input type="text" id="subscriptionUrlInput" placeholder="https://example.com/filters.txt" autocomplete="off">
             <button id="addSubscriptionBtn" class="btn btn-primary">Add List</button>
           </div>
           <button id="updateAllFiltersBtn" class="btn btn-secondary btn-full">
@@ -429,7 +466,7 @@
       </section>
 
       <!-- Stats Section -->
-      <section class="section" id="stats" role="tabpanel" aria-labelledby="stats-tab">
+      <section class="section" id="stats">
         <div class="section-header">
           <h2>Statistics</h2>
           <p class="section-desc">Track your blocking activity</p>
@@ -521,7 +558,7 @@
       </section>
 
       <!-- Logs Section -->
-      <section class="section" id="logs" role="tabpanel" aria-labelledby="logs-tab">
+      <section class="section" id="logs">
         <div class="section-header">
           <h2>Activity Log</h2>
           <span class="badge" id="logCount">0</span>
@@ -532,7 +569,7 @@
           <div class="log-controls">
             <label class="toggle-label compact">
               <span class="setting-title">Live Logging</span>
-              <input type="checkbox" id="enableLogging" checked role="switch" aria-label="Enable debug logging">
+              <input type="checkbox" id="enableLogging" checked>
               <span class="toggle-switch small"><span class="slider"></span></span>
             </label>
             <button id="clearLogBtn" class="btn btn-secondary btn-sm">Clear Log</button>
@@ -543,148 +580,17 @@
         </div>
       </section>
 
-      <!-- Support Section -->
-      <section class="section" id="support" role="tabpanel" aria-labelledby="support-tab">
-        <div class="section-header">
-          <h2>Support WebSuddhi</h2>
-          <p class="section-desc">Help keep WebSuddhi free and open source</p>
-        </div>
-
-        <div class="card support-card">
-          <div class="support-intro">
-            <div class="support-icon">
-              <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"/>
-              </svg>
-            </div>
-            <h3>WebSuddhi is built with love</h3>
-            <p>If you find this extension useful, consider supporting its development. Every contribution helps keep it free, ad-free, and open source.</p>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3>Ways to Support</h3>
-          <div class="support-options">
-            <a href="https://buymeacoffee.com/sriinnu" target="_blank" rel="noopener noreferrer" class="support-option">
-              <div class="support-option-icon">
-                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"/>
-                </svg>
-              </div>
-              <div class="support-option-text">
-                <strong>Buy Me a Coffee</strong>
-                <span>A one-time gesture of appreciation</span>
-              </div>
-              <svg class="support-option-arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
-              </svg>
-            </a>
-
-            <a href="https://github.com/sponsors/sriinnu" target="_blank" rel="noopener noreferrer" class="support-option">
-              <div class="support-option-icon">
-                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
-                  <path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21.5c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2Z"/>
-                </svg>
-              </div>
-              <div class="support-option-text">
-                <strong>GitHub Sponsors</strong>
-                <span>Become a recurring sponsor</span>
-              </div>
-              <svg class="support-option-arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
-              </svg>
-            </a>
-
-            <a href="https://github.com/sriinnu/web-suddhi" target="_blank" rel="noopener noreferrer" class="support-option">
-              <div class="support-option-icon">
-                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"/>
-                </svg>
-              </div>
-              <div class="support-option-text">
-                <strong>Star on GitHub</strong>
-                <span>It's free and helps others discover us</span>
-              </div>
-              <svg class="support-option-arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
-              </svg>
-            </a>
-
-            <a href="#" class="support-option" id="shareExtension">
-              <div class="support-option-icon">
-                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z"/>
-                </svg>
-              </div>
-              <div class="support-option-text">
-                <strong>Share with Friends</strong>
-                <span>Spread the word about privacy</span>
-              </div>
-              <svg class="support-option-arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
-              </svg>
-            </a>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3>Other Ways to Help</h3>
-          <div class="support-help-list">
-            <div class="support-help-item">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 0 0 1.5-.189m-1.5.189a6.01 6.01 0 0 1-1.5-.189m3.75 7.478a12.06 12.06 0 0 1-4.5 0m3.75 2.383a14.406 14.406 0 0 1-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 1 0-7.517 0c.85.493 1.509 1.333 1.509 2.316V18"/>
-              </svg>
-              <span>Report bugs and suggest features on GitHub</span>
-            </div>
-            <div class="support-help-item">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 21l5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 016-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896.061 1.785.147 2.666.257m-4.589 8.495a18.023 18.023 0 01-3.827-5.802"/>
-              </svg>
-              <span>Help translate WebSuddhi into your language</span>
-            </div>
-            <div class="support-help-item">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z"/>
-              </svg>
-              <span>Contribute code — PRs are always welcome</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <!-- About Section -->
       <section class="section section-about">
         <div class="about-content">
           <img src="../icons/icon48.png" alt="WebSuddhi" class="about-logo">
           <div class="about-text">
             <strong>WebSuddhi</strong> v2.1.0
-            <p>Privacy-first ad blocker by <a href="https://github.com/sriinnu" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: none;"><strong>Srinivas Pendela</strong></a></p>
+            <p>Privacy-first ad blocker by <strong>Srinivas Pendela</strong></p>
           </div>
-          <div class="about-actions">
-            <a href="https://github.com/sriinnu/web-suddhi" target="_blank" rel="noopener noreferrer" class="about-action-btn star-btn" title="Star on GitHub">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"/>
-              </svg>
-              Star
-            </a>
-            <a href="https://github.com/sponsors/sriinnu" target="_blank" rel="noopener noreferrer" class="about-action-btn sponsor-btn" title="Sponsor the developer">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-              </svg>
-              Sponsor
-            </a>
-            <a href="#" id="rateExtension" target="_blank" rel="noopener noreferrer" class="about-action-btn rate-btn" title="Rate this extension">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"/>
-              </svg>
-              Rate
-            </a>
-            <a href="https://github.com/sriinnu/web-suddhi" target="_blank" rel="noopener noreferrer" class="about-action-btn github-btn" title="View source code">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                <path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21.5c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2Z"/>
-              </svg>
-              Source
-            </a>
+          <div class="about-links">
+            <a href="#" id="rateExtension">Rate extension</a>
+            <a href="https://github.com/sriinnu/web-suddhi" id="viewSource" target="_blank">GitHub</a>
           </div>
         </div>
       </section>
@@ -692,8 +598,10 @@
   </div>
 
   <!-- Toast notification container -->
-  <div id="toastContainer" class="toast-container" role="status" aria-live="polite"></div>
+  <div id="toastContainer" class="toast-container"></div>
 
+  <script src="../shared/utils.js"></script>
+  <script src="../shared/import-export.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

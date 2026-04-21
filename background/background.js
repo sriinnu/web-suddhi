@@ -16,7 +16,7 @@ try {
     );
   }
 } catch (e) {
-  // importScripts error
+  console.error('WebSuddhi: importScripts error:', e);
 }
 
 (function() {
@@ -39,11 +39,14 @@ try {
   const logError = (...args) => {
     if (self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
       self.WebSuddhi.utils.error(...args);
+    } else {
+      console.error('[WebSuddhi]', ...args);
     }
   };
 
   // Cross-browser API
-  const api = (typeof browser !== 'undefined' && browser.runtime) ? browser : chrome;
+  const hasPromiseExtensionApi = typeof browser !== 'undefined' && browser.runtime;
+  const api = hasPromiseExtensionApi ? browser : chrome;
 
   // ============================================
   // STORAGE HELPERS (used throughout)
@@ -98,21 +101,119 @@ try {
     'GET_STATS_FOR_PERIOD'
   ]);
 
-  // Use shared storage helpers from utils.js (loaded via importScripts)
-  const getStorage = self.WebSuddhi.utils.getStorage;
-  const setStorage = self.WebSuddhi.utils.setStorage;
+  // Safe storage wrapper with defaults
+  async function getStorage(keys) {
+    const sharedGetStorage = self.WebSuddhi?.utils?.getStorage;
+    if (sharedGetStorage) {
+      return sharedGetStorage(keys);
+    }
+
+    return new Promise((resolve) => {
+      api.storage.local.get(keys, (data) => {
+        if (api.runtime.lastError) {
+          logError('Storage get error:', api.runtime.lastError);
+          resolve({});
+        } else {
+          resolve(data || {});
+        }
+      });
+    });
+  }
+
+  async function setStorage(data) {
+    const sharedSetStorage = self.WebSuddhi?.utils?.setStorage;
+    if (sharedSetStorage) {
+      return sharedSetStorage(data);
+    }
+
+    return new Promise((resolve) => {
+      api.storage.local.set(data, () => {
+        if (api.runtime.lastError) {
+          logError('Storage set error:', api.runtime.lastError);
+        }
+        resolve();
+      });
+    });
+  }
+
+  function supportsSyncStorage() {
+    return !!(
+      api.storage &&
+      api.storage.sync &&
+      typeof api.storage.sync.get === 'function' &&
+      typeof api.storage.sync.set === 'function'
+    );
+  }
+
+  function supportsContextMenus() {
+    return !!(
+      api.contextMenus &&
+      typeof api.contextMenus.removeAll === 'function' &&
+      typeof api.contextMenus.create === 'function' &&
+      api.contextMenus.onClicked &&
+      typeof api.contextMenus.onClicked.addListener === 'function'
+    );
+  }
+
+  async function getStorageArea(areaName, keys) {
+    return new Promise((resolve, reject) => {
+      const area = api.storage?.[areaName];
+      if (!area || typeof area.get !== 'function') {
+        resolve({});
+        return;
+      }
+
+      try {
+        if (hasPromiseExtensionApi) {
+          area.get(keys).then((data) => resolve(data || {})).catch(reject);
+        } else {
+          area.get(keys, (data) => {
+            if (api.runtime.lastError) reject(api.runtime.lastError);
+            else resolve(data || {});
+          });
+        }
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  async function setStorageArea(areaName, data) {
+    return new Promise((resolve, reject) => {
+      const area = api.storage?.[areaName];
+      if (!area || typeof area.set !== 'function') {
+        resolve();
+        return;
+      }
+
+      try {
+        if (hasPromiseExtensionApi) {
+          area.set(data).then(resolve).catch(reject);
+        } else {
+          area.set(data, () => {
+            if (api.runtime.lastError) reject(api.runtime.lastError);
+            else resolve();
+          });
+        }
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
 
   async function getStorageWithDefaults(keys, defaults) {
     const storage = await getStorage(keys);
     const result = {};
     for (const key of keys) {
-      result[key] = storage[key] !== undefined ? storage[key] : defaults[key];
+      const defaultValue = defaults[key];
+      result[key] = storage[key] !== undefined ? storage[key] : defaultValue;
     }
     return result;
   }
 
   async function setStorageAndReturn(data) {
     await setStorage(data);
+    await notifyAllTabs({ type: 'SETTINGS_CHANGED', changed: Object.keys(data || {}) });
     return data;
   }
 
@@ -174,23 +275,22 @@ try {
   const RATE_LIMIT_GLOBAL = 100;
   const RATE_LIMIT_WINDOW = 1000; // 1 second
 
+  // Reset rate limit counts every second
+  setInterval(() => {
+    rateLimits.perTab.clear();
+    rateLimits.global = 0;
+    rateLimits.lastReset = Date.now();
+  }, RATE_LIMIT_WINDOW);
+
   /**
    * Check if a message should be rate limited
-   * Uses time-based reset instead of setInterval (survives SW restarts)
    * @param {number|undefined} tabId - The tab ID sending the message
    * @returns {boolean} - true if rate limited, false if allowed
    */
   function isRateLimited(tabId) {
-    // Time-based reset: clear counters if window has elapsed
-    const now = Date.now();
-    if (now - rateLimits.lastReset >= RATE_LIMIT_WINDOW) {
-      rateLimits.perTab.clear();
-      rateLimits.global = 0;
-      rateLimits.lastReset = now;
-    }
-
     // Check global rate limit
     if (rateLimits.global >= RATE_LIMIT_GLOBAL) {
+      log('Global rate limit exceeded');
       return true;
     }
 
@@ -198,6 +298,7 @@ try {
     if (tabId !== undefined) {
       const tabCount = rateLimits.perTab.get(tabId) || 0;
       if (tabCount >= RATE_LIMIT_PER_TAB) {
+        log('Per-tab rate limit exceeded for tab:', tabId);
         return true;
       }
 
@@ -353,14 +454,6 @@ try {
       // Update total blocked
       stats.totalBlocked = (stats.totalBlocked || 0) + count;
 
-      // Estimate data saved (~15 KB per blocked request on average)
-      const AVG_BYTES_PER_BLOCK = 15 * 1024;
-      stats.estimatedDataSaved = (stats.estimatedDataSaved || 0) + (count * AVG_BYTES_PER_BLOCK);
-
-      // Estimate time saved (~0.5 seconds per blocked request)
-      const AVG_SECONDS_PER_BLOCK = 0.5;
-      stats.estimatedTimeSaved = (stats.estimatedTimeSaved || 0) + (count * AVG_SECONDS_PER_BLOCK);
-
       // Update today's stats
       const today = new Date().toDateString();
       if (!stats.today || stats.today.date !== today) {
@@ -404,6 +497,8 @@ try {
   // CONTEXT MENU
   // ============================================
   function setupContextMenu() {
+    if (!supportsContextMenus()) return;
+
     // Remove existing menu items first to avoid duplicates
     api.contextMenus.removeAll(() => {
       api.contextMenus.create({
@@ -446,9 +541,7 @@ try {
           });
         } else if (command === 'open-settings') {
           // Open options page
-          if (api.runtime.openOptionsPage) {
-            api.runtime.openOptionsPage();
-          }
+          openOptionsPage();
         }
       });
     }
@@ -659,7 +752,7 @@ try {
 
   async function getSecurityInfo(tabId) {
     if (typeof tabId !== 'number' || tabId < 0) {
-      return { success: false, certificate: null, thirdPartyDomains: [], blockedFrames: [] };
+      return { success: false, connection: null, phishing: null, thirdPartyDomains: [], blockedFrames: [] };
     }
 
     const storage = await getStorage(['allowedDomains']);
@@ -667,6 +760,45 @@ try {
     const tabFrames = tabFrameMap.get(tabId);
     const thirdPartyDomains = [];
     const blockedFrames = [];
+    const connection = {
+      tabId,
+      protocol: 'unknown',
+      isSecure: false,
+      isLocal: false,
+      isFile: false,
+      host: '',
+      normalizedHost: ''
+    };
+
+    // Resolve tab and connection details first so detection can run on a real host.
+    try {
+      const tab = await new Promise((resolve) => {
+        api.tabs.get(tabId, (tabInfo) => {
+          if (api.runtime.lastError) resolve(null);
+          else resolve(tabInfo || null);
+        });
+      });
+      if (tab?.url) {
+        try {
+          const parsedUrl = new URL(tab.url);
+          connection.protocol = parsedUrl.protocol;
+          connection.host = parsedUrl.hostname || '';
+          connection.normalizedHost = normalizeHostname(parsedUrl.hostname || '', false) || '';
+          if (!connection.normalizedHost && connection.protocol === 'file:') {
+            connection.normalizedHost = 'localhost';
+          }
+          connection.isSecure = parsedUrl.protocol === 'https:';
+          connection.isLocal = parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1';
+          connection.isFile = parsedUrl.protocol === 'file:';
+        } catch (e) {
+          if (tab.url.startsWith('file://')) {
+            connection.isFile = true;
+            connection.protocol = 'file:';
+            connection.host = 'file://';
+          }
+        }
+      }
+    } catch (e) {}
 
     if (tabFrames) {
       for (const frame of tabFrames.values()) {
@@ -684,30 +816,64 @@ try {
     thirdPartyDomains.sort((a, b) => a.host.localeCompare(b.host));
     blockedFrames.sort((a, b) => a.host.localeCompare(b.host));
 
-    let certificate = null;
+    if (!connection.normalizedHost) {
+      const defaultSecurity = {
+        isSuspicious: false,
+        reason: 'Could not determine host',
+        protectionEnabled: false
+      };
+
+      return {
+        success: true,
+        connection,
+        phishing: defaultSecurity,
+        thirdPartyDomains,
+        blockedFrames
+      };
+    }
+
+    let phishingCheck = null;
     try {
-      const tab = await new Promise((resolve) => {
-        api.tabs.get(tabId, (tabInfo) => {
-          if (api.runtime.lastError) resolve(null);
-          else resolve(tabInfo || null);
-        });
-      });
-      const host = normalizeHostname(tab?.url || '', true);
-      if (host && tab?.url && tab.url.startsWith('https://')) {
-        // Return basic certificate info based on hostname (detailed cert info requires Chrome 144+ with dev flag)
-        certificate = {
-          organization: host,
-          issuer: host,
-          validFrom: null,
-          validTo: null,
-          protocol: '',
-          cipher: '',
-          fingerprint: ''
+      const phishingSettings = await getStorage(['phishingProtectionEnabled']);
+      if (phishingSettings.phishingProtectionEnabled === false) {
+        phishingCheck = {
+          isSuspicious: false,
+          reason: 'Phishing protection disabled',
+          protectionEnabled: false
+        };
+      } else if (connection.isFile || connection.isLocal) {
+        phishingCheck = {
+          isSuspicious: false,
+          reason: 'Local destination not evaluated',
+          protectionEnabled: true
+        };
+      } else if (self.WebSuddhi.phishingDetector) {
+        phishingCheck = self.WebSuddhi.phishingDetector.checkDomain(connection.normalizedHost);
+        if (phishingCheck && typeof phishingCheck === 'object') {
+          phishingCheck.protectionEnabled = true;
+        }
+      } else {
+        phishingCheck = {
+          isSuspicious: false,
+          reason: 'Phishing detector not available',
+          protectionEnabled: false
         };
       }
-    } catch (e) {}
+    } catch (e) {
+      phishingCheck = {
+        isSuspicious: false,
+        reason: 'Could not evaluate phishing risk',
+        evaluationError: true
+      };
+    }
 
-    return { success: true, certificate, thirdPartyDomains, blockedFrames };
+    return {
+      success: true,
+      connection,
+      phishing: phishingCheck,
+      thirdPartyDomains,
+      blockedFrames
+    };
   }
 
   async function exportRules() {
@@ -717,7 +883,8 @@ try {
       'allowedDomains',
       'whitelistedSites',
       'enabled',
-      'paywallEnabled'
+      'paywallEnabled',
+      'socialBlockingEnabled'
     ]);
 
     return {
@@ -730,7 +897,8 @@ try {
         allowedDomains: storage.allowedDomains || [],
         whitelistedSites: storage.whitelistedSites || [],
         enabled: storage.enabled !== false,
-        paywallEnabled: storage.paywallEnabled !== false
+        paywallEnabled: storage.paywallEnabled !== false,
+        socialBlockingEnabled: storage.socialBlockingEnabled === true
       }
     };
   }
@@ -788,6 +956,7 @@ try {
 
     if (typeof data.enabled === 'boolean') updateData.enabled = data.enabled;
     if (typeof data.paywallEnabled === 'boolean') updateData.paywallEnabled = data.paywallEnabled;
+    if (typeof data.socialBlockingEnabled === 'boolean') updateData.socialBlockingEnabled = data.socialBlockingEnabled;
 
     await setStorage(updateData);
 
@@ -920,7 +1089,7 @@ try {
   // ============================================
   // NOTIFY ALL TABS
   // ============================================
-  async function notifyAllTabs() {
+  async function notifyAllTabs(message = { type: 'SETTINGS_CHANGED' }) {
     try {
       const tabs = await new Promise((resolve) => {
         api.tabs.query({}, (tabs) => resolve(tabs));
@@ -928,7 +1097,7 @@ try {
 
       for (const tab of tabs) {
         if (tab?.id) {
-          safeSendToTab(tab.id, { type: 'SETTINGS_CHANGED' });
+          safeSendToTab(tab.id, message);
         }
       }
     } catch (err) {
@@ -959,15 +1128,21 @@ try {
   // OPTIONS PAGE & SYNC
   // ============================================
   function openOptionsPage(anchor) {
+    const url = api.runtime.getURL('options/options.html');
+    const targetUrl = anchor ? (url + '#' + anchor) : url;
+
+    if (anchor && api.tabs && api.tabs.create) {
+      api.tabs.create({ url: targetUrl });
+      return;
+    }
+
     if (api.runtime.openOptionsPage) {
       api.runtime.openOptionsPage();
-    } else {
-      // Fallback for browsers that don't support openOptionsPage
-      const url = api.runtime.getURL('options/options.html');
-      const targetUrl = anchor ? (url + '#' + anchor) : url;
-      if (api.tabs && api.tabs.create) {
-        api.tabs.create({ url: targetUrl });
-      }
+      return;
+    }
+
+    if (api.tabs && api.tabs.create) {
+      api.tabs.create({ url: targetUrl });
     }
   }
 
@@ -1202,25 +1377,19 @@ try {
         case 'TOGGLE_PAYWALL':
           return await togglePaywall(message.enabled);
 
-        case 'TOGGLE_COOKIE_CONSENT':
-          await setStorage({ cookieConsentEnabled: message.enabled });
-          return { success: true, enabled: message.enabled };
-
-        case 'TOGGLE_ANNOYANCE_BLOCKING':
-          await setStorage({ annoyanceBlockingEnabled: message.enabled });
-          return { success: true, enabled: message.enabled };
-
         case 'TOGGLE_SOCIAL_BLOCKING':
           return await toggleSocialBlocking(message.enabled);
 
-        case 'TOGGLE_WHITELIST': {
-          const toggleHost = message.hostname ||
-            (sender.tab?.url ? new URL(sender.tab.url).hostname : null);
-          if (toggleHost) {
-            return await toggleWhitelistForSite(toggleHost, sender.tab?.id);
+        case 'TOGGLE_WHITELIST':
+          try {
+            const whitelistInput = message.hostname || sender.tab?.url;
+            if (!whitelistInput) {
+              return { success: false, error: 'No hostname provided' };
+            }
+            return await toggleWhitelistForSite(whitelistInput, sender.tab?.id);
+          } catch (err) {
+            return { success: false, error: err.message || 'Invalid hostname' };
           }
-          return { success: false, error: 'No hostname provided' };
-        }
 
         case 'IS_WHITELISTED':
           if (message.hostname) {
@@ -1242,6 +1411,11 @@ try {
           return await reportFrame(message, sender);
 
         case 'GET_SECURITY_INFO': {
+          const securityTabId = Number.isInteger(message.tabId) ? message.tabId : sender.tab?.id;
+          return await getSecurityInfo(securityTabId);
+        }
+        case 'GET_TAB_SECURITY_INFO':
+        case 'GET_TAB_SECURITY': {
           const securityTabId = Number.isInteger(message.tabId) ? message.tabId : sender.tab?.id;
           return await getSecurityInfo(securityTabId);
         }
@@ -1432,8 +1606,13 @@ try {
         }
 
         case 'TOGGLE_PHISHING_PROTECTION':
-          await setStorage({ phishingProtectionEnabled: message.enabled });
-          return { success: true, enabled: message.enabled };
+          return await setStorageAndReturn({ phishingProtectionEnabled: message.enabled });
+
+        case 'TOGGLE_COOKIE_CONSENT':
+          return await setStorageAndReturn({ cookieConsentEnabled: message.enabled });
+
+        case 'TOGGLE_ANNOYANCE_BLOCKING':
+          return await setStorageAndReturn({ annoyanceBlockingEnabled: message.enabled });
 
         case 'GET_PROTECTED_BRANDS': {
           if (self.WebSuddhi.phishingDetector) {
@@ -1493,34 +1672,41 @@ try {
       logError('Message handler error:', err);
       return { success: false, error: err.message };
     }
+
+    return true; // Keep message channel open for async responses
   }
 
   // ============================================
   // MIGRATE STORAGE FOR SYNC
   // ============================================
   async function migrateStorage(enabled) {
+    const pickSyncableStorageData = self.WebSuddhi?.utils?.pickSyncableStorageData;
+
+    if (!supportsSyncStorage()) {
+      await setStorage({ syncEnabled: false });
+      if (enabled) {
+        return { success: false, error: 'Sync storage is not available in this browser' };
+      }
+      return { success: true, message: 'Sync disabled for this browser' };
+    }
+
     if (enabled) {
       // Sync is being enabled - copy all settings to sync storage
-      const localData = await new Promise((resolve) => {
-        api.storage.local.get(null, (data) => resolve(data));
-      });
+      const localData = await getStorageArea('local', null);
+      const syncData = pickSyncableStorageData
+        ? pickSyncableStorageData(localData)
+        : localData;
 
-      // Copy to sync storage (Note: This requires 'storage' permission which includes sync)
-      await new Promise((resolve) => {
-        api.storage.sync.set(localData, resolve);
-      });
+      // Copy only user-facing settings and rules into sync storage.
+      await setStorageArea('sync', syncData);
 
       await setStorage({ syncEnabled: true });
       return { success: true, message: 'Sync enabled, settings copied to sync storage' };
     } else {
       // Sync is being disabled - copy sync data back to local
-      const syncData = await new Promise((resolve) => {
-        api.storage.sync.get(null, (data) => resolve(data));
-      });
+      const syncData = await getStorageArea('sync', null);
 
-      await new Promise((resolve) => {
-        api.storage.local.set(syncData, resolve);
-      });
+      await setStorageArea('local', syncData);
 
       await setStorage({ syncEnabled: false });
       return { success: true, message: 'Sync disabled, settings copied to local storage' };
@@ -1532,6 +1718,8 @@ try {
   // ============================================
   async function initialize() {
     try {
+      // Load initial settings
+      await getStorage(Object.keys(DEFAULT_SETTINGS));
       // Modules imported via importScripts auto-initialize themselves.
       // Avoid calling module init functions here to prevent duplicate listeners/timers.
 
@@ -1557,25 +1745,31 @@ try {
       }
 
       // Set up context menu
-      setupContextMenu();
-      api.contextMenus.onClicked.addListener(handleContextMenuClick);
+      if (supportsContextMenus()) {
+        setupContextMenu();
+        api.contextMenus.onClicked.addListener(handleContextMenuClick);
+      }
 
       // Set up command listener
       setupCommandListener();
 
       // Set up storage change listener for sync
-      api.storage.onChanged.addListener((changes, area) => {
-        if (area === 'sync' && changes) {
-          // Propagate sync changes to local
-          const localChanges = {};
-          for (const key in changes) {
-            localChanges[key] = changes[key].newValue;
+      if (supportsSyncStorage() && api.storage?.onChanged) {
+        api.storage.onChanged.addListener((changes, area) => {
+          if (area === 'sync' && changes) {
+            // Propagate sync changes to local
+            const localChanges = {};
+            for (const key in changes) {
+              localChanges[key] = changes[key].newValue;
+            }
+            if (Object.keys(localChanges).length > 0) {
+              setStorageArea('local', localChanges).catch((err) => {
+                logError('Failed to apply sync changes locally:', err);
+              });
+            }
           }
-          if (Object.keys(localChanges).length > 0) {
-            api.storage.local.set(localChanges);
-          }
-        }
-      });
+        });
+      }
 
       // Clean up old storage keys on init (run monthly)
       const oldKeys = ['adsBlocked', 'trackersBlocked', 'lastCleanUp'];

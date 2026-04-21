@@ -10,7 +10,7 @@
   },
   "overrides": [
     {
-      "files": ["rollup.config.js", "vitest.config.js"],
+      "files": ["rollup.config.js", "vitest.config.js", "src/**/*.js"],
       "env": {
         "node": true,
         "browser": false
@@ -19,6 +19,26 @@
         "sourceType": "module"
       }
     },
+    {
+      "files": ["tests/**/*.js"],
+      "env": {
+        "node": true,
+        "browser": true
+      },
+      "parserOptions": {
+        "sourceType": "module"
+      },
+      "globals": {
+        "afterEach": "readonly",
+        "beforeEach": "readonly",
+        "expect": "readonly",
+        "it": "readonly",
+        "vi": "readonly"
+      },
+      "rules": {
+        "no-eval": "off"
+      }
+    }
   ],
   "rules": {
     "no-eval": "error",
@@ -41,6 +61,8 @@
     "WebSuddhi": "readonly"
   },
   "ignorePatterns": [
+    "_metadata/",
+    "dist/",
     "icons/convert-icons.js",
     "safari*/",
     "node_modules/"
