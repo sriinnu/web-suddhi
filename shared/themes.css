@@ -1,0 +1,208 @@
+/* ============================================
+   WebSuddhi - Extended Color Themes
+
+   Each [data-theme] block defines the full set
+   of CSS custom properties consumed by popup.css
+   and options.css. Add a new theme by copying
+   any block and swapping the hex values.
+   ============================================ */
+
+/* --------------------------------------------------
+   Forest — earthy greens, warm beige, rosy accents
+   Palette: #0A3323  #839958  #F7F4D5  #D3968C  #105666
+   -------------------------------------------------- */
+
+[data-theme="forest"] {
+  /* Font — organic, warm feel */
+  --font-family: 'DM Sans', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, sans-serif;
+
+  /* Surfaces */
+  --bg-primary:   #F7F4D5;
+  --bg-secondary: #FDFAE8;
+  --bg-tertiary:  #EDE9CB;
+  --bg-hover:     #E0DABB;
+
+  /* Text */
+  --text-primary:   #0A3323;
+  --text-secondary: #105666;
+  --text-tertiary:  #839958;
+
+  /* Borders & focus */
+  --border-color: #D5CEAB;
+  --border-focus: #105666;
+  --border:       rgba(10, 51, 35, 0.12);
+
+  /* Accent (shared between popup & options) */
+  --accent:        #105666;
+  --accent-hover:  #0A3323;
+  --accent-light:  #1A7080;
+  --accent-bg:     rgba(16, 86, 102, 0.10);
+  --primary:       #105666;
+  --primary-light: #839958;
+
+  /* Semantic */
+  --success:     #839958;
+  --success-bg:  rgba(131, 153, 88, 0.12);
+  --danger:      #B8604F;
+  --danger-bg:   rgba(184, 96, 79, 0.10);
+  --warning:     #9A7B3C;
+  --warning-bg:  rgba(154, 123, 60, 0.10);
+
+  /* Gradients */
+  --gradient-blue:    linear-gradient(135deg, #105666 0%, #0A3323 100%);
+  --gradient-orange:  linear-gradient(135deg, #D3968C 0%, #B8604F 100%);
+  --gradient-green:   linear-gradient(135deg, #839958 0%, #6B8045 100%);
+  --gradient-purple:  linear-gradient(135deg, #105666 0%, #839958 100%);
+  --gradient-sidebar: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+
+  /* Shadows */
+  --shadow-sm:   0 1px 2px rgba(10, 51, 35, 0.08);
+  --shadow-md:   0 4px 6px -1px rgba(10, 51, 35, 0.12), 0 2px 4px -2px rgba(10, 51, 35, 0.08);
+  --shadow-lg:   0 10px 15px -3px rgba(10, 51, 35, 0.12), 0 4px 6px -4px rgba(10, 51, 35, 0.08);
+  --shadow-glow: 0 0 20px rgba(16, 86, 102, 0.15);
+  --shadow:      0 2px 8px rgba(10, 51, 35, 0.08);
+  --shadow-lg-popup: 0 4px 16px rgba(10, 51, 35, 0.12);
+}
+
+/* Forest — dark variant */
+[data-theme="forest-dark"] {
+  --font-family: 'DM Sans', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, sans-serif;
+
+  --bg-primary:   #0A3323;
+  --bg-secondary: #0D3F2C;
+  --bg-tertiary:  #134B36;
+  --bg-hover:     #1A5A42;
+
+  --text-primary:   #F7F4D5;
+  --text-secondary: #839958;
+  --text-tertiary:  #5E7A3F;
+
+  --border-color: #1A5A42;
+  --border-focus: #839958;
+  --border:       rgba(131, 153, 88, 0.15);
+
+  --accent:        #839958;
+  --accent-hover:  #9AAB6A;
+  --accent-light:  #A0B87A;
+  --accent-bg:     rgba(131, 153, 88, 0.15);
+  --primary:       #839958;
+  --primary-light: #A0B87A;
+
+  --success:     #839958;
+  --success-bg:  rgba(131, 153, 88, 0.18);
+  --danger:      #D3968C;
+  --danger-bg:   rgba(211, 150, 140, 0.15);
+  --warning:     #BFA54E;
+  --warning-bg:  rgba(191, 165, 78, 0.15);
+
+  --gradient-blue:    linear-gradient(135deg, #839958 0%, #105666 100%);
+  --gradient-orange:  linear-gradient(135deg, #D3968C 0%, #B8604F 100%);
+  --gradient-green:   linear-gradient(135deg, #6B8045 0%, #839958 100%);
+  --gradient-purple:  linear-gradient(135deg, #105666 0%, #839958 100%);
+  --gradient-sidebar: linear-gradient(180deg, #0D3F2C 0%, #0A3323 100%);
+
+  --shadow-sm:   0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-md:   0 4px 6px -1px rgba(0, 0, 0, 0.35), 0 2px 4px -2px rgba(0, 0, 0, 0.25);
+  --shadow-lg:   0 10px 15px -3px rgba(0, 0, 0, 0.40), 0 4px 6px -4px rgba(0, 0, 0, 0.25);
+  --shadow-glow: 0 0 20px rgba(131, 153, 88, 0.20);
+  --shadow:      0 2px 8px rgba(0, 0, 0, 0.30);
+  --shadow-lg-popup: 0 4px 16px rgba(0, 0, 0, 0.40);
+}
+
+/* --------------------------------------------------
+   Coastal Rose — muted pinks, sage greens, warm chalk
+   Palette: #933B5B  #B5728A  #AABAAE  #E3D6BF  #9F9679
+   -------------------------------------------------- */
+
+[data-theme="coastal"] {
+  --font-family: 'Playfair Display', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, sans-serif;
+
+  --bg-primary:   #EDE3D2;
+  --bg-secondary: #F5EFE3;
+  --bg-tertiary:  #DDD3C1;
+  --bg-hover:     #D0C5B1;
+
+  --text-primary:   #5C2238;
+  --text-secondary: #933B5B;
+  --text-tertiary:  #9F9679;
+
+  --border-color: #CFC3AD;
+  --border-focus: #933B5B;
+  --border:       rgba(147, 59, 91, 0.12);
+
+  --accent:        #933B5B;
+  --accent-hover:  #7A2E4A;
+  --accent-light:  #B5728A;
+  --accent-bg:     rgba(147, 59, 91, 0.10);
+  --primary:       #933B5B;
+  --primary-light: #B5728A;
+
+  --success:     #7A9E85;
+  --success-bg:  rgba(122, 158, 133, 0.12);
+  --danger:      #933B5B;
+  --danger-bg:   rgba(147, 59, 91, 0.10);
+  --warning:     #9F9679;
+  --warning-bg:  rgba(159, 150, 121, 0.12);
+
+  --gradient-blue:    linear-gradient(135deg, #933B5B 0%, #B5728A 100%);
+  --gradient-orange:  linear-gradient(135deg, #933B5B 0%, #7A2E4A 100%);
+  --gradient-green:   linear-gradient(135deg, #7A9E85 0%, #AABAAE 100%);
+  --gradient-purple:  linear-gradient(135deg, #933B5B 0%, #9F9679 100%);
+  --gradient-sidebar: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+
+  --shadow-sm:   0 1px 2px rgba(147, 59, 91, 0.06);
+  --shadow-md:   0 4px 6px -1px rgba(147, 59, 91, 0.10), 0 2px 4px -2px rgba(147, 59, 91, 0.06);
+  --shadow-lg:   0 10px 15px -3px rgba(147, 59, 91, 0.10), 0 4px 6px -4px rgba(147, 59, 91, 0.06);
+  --shadow-glow: 0 0 20px rgba(147, 59, 91, 0.12);
+  --shadow:      0 2px 8px rgba(147, 59, 91, 0.08);
+  --shadow-lg-popup: 0 4px 16px rgba(147, 59, 91, 0.12);
+}
+
+/* Coastal — dark variant */
+[data-theme="coastal-dark"] {
+  --font-family: 'Playfair Display', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, sans-serif;
+
+  --bg-primary:   #1E1218;
+  --bg-secondary: #2A1A23;
+  --bg-tertiary:  #3A2330;
+  --bg-hover:     #4A2C3D;
+
+  --text-primary:   #E3D6BF;
+  --text-secondary: #B5728A;
+  --text-tertiary:  #8A6070;
+
+  --border-color: #3A2330;
+  --border-focus: #B5728A;
+  --border:       rgba(181, 114, 138, 0.15);
+
+  --accent:        #B5728A;
+  --accent-hover:  #C88FA5;
+  --accent-light:  #D4A5B8;
+  --accent-bg:     rgba(181, 114, 138, 0.15);
+  --primary:       #B5728A;
+  --primary-light: #D4A5B8;
+
+  --success:     #AABAAE;
+  --success-bg:  rgba(170, 186, 174, 0.15);
+  --danger:      #C45479;
+  --danger-bg:   rgba(196, 84, 121, 0.18);
+  --warning:     #B5A47A;
+  --warning-bg:  rgba(181, 164, 122, 0.15);
+
+  --gradient-blue:    linear-gradient(135deg, #B5728A 0%, #933B5B 100%);
+  --gradient-orange:  linear-gradient(135deg, #C45479 0%, #933B5B 100%);
+  --gradient-green:   linear-gradient(135deg, #AABAAE 0%, #7A9E85 100%);
+  --gradient-purple:  linear-gradient(135deg, #933B5B 0%, #B5728A 100%);
+  --gradient-sidebar: linear-gradient(180deg, #2A1A23 0%, #1E1218 100%);
+
+  --shadow-sm:   0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-md:   0 4px 6px -1px rgba(0, 0, 0, 0.35), 0 2px 4px -2px rgba(0, 0, 0, 0.25);
+  --shadow-lg:   0 10px 15px -3px rgba(0, 0, 0, 0.40), 0 4px 6px -4px rgba(0, 0, 0, 0.25);
+  --shadow-glow: 0 0 20px rgba(181, 114, 138, 0.20);
+  --shadow:      0 2px 8px rgba(0, 0, 0, 0.30);
+  --shadow-lg-popup: 0 4px 16px rgba(0, 0, 0, 0.40);
+}

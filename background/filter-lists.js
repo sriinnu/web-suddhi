@@ -12,12 +12,16 @@
   const log = (...args) => {
     if (self.WebSuddhi.utils && self.WebSuddhi.utils.log) {
       self.WebSuddhi.utils.log(...args);
+    } else {
+      console.log('[WebSuddhi]', ...args);
     }
   };
 
   const logError = (...args) => {
     if (self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
       self.WebSuddhi.utils.error(...args);
+    } else {
+      console.error('[WebSuddhi]', ...args);
     }
   };
 
@@ -77,8 +81,74 @@
       await loadMV2SubscriptionRules(subscriptions);
     }
 
+    await restoreSubscriptionRules(subscriptions);
+
     // Set up auto-update alarm
     setupAutoUpdate();
+  }
+
+  async function getStoredSubscriptionDomains() {
+    const storage = await getStorage(['filterSubscriptionDomains']);
+    return storage.filterSubscriptionDomains || {};
+  }
+
+  async function setStoredSubscriptionDomains(storedDomains) {
+    await setStorage({ filterSubscriptionDomains: storedDomains });
+  }
+
+  async function persistSubscriptionDomains(subscriptionId, domains) {
+    const storedDomains = await getStoredSubscriptionDomains();
+    storedDomains[subscriptionId] = domains;
+    await setStoredSubscriptionDomains(storedDomains);
+    return storedDomains;
+  }
+
+  async function rebuildMV2SubscriptionRules(subscriptions = null, storedDomains = null) {
+    const activeSubscriptions = Array.isArray(subscriptions)
+      ? subscriptions
+      : ((await getStorage(['filterSubscriptions'])).filterSubscriptions || []);
+    const domainMap = storedDomains || await getStoredSubscriptionDomains();
+
+    mv2SubscriptionDomains = new Set();
+    for (const sub of activeSubscriptions) {
+      if (!sub.enabled || sub.builtin || !Array.isArray(domainMap[sub.id])) {
+        continue;
+      }
+
+      for (const domain of domainMap[sub.id]) {
+        mv2SubscriptionDomains.add(domain);
+      }
+    }
+  }
+
+  async function restoreSubscriptionRules(subscriptions) {
+    const activeSubscriptions = (subscriptions || []).filter((sub) => (
+      sub.enabled && !sub.builtin && sub.url
+    ));
+
+    if (activeSubscriptions.length === 0) {
+      return;
+    }
+
+    if (api.declarativeNetRequest) {
+      const ruleMapping = await getStorage(['filterRuleMapping']);
+      const mappedSubscriptions = new Set(Object.values(ruleMapping.filterRuleMapping || {}));
+
+      for (const sub of activeSubscriptions) {
+        if (!mappedSubscriptions.has(sub.id)) {
+          await updateSubscription(sub.id);
+        }
+      }
+
+      return;
+    }
+
+    const storedDomains = await getStoredSubscriptionDomains();
+    for (const sub of activeSubscriptions) {
+      if (!Array.isArray(storedDomains[sub.id]) || storedDomains[sub.id].length === 0) {
+        await updateSubscription(sub.id);
+      }
+    }
   }
 
   // ============================================
@@ -186,7 +256,7 @@
     await setStorage({ filterSubscriptions: filtered });
 
     // Remove associated rules
-    await removeSubscriptionRules(subscriptionId);
+    await removeSubscriptionRules(subscriptionId, { clearStoredDomains: true });
 
     return { success: true };
   }
@@ -232,20 +302,29 @@
 
     if (!sub || !sub.url || sub.builtin) return { success: false, error: 'Invalid subscription' };
 
-    // Rate limiting per subscription
     const now = Date.now();
-    if (sub.lastUpdated && (now - new Date(sub.lastUpdated).getTime()) < UPDATE_COOLDOWN) {
-      return { success: false, error: 'Subscription updated recently, please wait' };
-    }
 
-    // Check cache first
+    // Check cache first so toggling a recently fetched list back on can reuse it.
     const cached = filterCache.get(sub.url);
     if (cached && (now - cached.timestamp) < FILTER_CACHE_TTL) {
+      const domains = cached.data;
       log('Using cached filter list for:', sub.url);
-      sub.ruleCount = cached.data.length;
+      sub.ruleCount = domains.length;
       sub.lastUpdated = new Date(cached.timestamp).toISOString();
       await setStorage({ filterSubscriptions: subscriptions });
-      return { success: true, cached: true, ruleCount: cached.data.length };
+
+      await persistSubscriptionDomains(subscriptionId, domains);
+
+      if (sub.enabled) {
+        await applySubscriptionRules(subscriptionId, domains);
+      }
+
+      return { success: true, cached: true, ruleCount: domains.length };
+    }
+
+    // Rate limiting per subscription
+    if (sub.lastUpdated && (now - new Date(sub.lastUpdated).getTime()) < UPDATE_COOLDOWN) {
+      return { success: false, error: 'Subscription updated recently, please wait' };
     }
 
     // Re-validate URL before fetching (in case of stored legacy URLs)
@@ -304,6 +383,7 @@
       sub.ruleCount = domains.length;
       sub.lastUpdated = new Date().toISOString();
       await setStorage({ filterSubscriptions: subscriptions });
+      await persistSubscriptionDomains(subscriptionId, domains);
 
       // Store in cache
       filterCache.set(sub.url, {
@@ -399,14 +479,11 @@
         }
       }
     } else {
-      // MV2: Add to in-memory set
-      for (const domain of domains) {
-        mv2SubscriptionDomains.add(domain);
-      }
+      await rebuildMV2SubscriptionRules();
     }
   }
 
-  async function removeSubscriptionRules(subscriptionId) {
+  async function removeSubscriptionRules(subscriptionId, options = {}) {
     if (api.declarativeNetRequest) {
       const ruleMapping = await getStorage(['filterRuleMapping']);
       const mapping = ruleMapping.filterRuleMapping || {};
@@ -429,23 +506,21 @@
           logError('Failed to remove subscription rules:', e);
         }
       }
+
+      return;
     }
-    // MV2: Would need to rebuild the set from remaining subscriptions
+
+    const storedDomains = await getStoredSubscriptionDomains();
+    if (options.clearStoredDomains) {
+      delete storedDomains[subscriptionId];
+      await setStoredSubscriptionDomains(storedDomains);
+    }
+
+    await rebuildMV2SubscriptionRules(null, storedDomains);
   }
 
   async function loadMV2SubscriptionRules(subscriptions) {
-    // For MV2, load stored subscription domains into memory
-    const storage = await getStorage(['filterSubscriptionDomains']);
-    const stored = storage.filterSubscriptionDomains || {};
-
-    mv2SubscriptionDomains = new Set();
-    for (const sub of subscriptions) {
-      if (sub.enabled && !sub.builtin && stored[sub.id]) {
-        for (const domain of stored[sub.id]) {
-          mv2SubscriptionDomains.add(domain);
-        }
-      }
-    }
+    await rebuildMV2SubscriptionRules(subscriptions);
   }
 
   // ============================================
@@ -480,9 +555,13 @@
     return mv2SubscriptionDomains;
   }
 
-  // Shared storage (utils.js is loaded via importScripts before this file)
-  const getStorage = self.WebSuddhi.utils.getStorage;
-  const setStorage = self.WebSuddhi.utils.setStorage;
+  // Use shared storage helpers from utils.js
+  const getStorage = self.WebSuddhi?.utils?.getStorage || function(keys) {
+    return new Promise((resolve) => resolve({}));
+  };
+  const setStorage = self.WebSuddhi?.utils?.setStorage || function() {
+    return Promise.resolve();
+  };
 
   // ============================================
   // EXPOSE API
