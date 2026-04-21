@@ -4,6 +4,28 @@
 (function() {
   'use strict';
 
+  // Count-up animation for stat numbers
+  function animateCount(element, targetValue) {
+    if (!element) return;
+    const current = parseInt(element.textContent) || 0;
+    if (current === targetValue) return;
+
+    const duration = 600;
+    const startTime = performance.now();
+
+    function tick(now) {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease-out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const value = Math.round(current + (targetValue - current) * eased);
+      element.textContent = value.toLocaleString();
+      if (progress < 1) requestAnimationFrame(tick);
+    }
+
+    requestAnimationFrame(tick);
+  }
+
   // Logging helpers
   const logError = (...args) => {
     if (self.WebSuddhi && self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
@@ -336,19 +358,19 @@
       if (tabId) {
         try {
           const blockedCount = await sendToBackground({ type: 'GET_BLOCKED_COUNT', tabId });
-          elements.networkBlockedCount.textContent = blockedCount.count || 0;
+          animateCount(elements.networkBlockedCount, blockedCount.count || 0);
         } catch (e) {
-          elements.networkBlockedCount.textContent = '0';
+          animateCount(elements.networkBlockedCount, 0);
         }
       } else {
-        elements.networkBlockedCount.textContent = '0';
+        animateCount(elements.networkBlockedCount, 0);
       }
     }
 
     // Update rules count
     if (elements.rulesCount) {
       const rulesCount = 100 + (settings.blockedDomains?.length || 0) + (settings.blockedSelectors?.length || 0);
-      elements.rulesCount.textContent = rulesCount;
+      animateCount(elements.rulesCount, rulesCount);
     }
 
     // Update data saved estimate
@@ -1375,6 +1397,7 @@
           const url = new URL(currentTab.url);
           if (elements.currentSite) {
             elements.currentSite.textContent = url.hostname;
+            elements.currentSite.classList.remove('loading');
           }
 
           // Update security info
@@ -1388,11 +1411,13 @@
         } catch (e) {
           if (elements.currentSite) {
             elements.currentSite.textContent = 'Unknown site';
+            elements.currentSite.classList.remove('loading');
           }
         }
       } else {
         if (elements.currentSite) {
           elements.currentSite.textContent = 'No active tab';
+          elements.currentSite.classList.remove('loading');
         }
       }
 

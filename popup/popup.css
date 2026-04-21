@@ -308,6 +308,22 @@ body {
   letter-spacing: -0.01em;
 }
 
+.site-domain.loading {
+  background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--bg-hover, rgba(0,0,0,0.06)) 50%, var(--bg-tertiary) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+  border-radius: 4px;
+  color: transparent;
+  user-select: none;
+  min-width: 120px;
+  display: inline-block;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 .site-actions {
   display: flex;
   gap: 8px;
