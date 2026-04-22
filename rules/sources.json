@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "description": "Upstream sources for WebSuddhi curated blocklists. Run: node scripts/build-blocklists.mjs",
+  "sources": [
+    {
+      "id": "hagezi-pro",
+      "name": "HaGeZi Pro DNS Blocklist",
+      "url": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/pro.txt",
+      "category": "ads",
+      "maxDomains": 15000,
+      "enabled": true
+    },
+    {
+      "id": "hagezi-tif-mini",
+      "name": "HaGeZi Threat Intelligence Feeds Mini",
+      "url": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/tif.mini.txt",
+      "category": "security",
+      "maxDomains": 10000,
+      "enabled": true
+    },
+    {
+      "id": "hagezi-fake",
+      "name": "HaGeZi Fake/Scam DNS Blocklist",
+      "url": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/fake.txt",
+      "category": "security",
+      "maxDomains": 5000,
+      "enabled": true
+    },
+    {
+      "id": "hagezi-dyndns",
+      "name": "HaGeZi DynDNS Blocklist",
+      "url": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/dyndns.txt",
+      "category": "security",
+      "enabled": true
+    },
+    {
+      "id": "hagezi-popupads",
+      "name": "HaGeZi Pop-Up Ads",
+      "url": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/popupads.txt",
+      "category": "ads",
+      "maxDomains": 5000,
+      "enabled": true
+    },
+    {
+      "id": "adguard-dns",
+      "name": "AdGuard DNS Filter",
+      "url": "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt",
+      "category": "ads",
+      "maxDomains": 10000,
+      "enabled": true
+    },
+    {
+      "id": "phishing-urls",
+      "name": "Phishing URL Blocklist",
+      "url": "https://malware-filter.gitlab.io/malware-filter/phishing-filter-ag.txt",
+      "category": "security",
+      "maxDomains": 5000,
+      "enabled": true
+    },
+    {
+      "id": "hagezi-spam-tlds",
+      "name": "HaGeZi Spam TLDs",
+      "url": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/spam-tlds-adblock.txt",
+      "category": "spam",
+      "enabled": true
+    }
+  ],
+  "categories": {
+    "ads": { "idStart": 100001, "description": "Advertising and tracker domains" },
+    "security": { "idStart": 150001, "description": "Malware, phishing, scam, DynDNS" },
+    "spam": { "idStart": 200001, "description": "Spam TLDs and nuisance domains" }
+  },
+  "settings": {
+    "maxRulesPerFile": 8000,
+    "totalBudget": 40000,
+    "resourceTypes": ["script", "image", "xmlhttprequest", "sub_frame", "stylesheet", "font", "media", "websocket", "ping", "other"]
+  }
+}

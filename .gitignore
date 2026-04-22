@@ -91,3 +91,10 @@ icons/convert-icons.sh
 *.key
 secrets.json
 credentials.json
+
+# Blocklist build cache
+rules/.cache/
+rules/provenance.json
+
+# Chrome extension build artifacts
+_metadata/

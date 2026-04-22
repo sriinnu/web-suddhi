@@ -1,6 +1,6 @@
 // WebSuddhi - Shared Utilities Module
 // Used by: background scripts, content scripts, popup, options
-// v2.2.0
+// v2.3.0
 
 (function() {
   'use strict';

@@ -46,5 +46,119 @@
     "file": "SpaceGrotesk-Bold.woff2",
     "weight": 700,
     "style": "normal"
+  },
+  {
+    "name": "Outfit",
+    "file": "Outfit-Regular.woff2",
+    "weight": 400,
+    "style": "normal"
+  },
+  {
+    "name": "Outfit",
+    "file": "Outfit-Bold.woff2",
+    "weight": 700,
+    "style": "normal"
+  },
+  {
+    "name": "Sora",
+    "file": "Sora-Regular.woff2",
+    "weight": 400,
+    "style": "normal"
+  },
+  {
+    "name": "Sora",
+    "file": "Sora-Bold.woff2",
+    "weight": 700,
+    "style": "normal"
+  },
+  {
+    "name": "Plus Jakarta Sans",
+    "file": "PlusJakartaSans-Regular.woff2",
+    "weight": 400,
+    "style": "normal"
+  },
+  {
+    "name": "Plus Jakarta Sans",
+    "file": "PlusJakartaSans-Bold.woff2",
+    "weight": 700,
+    "style": "normal"
+  },
+  {
+    "name": "Geist",
+    "file": "Geist-Regular.woff2",
+    "weight": 400,
+    "style": "normal"
+  },
+  {
+    "name": "Geist",
+    "file": "Geist-Bold.woff2",
+    "weight": 700,
+    "style": "normal"
+  },
+  {
+    "name": "Fraunces",
+    "file": "Fraunces-Regular.woff2",
+    "weight": 400,
+    "style": "normal"
+  },
+  {
+    "name": "Fraunces",
+    "file": "Fraunces-Bold.woff2",
+    "weight": 700,
+    "style": "normal"
+  },
+  {
+    "name": "Bricolage Grotesque",
+    "file": "BricolageGrotesque-Regular.woff2",
+    "weight": 400,
+    "style": "normal"
+  },
+  {
+    "name": "Bricolage Grotesque",
+    "file": "BricolageGrotesque-Bold.woff2",
+    "weight": 700,
+    "style": "normal"
+  },
+  {
+    "name": "Instrument Serif",
+    "file": "InstrumentSerif-Regular.woff2",
+    "weight": 400,
+    "style": "normal"
+  },
+  {
+    "name": "Onest",
+    "file": "Onest-Regular.woff2",
+    "weight": 400,
+    "style": "normal"
+  },
+  {
+    "name": "Onest",
+    "file": "Onest-Bold.woff2",
+    "weight": 700,
+    "style": "normal"
+  },
+  {
+    "name": "Syne",
+    "file": "Syne-Regular.woff2",
+    "weight": 400,
+    "style": "normal"
+  },
+  {
+    "name": "Syne",
+    "file": "Syne-Bold.woff2",
+    "weight": 700,
+    "style": "normal"
+  },
+  {
+    "name": "Kalam",
+    "file": "Kalam-Regular.woff2",
+    "weight": 400,
+    "style": "normal"
+  },
+  {
+    "name": "Kalam",
+    "file": "Kalam-Bold.woff2",
+    "weight": 700,
+    "style": "normal"
   }
 ]

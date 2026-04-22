@@ -1,6 +1,6 @@
 // WebSuddhi - Background Service Worker
 // Universal: Chrome, Edge, Firefox, Safari
-// v2.2.0 - Full ad blocker with network blocking, stats, privacy, filter lists
+// v2.3.0 - Full ad blocker with network blocking, stats, privacy, filter lists
 
 // MV3: Import all modules via importScripts
 try {
@@ -59,7 +59,10 @@ try {
     blockedSelectors: 'blockedSelectors',
     stats: 'stats',
     filterSubscriptions: 'filterSubscriptions',
-    requestLog: 'requestLog'
+    requestLog: 'requestLog',
+    pausedSites: 'pausedSites',
+    perSiteAllowedSelectors: 'perSiteAllowedSelectors',
+    brokenSiteReports: 'brokenSiteReports'
   };
 
   const DEFAULT_SETTINGS = {
@@ -89,7 +92,12 @@ try {
     maxLogEntries: 1000,
     maxWhitelistSize: 1000,
     maxBlockedDomains: 1000,
-    maxBlockedSelectors: 1000
+    maxBlockedSelectors: 1000,
+    maxBrokenSiteReports: 100,
+    // Site-level granular control
+    pausedSites: {},                  // { hostname: expiryMs }
+    perSiteAllowedSelectors: {},      // { hostname: string[] }
+    brokenSiteReports: []             // [{ hostname, note, at }]
   };
 
   const MAX_LOG_ENTRIES = DEFAULT_SETTINGS.maxLogEntries || 1000;
@@ -890,7 +898,7 @@ try {
     return {
       success: true,
       data: {
-        version: '2.2.0',
+        version: '2.3.0',
         exportDate: new Date().toISOString(),
         blockedSelectors: storage.blockedSelectors || [],
         blockedDomains: storage.blockedDomains || [],
@@ -1087,6 +1095,189 @@ try {
   }
 
   // ============================================
+  // GRANULAR SITE CONTROL (pause, per-site allowlist, broken-site reports)
+  // ============================================
+  const PAUSE_ALARM_NAME = 'websuddhi-pause-sweep';
+  const MAX_PER_SITE_ALLOWED_SELECTORS = 200;
+
+  async function getActivePausedSites() {
+    const storage = await getStorage(['pausedSites']);
+    const raw = storage.pausedSites && typeof storage.pausedSites === 'object' ? storage.pausedSites : {};
+    const now = Date.now();
+    const active = {};
+    let changed = false;
+    for (const [host, expiry] of Object.entries(raw)) {
+      if (typeof expiry === 'number' && expiry > now) {
+        active[host] = expiry;
+      } else {
+        changed = true;
+      }
+    }
+    if (changed) await setStorage({ pausedSites: active });
+    return active;
+  }
+
+  async function pauseSite(hostnameOrUrl, durationMs) {
+    const host = normalizeHostname(hostnameOrUrl, true);
+    if (!host) return { success: false, error: 'Invalid hostname' };
+    const ms = Number.isFinite(durationMs) && durationMs > 0 ? Math.min(durationMs, 24 * 60 * 60 * 1000) : 15 * 60 * 1000;
+    const active = await getActivePausedSites();
+    active[host] = Date.now() + ms;
+    await setStorage({ pausedSites: active });
+    scheduleNextPauseSweep(active);
+    await refreshNetworkRules();
+    await notifyAllTabs();
+    return { success: true, hostname: host, expiry: active[host] };
+  }
+
+  async function unpauseSite(hostnameOrUrl) {
+    const host = normalizeHostname(hostnameOrUrl, true);
+    if (!host) return { success: false, error: 'Invalid hostname' };
+    const active = await getActivePausedSites();
+    if (!(host in active)) return { success: true, hostname: host, changed: false };
+    delete active[host];
+    await setStorage({ pausedSites: active });
+    scheduleNextPauseSweep(active);
+    await refreshNetworkRules();
+    await notifyAllTabs();
+    return { success: true, hostname: host, changed: true };
+  }
+
+  function scheduleNextPauseSweep(active) {
+    if (!api.alarms || typeof api.alarms.create !== 'function') return;
+    const earliest = Object.values(active || {}).reduce((min, exp) => (exp < min ? exp : min), Infinity);
+    try { api.alarms.clear(PAUSE_ALARM_NAME); } catch (e) {}
+    if (!Number.isFinite(earliest)) return;
+    const when = Math.max(Date.now() + 5000, earliest + 500);
+    try { api.alarms.create(PAUSE_ALARM_NAME, { when }); } catch (e) {}
+  }
+
+  async function sweepExpiredPauses() {
+    const before = await getStorage(['pausedSites']);
+    const after = await getActivePausedSites();
+    const beforeKeys = Object.keys(before.pausedSites || {}).length;
+    if (beforeKeys !== Object.keys(after).length) {
+      await refreshNetworkRules();
+      await notifyAllTabs();
+    }
+    scheduleNextPauseSweep(after);
+  }
+
+  async function getPerSiteAllowedSelectors() {
+    const storage = await getStorage(['perSiteAllowedSelectors']);
+    const raw = storage.perSiteAllowedSelectors && typeof storage.perSiteAllowedSelectors === 'object'
+      ? storage.perSiteAllowedSelectors : {};
+    return raw;
+  }
+
+  async function allowSelectorOnSite(hostnameOrUrl, selector) {
+    const host = normalizeHostname(hostnameOrUrl, true);
+    if (!host) return { success: false, error: 'Invalid hostname' };
+    if (typeof selector !== 'string' || !selector.trim()) {
+      return { success: false, error: 'Invalid selector' };
+    }
+    const s = selector.trim();
+    if (self.WebSuddhi.utils?.isValidCSSSelector &&
+        !self.WebSuddhi.utils.isValidCSSSelector(s)) {
+      return { success: false, error: 'Invalid CSS selector' };
+    }
+    const map = await getPerSiteAllowedSelectors();
+    const list = Array.isArray(map[host]) ? map[host].slice() : [];
+    if (!list.includes(s)) {
+      if (list.length >= MAX_PER_SITE_ALLOWED_SELECTORS) {
+        return { success: false, error: 'Per-site allowlist full' };
+      }
+      list.push(s);
+    }
+    map[host] = list;
+    await setStorage({ perSiteAllowedSelectors: map });
+    await notifyAllTabs();
+    return { success: true, hostname: host, selector: s };
+  }
+
+  async function removeAllowedSelector(hostnameOrUrl, selector) {
+    const host = normalizeHostname(hostnameOrUrl, true);
+    if (!host) return { success: false, error: 'Invalid hostname' };
+    const map = await getPerSiteAllowedSelectors();
+    const list = Array.isArray(map[host]) ? map[host].filter(s => s !== selector) : [];
+    if (list.length === 0) delete map[host];
+    else map[host] = list;
+    await setStorage({ perSiteAllowedSelectors: map });
+    await notifyAllTabs();
+    return { success: true, hostname: host };
+  }
+
+  async function clearSiteStats(hostnameOrUrl) {
+    const host = normalizeHostname(hostnameOrUrl, true);
+    if (!host) return { success: false, error: 'Invalid hostname' };
+    if (self.WebSuddhi.statsManager?.clearSite) {
+      await self.WebSuddhi.statsManager.clearSite(host);
+    }
+    return { success: true, hostname: host };
+  }
+
+  async function getSiteDetail(hostnameOrUrl) {
+    const host = normalizeHostname(hostnameOrUrl, true);
+    if (!host) return { success: false, error: 'Invalid hostname' };
+
+    const storage = await getStorage(['whitelistedSites', 'pausedSites', 'perSiteAllowedSelectors', 'blockedSelectors']);
+    const whitelisted = normalizeDomainList(storage.whitelistedSites || [], true).includes(host);
+    const now = Date.now();
+    const pausedExpiry = storage.pausedSites && typeof storage.pausedSites[host] === 'number'
+      ? storage.pausedSites[host] : 0;
+    const paused = pausedExpiry > now;
+    const allowedSelectors = Array.isArray(storage.perSiteAllowedSelectors?.[host])
+      ? storage.perSiteAllowedSelectors[host] : [];
+
+    let siteStats = null;
+    let topSelectors = [];
+    if (self.WebSuddhi.statsManager) {
+      if (self.WebSuddhi.statsManager.getSiteStats) {
+        siteStats = self.WebSuddhi.statsManager.getSiteStats(host);
+      }
+      if (self.WebSuddhi.statsManager.getSelectorsForSite) {
+        topSelectors = self.WebSuddhi.statsManager.getSelectorsForSite(host, 25);
+      }
+    }
+
+    // Fallback: scan blockedSelectors list if index lookup is empty
+    if ((!topSelectors || topSelectors.length === 0) && Array.isArray(storage.blockedSelectors)) {
+      topSelectors = storage.blockedSelectors
+        .filter(e => e && e.hostname === host)
+        .slice(0, 25)
+        .map(e => ({ selector: e.selector, count: 1, lastSeen: e.date || 0, category: e.category || 'ad' }));
+    }
+
+    return {
+      success: true,
+      hostname: host,
+      whitelisted,
+      paused,
+      pausedExpiry,
+      allowedSelectors,
+      siteStats,
+      topSelectors
+    };
+  }
+
+  async function reportBrokenSite(hostnameOrUrl, note) {
+    const host = normalizeHostname(hostnameOrUrl, true);
+    if (!host) return { success: false, error: 'Invalid hostname' };
+    const storage = await getStorage(['brokenSiteReports']);
+    const reports = Array.isArray(storage.brokenSiteReports) ? storage.brokenSiteReports.slice() : [];
+    reports.unshift({
+      hostname: host,
+      note: typeof note === 'string' ? note.slice(0, 500) : '',
+      at: Date.now()
+    });
+    const max = DEFAULT_SETTINGS.maxBrokenSiteReports || 100;
+    if (reports.length > max) reports.length = max;
+    await setStorage({ brokenSiteReports: reports });
+    const pauseResult = await pauseSite(host, 60 * 60 * 1000);
+    return { success: true, hostname: host, pausedUntil: pauseResult.expiry };
+  }
+
+  // ============================================
   // NOTIFY ALL TABS
   // ============================================
   async function notifyAllTabs(message = { type: 'SETTINGS_CHANGED' }) {
@@ -1103,6 +1294,31 @@ try {
     } catch (err) {
       logError('Error notifying tabs:', err);
     }
+  }
+
+  // Throttled broadcast so the popup can live-update its blocked-count.
+  // runtime.sendMessage reaches the popup (extension context); if no popup is open
+  // the browser logs a benign "no receiver" error we swallow.
+  let blockedCountBroadcastTimer = null;
+  self.WebSuddhi.broadcastBlockedCountUpdate = (tabId) => broadcastBlockedCountUpdate(tabId);
+  function broadcastBlockedCountUpdate(tabId) {
+    if (typeof tabId !== 'number' || tabId < 0) return;
+    if (blockedCountBroadcastTimer) return;
+    blockedCountBroadcastTimer = setTimeout(() => {
+      blockedCountBroadcastTimer = null;
+      try {
+        const nb = self.WebSuddhi.networkBlocker;
+        const network = nb?.getNetworkBlockedCount ? nb.getNetworkBlockedCount(tabId) : 0;
+        const cosmetic = nb?.getCosmeticBlockedCount ? nb.getCosmeticBlockedCount(tabId) : 0;
+        api.runtime.sendMessage({
+          type: 'BLOCKED_COUNT_UPDATED',
+          tabId,
+          count: network + cosmetic,
+          network,
+          cosmetic
+        }, () => { void api.runtime.lastError; });
+      } catch (e) {}
+    }, 250);
   }
 
   // ============================================
@@ -1315,8 +1531,17 @@ try {
         case 'INCREMENT_COSMETIC_STATS':
         case 'INCREMENT_STATS':
           if (self.WebSuddhi.statsManager) {
-            self.WebSuddhi.statsManager.reportCosmeticBlock(message.hostname, message.count, message.selector);
+            self.WebSuddhi.statsManager.reportCosmeticBlock(
+              message.hostname,
+              message.count,
+              message.selector,
+              message.category
+            );
           }
+          if (self.WebSuddhi.networkBlocker && sender.tab?.id >= 0) {
+            self.WebSuddhi.networkBlocker.incrementCosmeticForTab(sender.tab.id, message.count || 1);
+          }
+          broadcastBlockedCountUpdate(sender.tab?.id);
           return await incrementStats(message.hostname, message.count);
 
         case 'RESET_STATS':
@@ -1347,7 +1572,11 @@ try {
 
         case 'GET_BLOCKED_COUNT':
           if (self.WebSuddhi.networkBlocker) {
-            return { success: true, count: self.WebSuddhi.networkBlocker.getNetworkBlockedCount(message.tabId) };
+            const network = self.WebSuddhi.networkBlocker.getNetworkBlockedCount(message.tabId);
+            const cosmetic = self.WebSuddhi.networkBlocker.getCosmeticBlockedCount
+              ? self.WebSuddhi.networkBlocker.getCosmeticBlockedCount(message.tabId)
+              : 0;
+            return { success: true, count: network + cosmetic, network, cosmetic };
           }
           return { success: true, count: getNetworkBlockedCount(message.tabId) };
 
@@ -1665,6 +1894,59 @@ try {
           openOptionsPage(message.anchor);
           return { success: true };
 
+        // Granular site control
+        case 'GET_SITE_DETAIL':
+          return await getSiteDetail(message.hostname);
+
+        case 'PAUSE_SITE':
+          return await pauseSite(message.hostname, message.durationMs);
+
+        case 'UNPAUSE_SITE':
+          return await unpauseSite(message.hostname);
+
+        case 'GET_PAUSED_SITES':
+          return { success: true, pausedSites: await getActivePausedSites() };
+
+        case 'IS_PAUSED': {
+          const active = await getActivePausedSites();
+          const host = normalizeHostname(message.hostname, true);
+          const expiry = host ? active[host] || 0 : 0;
+          return { success: true, paused: expiry > Date.now(), expiry };
+        }
+
+        case 'ALLOW_SELECTOR_ON_SITE':
+          return await allowSelectorOnSite(message.hostname, message.selector);
+
+        case 'REMOVE_ALLOWED_SELECTOR':
+          return await removeAllowedSelector(message.hostname, message.selector);
+
+        case 'GET_ALLOWED_SELECTORS': {
+          const map = await getPerSiteAllowedSelectors();
+          const host = normalizeHostname(message.hostname, true);
+          return { success: true, hostname: host, selectors: host ? (map[host] || []) : [] };
+        }
+
+        case 'CLEAR_SITE_STATS':
+          return await clearSiteStats(message.hostname);
+
+        case 'REPORT_BROKEN_SITE':
+          return await reportBrokenSite(message.hostname || sender.tab?.url, message.note);
+
+        case 'PREVIEW_SELECTOR': {
+          const tabId = Number.isInteger(message.tabId) ? message.tabId : sender.tab?.id;
+          if (typeof tabId !== 'number') return { success: false, error: 'No tab id' };
+          try {
+            safeSendToTab(tabId, {
+              type: 'PREVIEW_SELECTOR_IN_PAGE',
+              selector: message.selector,
+              durationMs: message.durationMs || 1000
+            });
+            return { success: true };
+          } catch (err) {
+            return { success: false, error: err.message };
+          }
+        }
+
         default:
           return { success: false, error: 'Unknown message type: ' + message.type };
       }
@@ -1724,7 +2006,18 @@ try {
       // Avoid calling module init functions here to prevent duplicate listeners/timers.
 
       // Set up listeners
-      api.runtime.onMessage.addListener(handleMessage);
+      api.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        handleMessage(message, sender, sendResponse)
+          .then(result => {
+            if (result === true) {
+              sendResponse({ success: true });
+              return;
+            }
+            sendResponse(result);
+          })
+          .catch(err => sendResponse({ success: false, error: err.message }));
+        return true; // Keep port open for async response
+      });
       api.runtime.onUpdateCheckStatus && api.runtime.onUpdateCheckStatus.addListener((status) => {
         if (status === 'update_available') {
           log('Update available');
@@ -1748,6 +2041,16 @@ try {
       if (supportsContextMenus()) {
         setupContextMenu();
         api.contextMenus.onClicked.addListener(handleContextMenuClick);
+      }
+
+      // Set up pause-expiry alarm + initial sweep
+      if (api.alarms && api.alarms.onAlarm) {
+        api.alarms.onAlarm.addListener((alarm) => {
+          if (alarm && alarm.name === PAUSE_ALARM_NAME) {
+            sweepExpiredPauses().catch(err => logError('Pause sweep failed:', err));
+          }
+        });
+        sweepExpiredPauses().catch(() => {});
       }
 
       // Set up command listener

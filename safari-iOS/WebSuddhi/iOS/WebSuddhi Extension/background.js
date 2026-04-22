@@ -1,4 +1,4 @@
-// WebSuddhi v2.2.0 - iOS Safari Background Script
+// WebSuddhi v2.3.0 - iOS Safari Background Script
 
 const DEFAULT_SETTINGS = {
   enabled: true,
@@ -7,12 +7,22 @@ const DEFAULT_SETTINGS = {
   annoyanceBlockingEnabled: true,
   blockedSelectors: [],
   whitelistedSites: [],
+  pausedSites: {},
+  perSiteAllowedSelectors: {},
   stats: {
     totalBlocked: 0,
     totalCosmeticBlocked: 0,
     perSite: {}
   }
 };
+
+function normalizeHost(input) {
+  if (!input || typeof input !== 'string') return '';
+  try {
+    if (/^https?:/i.test(input)) return new URL(input).hostname.replace(/^www\./, '');
+  } catch (e) {}
+  return input.replace(/^www\./, '').toLowerCase();
+}
 
 browser.runtime.onInstalled.addListener(async () => {
   const storage = await browser.storage.local.get(Object.keys(DEFAULT_SETTINGS));
@@ -114,7 +124,7 @@ async function handleMessage(msg, sender) {
       return {
         success: true,
         data: {
-          version: '2.2.0',
+          version: '2.3.0',
           exportDate: new Date().toISOString(),
           blockedSelectors: storage.blockedSelectors || [],
           whitelistedSites: storage.whitelistedSites || [],
@@ -144,6 +154,91 @@ async function handleMessage(msg, sender) {
 
     case 'GET_STATUS':
       return { success: true, enabled: true, paywallEnabled: true };
+
+    case 'PAUSE_SITE': {
+      const host = normalizeHost(msg.hostname);
+      if (!host) return { success: false, error: 'Invalid hostname' };
+      const duration = Math.max(60_000, Number(msg.durationMs) || 3_600_000);
+      const storage = await browser.storage.local.get(['pausedSites']);
+      const paused = storage.pausedSites || {};
+      paused[host] = { expiresAt: Date.now() + duration };
+      await browser.storage.local.set({ pausedSites: paused });
+      return { success: true, expiresAt: paused[host].expiresAt };
+    }
+
+    case 'UNPAUSE_SITE': {
+      const host = normalizeHost(msg.hostname);
+      if (!host) return { success: false, error: 'Invalid hostname' };
+      const storage = await browser.storage.local.get(['pausedSites']);
+      const paused = storage.pausedSites || {};
+      delete paused[host];
+      await browser.storage.local.set({ pausedSites: paused });
+      return { success: true };
+    }
+
+    case 'IS_PAUSED': {
+      const host = normalizeHost(msg.hostname);
+      const storage = await browser.storage.local.get(['pausedSites']);
+      const paused = storage.pausedSites || {};
+      const entry = paused[host];
+      if (entry && entry.expiresAt > Date.now()) {
+        return { success: true, paused: true, expiresAt: entry.expiresAt };
+      }
+      return { success: true, paused: false };
+    }
+
+    case 'GET_PAUSED_SITES': {
+      const storage = await browser.storage.local.get(['pausedSites']);
+      const paused = storage.pausedSites || {};
+      const now = Date.now();
+      const active = {};
+      let changed = false;
+      for (const [host, entry] of Object.entries(paused)) {
+        if (entry && entry.expiresAt > now) {
+          active[host] = entry;
+        } else {
+          changed = true;
+        }
+      }
+      if (changed) await browser.storage.local.set({ pausedSites: active });
+      return { success: true, pausedSites: active };
+    }
+
+    case 'ALLOW_SELECTOR_ON_SITE': {
+      const host = normalizeHost(msg.hostname);
+      if (!host || !msg.selector) return { success: false, error: 'Invalid input' };
+      const storage = await browser.storage.local.get(['perSiteAllowedSelectors']);
+      const allowed = storage.perSiteAllowedSelectors || {};
+      const list = allowed[host] || [];
+      if (!list.includes(msg.selector) && list.length < 200) {
+        list.push(msg.selector);
+        allowed[host] = list;
+        await browser.storage.local.set({ perSiteAllowedSelectors: allowed });
+      }
+      return { success: true };
+    }
+
+    case 'REMOVE_ALLOWED_SELECTOR': {
+      const host = normalizeHost(msg.hostname);
+      if (!host || !msg.selector) return { success: false, error: 'Invalid input' };
+      const storage = await browser.storage.local.get(['perSiteAllowedSelectors']);
+      const allowed = storage.perSiteAllowedSelectors || {};
+      const list = (allowed[host] || []).filter(s => s !== msg.selector);
+      if (list.length === 0) {
+        delete allowed[host];
+      } else {
+        allowed[host] = list;
+      }
+      await browser.storage.local.set({ perSiteAllowedSelectors: allowed });
+      return { success: true };
+    }
+
+    case 'GET_ALLOWED_SELECTORS': {
+      const host = normalizeHost(msg.hostname);
+      const storage = await browser.storage.local.get(['perSiteAllowedSelectors']);
+      const allowed = storage.perSiteAllowedSelectors || {};
+      return { success: true, selectors: host ? (allowed[host] || []) : allowed };
+    }
 
     default:
       return { success: false, error: 'Unknown message type' };

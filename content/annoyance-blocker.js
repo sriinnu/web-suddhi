@@ -138,13 +138,13 @@
     '[class*="login-wall"]', '[class*="signup-wall"]'
   ];
 
-  // Combine all selectors
-  const ALL_ANNOYANCE_SELECTORS = [
-    ...CHAT_WIDGET_SELECTORS,
-    ...NEWSLETTER_SELECTORS,
-    ...PUSH_NOTIFICATION_SELECTORS,
-    ...APP_INSTALL_SELECTORS,
-    ...SOCIAL_LOGIN_SELECTORS
+  // Combine all selectors with their category so stats can tag each block.
+  const ANNOYANCE_SELECTOR_GROUPS = [
+    { category: 'chat', selectors: CHAT_WIDGET_SELECTORS },
+    { category: 'newsletter', selectors: NEWSLETTER_SELECTORS },
+    { category: 'push', selectors: PUSH_NOTIFICATION_SELECTORS },
+    { category: 'app-install', selectors: APP_INSTALL_SELECTORS },
+    { category: 'social-gate', selectors: SOCIAL_LOGIN_SELECTORS }
   ];
 
   // ============================================
@@ -186,15 +186,18 @@
   function applyBlocking() {
     if (!enabled) return;
 
-    for (const selector of ALL_ANNOYANCE_SELECTORS) {
-      try {
-        const elements = document.querySelectorAll(selector);
-        for (const el of elements) {
-          if (!el.hasAttribute('data-websuddhi-annoyance-blocked') && self.WebSuddhi.utils.isVisible(el)) {
-            hideElement(el);
+    for (const group of ANNOYANCE_SELECTOR_GROUPS) {
+      for (const selector of group.selectors) {
+        try {
+          const elements = document.querySelectorAll(selector);
+          for (const el of elements) {
+            if (!el.hasAttribute('data-websuddhi-annoyance-blocked') && self.WebSuddhi.utils.isVisible(el)) {
+              hideElement(el);
+              reportAnnoyanceBlockDebounced(selector, group.category);
+            }
           }
-        }
-      } catch (e) {}
+        } catch (e) {}
+      }
     }
   }
 
@@ -235,6 +238,61 @@
       childList: true,
       subtree: true
     });
+  }
+
+  // ============================================
+  // STATS REPORTING (debounced, per-category)
+  // ============================================
+  const pendingByCategory = new Map();
+  let statsFlushTimer = null;
+
+  function sendMessage(message) {
+    return new Promise((resolve, reject) => {
+      try {
+        if (typeof browser !== 'undefined' && browser.runtime) {
+          browser.runtime.sendMessage(message).then(resolve).catch(reject);
+        } else if (typeof chrome !== 'undefined' && chrome.runtime) {
+          chrome.runtime.sendMessage(message, (response) => {
+            if (chrome.runtime.lastError) reject(chrome.runtime.lastError);
+            else resolve(response);
+          });
+        } else {
+          reject(new Error('No messaging API available'));
+        }
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  function reportAnnoyanceBlockDebounced(selector, category) {
+    const bucket = pendingByCategory.get(category) || { count: 0, lastSelector: '' };
+    bucket.count++;
+    if (selector) bucket.lastSelector = selector;
+    pendingByCategory.set(category, bucket);
+
+    if (statsFlushTimer) return;
+    statsFlushTimer = setTimeout(flushAnnoyanceStats, 2000);
+  }
+
+  function flushAnnoyanceStats() {
+    statsFlushTimer = null;
+    const hostname = getCurrentHostname();
+    if (!hostname || pendingByCategory.size === 0) {
+      pendingByCategory.clear();
+      return;
+    }
+
+    for (const [category, bucket] of pendingByCategory) {
+      sendMessage({
+        type: 'INCREMENT_STATS',
+        hostname,
+        count: bucket.count,
+        selector: bucket.lastSelector,
+        category
+      }).catch(() => {});
+    }
+    pendingByCategory.clear();
   }
 
   // ============================================

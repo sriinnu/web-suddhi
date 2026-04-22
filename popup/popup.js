@@ -4,6 +4,28 @@
 (function() {
   'use strict';
 
+  // Count-up animation for stat numbers
+  function animateCount(element, targetValue) {
+    if (!element) return;
+    const current = parseInt(element.textContent) || 0;
+    if (current === targetValue) return;
+
+    const duration = 600;
+    const startTime = performance.now();
+
+    function tick(now) {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease-out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const value = Math.round(current + (targetValue - current) * eased);
+      element.textContent = value.toLocaleString();
+      if (progress < 1) requestAnimationFrame(tick);
+    }
+
+    requestAnimationFrame(tick);
+  }
+
   // Logging helpers
   const logError = (...args) => {
     if (self.WebSuddhi && self.WebSuddhi.utils && self.WebSuddhi.utils.error) {
@@ -79,6 +101,10 @@
     certOwnerSection: document.getElementById('certOwnerSection'),
     certOwnerName: document.getElementById('certOwnerName'),
     certOwnerDetails: document.getElementById('certOwnerDetails'),
+    securityMainBtn: document.getElementById('securityMainBtn'),
+    certDetailsPanel: document.getElementById('certDetailsPanel'),
+    certDetailsGrid: document.getElementById('certDetailsGrid'),
+    certDetailsNote: document.getElementById('certDetailsNote'),
     // Frames elements
     framesSection: document.getElementById('framesSection'),
     framesCount: document.getElementById('framesCount'),
@@ -96,7 +122,14 @@
     blacklistBtn: document.getElementById('blacklistBtn'),
     statusBadge: document.getElementById('statusBadge'),
     whitelistToggleBtn: document.getElementById('whitelistToggleBtn'),
-    themeSelect: document.getElementById('themeSelect')
+    themeSelect: document.getElementById('themeSelect'),
+    // Pause ribbon + split-button + broken-site
+    pauseRibbon: document.getElementById('pauseRibbon'),
+    pauseRibbonText: document.getElementById('pauseRibbonText'),
+    pauseResumeBtn: document.getElementById('pauseResumeBtn'),
+    pauseBtn: document.getElementById('pauseBtn'),
+    pauseMenu: document.getElementById('pauseMenu'),
+    reportBrokenBtn: document.getElementById('reportBrokenBtn')
   };
 
   // Cross-browser API
@@ -107,6 +140,10 @@
   let isZapMode = false;
   let currentSettings = {};
   let isWhitelisted = false;
+  let isBlacklisted = false;
+  let isPaused = false;
+  let pauseExpiry = 0;
+  let pauseCountdownTimer = null;
   let currentSecurityContext = null;
 
   // ============================================
@@ -117,6 +154,7 @@
       const storage = await getStorage(['theme']);
       const theme = storage.theme || 'system';
       applyPopupTheme(theme);
+      await populateCustomThemeOptions();
       syncThemeControl(theme);
     } catch (e) {
       // Default to system
@@ -135,7 +173,72 @@
 
   function syncThemeControl(theme) {
     if (elements.themeSelect) {
-      elements.themeSelect.value = theme || 'system';
+      const v = theme || 'system';
+      elements.themeSelect.dataset.desiredValue = v;
+      elements.themeSelect.value = v;
+    }
+  }
+
+  function appendCustomThemeOptions(list) {
+    if (!elements.themeSelect || !Array.isArray(list) || list.length === 0) return;
+    const existing = new Set(
+      Array.from(elements.themeSelect.options).map((o) => o.value)
+    );
+    for (const t of list) {
+      if (!t || typeof t.id !== 'string' || existing.has(t.id)) continue;
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.name || t.id;
+      elements.themeSelect.appendChild(opt);
+    }
+  }
+
+  function injectCustomThemeCss(themes) {
+    if (document.getElementById('websuddhi-custom-themes')) return;
+    if (!Array.isArray(themes) || themes.length === 0) return;
+    const blocks = [];
+    for (const t of themes) {
+      if (!t || typeof t.id !== 'string' || !t.tokens || typeof t.tokens !== 'object') continue;
+      const safeId = t.id.replace(/[^a-zA-Z0-9_-]/g, '');
+      if (!safeId) continue;
+      const decls = [];
+      for (const key of Object.keys(t.tokens)) {
+        if (!/^--[a-zA-Z0-9_-]+$/.test(key)) continue;
+        const val = String(t.tokens[key]).replace(/[<>]/g, '');
+        decls.push('  ' + key + ': ' + val + ';');
+      }
+      if (decls.length === 0) continue;
+      blocks.push('[data-theme="' + safeId + '"] {\n' + decls.join('\n') + '\n}');
+    }
+    if (blocks.length === 0) return;
+    const style = document.createElement('style');
+    style.id = 'websuddhi-custom-themes';
+    style.textContent = blocks.join('\n\n');
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  async function populateCustomThemeOptions() {
+    if (!elements.themeSelect) return;
+
+    // Fast path: loader already ran
+    if (Array.isArray(window.__websuddhiCustomThemes) && window.__websuddhiCustomThemes.length) {
+      appendCustomThemeOptions(window.__websuddhiCustomThemes);
+      injectCustomThemeCss(window.__websuddhiCustomThemes);
+      return;
+    }
+
+    // Fallback: fetch themes.json directly. Cheap + deterministic.
+    try {
+      const url = api.runtime.getURL('shared/themes.json');
+      const resp = await fetch(url);
+      if (!resp.ok) return;
+      const themes = await resp.json();
+      if (!Array.isArray(themes)) return;
+      window.__websuddhiCustomThemes = themes;
+      appendCustomThemeOptions(themes);
+      injectCustomThemeCss(themes);
+    } catch (e) {
+      // Silent — built-in themes still work
     }
   }
 
@@ -291,6 +394,81 @@
       null;
   }
 
+  let lastSecuritySnapshot = null;
+
+  function detectBrowser() {
+    if (typeof browser !== 'undefined' && browser.runtime?.getBrowserInfo) return 'firefox';
+    const ua = navigator.userAgent || '';
+    if (/Firefox\//.test(ua)) return 'firefox';
+    if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) return 'safari';
+    return 'chrome';
+  }
+
+  function populateCertDetailsPanel() {
+    if (!elements.certDetailsGrid || !elements.certDetailsNote) return;
+    const info = lastSecuritySnapshot || {};
+    const connection = info.connection || {};
+    const cert = extractCertificate(info) || {};
+    const rows = [];
+
+    const push = (label, value) => {
+      if (value === undefined || value === null || value === '') return;
+      rows.push([label, String(value)]);
+    };
+
+    push('Host', connection.host || connection.normalizedHost);
+    push('Protocol', connection.protocol?.replace(':', '').toUpperCase() || (connection.isSecure ? 'HTTPS' : ''));
+    push('Organization', cert.organization || cert.org || connection.organization);
+    push('Issuer', cert.issuer || cert.issuedBy || info.issuer);
+    push('Valid From', cert.validFrom || cert.notBefore);
+    push('Valid Until', cert.validTo || cert.notAfter);
+    const sans = cert.subjectAltNames || cert.sans || cert.altNames;
+    if (Array.isArray(sans) && sans.length > 0) {
+      push('Subject Alt Names', sans.slice(0, 8).join(', ') + (sans.length > 8 ? ` (+${sans.length - 8} more)` : ''));
+    }
+    push('Fingerprint', cert.fingerprint || cert.sha256Fingerprint);
+
+    elements.certDetailsGrid.textContent = '';
+    if (rows.length === 0) {
+      const dt = document.createElement('dt');
+      dt.textContent = 'Status';
+      const dd = document.createElement('dd');
+      dd.textContent = connection.isSecure ? 'Connection is encrypted' : 'No certificate data available';
+      elements.certDetailsGrid.appendChild(dt);
+      elements.certDetailsGrid.appendChild(dd);
+    } else {
+      rows.forEach(([label, value]) => {
+        const dt = document.createElement('dt');
+        dt.textContent = label;
+        const dd = document.createElement('dd');
+        dd.textContent = value;
+        elements.certDetailsGrid.appendChild(dt);
+        elements.certDetailsGrid.appendChild(dd);
+      });
+    }
+
+    const browserName = detectBrowser();
+    let note = '';
+    if (!connection.isSecure) {
+      note = 'This connection is not encrypted. Avoid entering passwords or payment info.';
+    } else if (browserName === 'firefox') {
+      note = 'Full certificate chain available. Click the padlock in the address bar to inspect.';
+    } else if (browserName === 'safari') {
+      note = 'Full chain viewing requires Safari’s Show Certificate dialog (click the padlock in the address bar).';
+    } else {
+      note = 'For the full certificate chain, click the padlock in the address bar → Connection is secure → Certificate details.';
+    }
+    elements.certDetailsNote.textContent = note;
+  }
+
+  function toggleCertDetails() {
+    if (!elements.certDetailsPanel || !elements.securityMainBtn) return;
+    const willOpen = elements.certDetailsPanel.hidden;
+    if (willOpen) populateCertDetailsPanel();
+    elements.certDetailsPanel.hidden = !willOpen;
+    elements.securityMainBtn.setAttribute('aria-expanded', String(willOpen));
+  }
+
   function sendToContentScript(message) {
     return new Promise((resolve, reject) => {
       if (!currentTab || !currentTab.id) {
@@ -336,19 +514,19 @@
       if (tabId) {
         try {
           const blockedCount = await sendToBackground({ type: 'GET_BLOCKED_COUNT', tabId });
-          elements.networkBlockedCount.textContent = blockedCount.count || 0;
+          animateCount(elements.networkBlockedCount, blockedCount.count || 0);
         } catch (e) {
-          elements.networkBlockedCount.textContent = '0';
+          animateCount(elements.networkBlockedCount, 0);
         }
       } else {
-        elements.networkBlockedCount.textContent = '0';
+        animateCount(elements.networkBlockedCount, 0);
       }
     }
 
     // Update rules count
     if (elements.rulesCount) {
       const rulesCount = 100 + (settings.blockedDomains?.length || 0) + (settings.blockedSelectors?.length || 0);
-      elements.rulesCount.textContent = rulesCount;
+      animateCount(elements.rulesCount, rulesCount);
     }
 
     // Update data saved estimate
@@ -512,6 +690,167 @@
       }
     } else {
       showToast(response.error || 'Failed to whitelist');
+    }
+  }
+
+  function getActiveHostname() {
+    if (!currentTab?.url) return '';
+    try {
+      return new URL(currentTab.url).hostname.replace(/^www\./, '');
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function formatPauseRemaining(expiryMs) {
+    const remaining = expiryMs - Date.now();
+    if (remaining <= 0) return '';
+    const mins = Math.round(remaining / 60000);
+    if (mins < 60) return mins + ' min left';
+    const hrs = Math.floor(mins / 60);
+    const rem = mins % 60;
+    return rem === 0 ? hrs + ' hr left' : hrs + ' hr ' + rem + ' min left';
+  }
+
+  function setPausedVisualState(paused) {
+    isPaused = !!paused;
+    document.body.classList.toggle('is-paused', isPaused);
+    if (elements.pauseBtn) {
+      elements.pauseBtn.setAttribute('aria-pressed', String(isPaused));
+    }
+    if (elements.pauseRibbon) {
+      elements.pauseRibbon.hidden = !isPaused;
+    }
+    if (!isPaused && pauseCountdownTimer) {
+      clearInterval(pauseCountdownTimer);
+      pauseCountdownTimer = null;
+    }
+  }
+
+  function updateRibbonCountdown() {
+    if (!isPaused || !elements.pauseRibbonText) return;
+    const label = formatPauseRemaining(pauseExpiry);
+    if (!label) {
+      // Expired — flip state
+      setPausedVisualState(false);
+      pauseExpiry = 0;
+      refreshTriStateButtons();
+      return;
+    }
+    elements.pauseRibbonText.textContent = 'Paused · ' + label;
+  }
+
+  function startCountdown() {
+    if (pauseCountdownTimer) clearInterval(pauseCountdownTimer);
+    updateRibbonCountdown();
+    pauseCountdownTimer = setInterval(updateRibbonCountdown, 30_000);
+  }
+
+  async function refreshPauseIndicator() {
+    const host = getActiveHostname();
+    if (!host) {
+      setPausedVisualState(false);
+      return;
+    }
+    try {
+      const resp = await sendToBackground({ type: 'IS_PAUSED', hostname: host });
+      if (resp?.success && resp.paused) {
+        pauseExpiry = resp.expiry || 0;
+        setPausedVisualState(true);
+        startCountdown();
+      } else {
+        pauseExpiry = 0;
+        setPausedVisualState(false);
+      }
+    } catch (e) {
+      setPausedVisualState(false);
+    }
+  }
+
+  async function refreshTriStateButtons() {
+    const host = getActiveHostname();
+    if (!host) return;
+    try {
+      const storage = await getStorage(['whitelistedSites', 'blockedDomains']);
+      const whitelist = Array.isArray(storage.whitelistedSites) ? storage.whitelistedSites : [];
+      const blocklist = Array.isArray(storage.blockedDomains) ? storage.blockedDomains : [];
+      isWhitelisted = whitelist.includes(host) || whitelist.includes(currentTab?.url && new URL(currentTab.url).hostname);
+      isBlacklisted = blocklist.includes(host);
+    } catch (e) {
+      // silent
+    }
+    syncTriStateButtons();
+  }
+
+  function syncTriStateButtons() {
+    if (elements.whitelistBtn) {
+      elements.whitelistBtn.setAttribute('aria-pressed', String(isWhitelisted));
+    }
+    if (elements.blacklistBtn) {
+      elements.blacklistBtn.setAttribute('aria-pressed', String(isBlacklisted));
+    }
+    // Allow and Block are mutually exclusive at the UI level; Pause is independent
+    if (elements.whitelistBtn) elements.whitelistBtn.disabled = isBlacklisted;
+    if (elements.blacklistBtn) elements.blacklistBtn.disabled = isWhitelisted;
+  }
+
+  function closePauseMenu() {
+    if (elements.pauseMenu) elements.pauseMenu.hidden = true;
+    if (elements.pauseBtn) elements.pauseBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  function openPauseMenu() {
+    if (elements.pauseMenu) elements.pauseMenu.hidden = false;
+    if (elements.pauseBtn) elements.pauseBtn.setAttribute('aria-expanded', 'true');
+  }
+
+  async function pauseForDuration(durationMs) {
+    const host = getActiveHostname();
+    if (!host) {
+      showToast('No active site');
+      return;
+    }
+    closePauseMenu();
+    try {
+      const resp = await sendToBackground({
+        type: 'PAUSE_SITE',
+        hostname: host,
+        durationMs: Number(durationMs) || 3_600_000
+      });
+      if (resp?.success) {
+        pauseExpiry = resp.expiresAt || (Date.now() + Number(durationMs));
+        setPausedVisualState(true);
+        startCountdown();
+        showToast('Paused on ' + host);
+      } else {
+        showToast(resp?.error || 'Failed to pause');
+      }
+    } catch (e) {
+      showToast('Failed to pause');
+    }
+  }
+
+  async function handleReportBroken() {
+    const host = getActiveHostname();
+    if (!host) {
+      showToast('No active site to report');
+      return;
+    }
+    const note = window.prompt(
+      'Describe what\'s broken on ' + host + ' (optional). We\'ll pause blocking for 1 hour.',
+      ''
+    );
+    if (note === null) return; // user cancelled
+    const resp = await sendToBackground({
+      type: 'REPORT_BROKEN_SITE',
+      hostname: host,
+      note: note.trim()
+    });
+    if (resp?.success) {
+      showToast('Thanks — paused for 1 hour on ' + host);
+      await refreshPauseIndicator();
+    } else {
+      showToast(resp?.error || 'Failed to report');
     }
   }
 
@@ -1093,6 +1432,12 @@
       const connection = securityInfo?.connection || fallbackConnection;
       const phishing = securityInfo?.phishing || {};
 
+      lastSecuritySnapshot = { ...securityInfo, connection };
+      // If panel is already open (e.g. user re-opens popup), refresh it with new data
+      if (elements.certDetailsPanel && !elements.certDetailsPanel.hidden) {
+        populateCertDetailsPanel();
+      }
+
       setPhishingRiskState(connection, phishing);
 
       // Update certificate owner section
@@ -1375,6 +1720,7 @@
           const url = new URL(currentTab.url);
           if (elements.currentSite) {
             elements.currentSite.textContent = url.hostname;
+            elements.currentSite.classList.remove('loading');
           }
 
           // Update security info
@@ -1388,11 +1734,13 @@
         } catch (e) {
           if (elements.currentSite) {
             elements.currentSite.textContent = 'Unknown site';
+            elements.currentSite.classList.remove('loading');
           }
         }
       } else {
         if (elements.currentSite) {
           elements.currentSite.textContent = 'No active tab';
+          elements.currentSite.classList.remove('loading');
         }
       }
 
@@ -1419,6 +1767,10 @@
         } catch (e) {
           console.error('Whitelist check failed:', e);
         }
+
+        // Refresh pause status + tri-state buttons
+        await refreshPauseIndicator();
+        await refreshTriStateButtons();
       }
 
       // Set up event listeners
@@ -1446,21 +1798,92 @@
       elements.cosmeticStatBtn?.addEventListener('click', showCosmeticStats);
       elements.copyDomainBtn?.addEventListener('click', copyCurrentDomain);
       elements.reportPhishingBtn?.addEventListener('click', reportCurrentSiteAsPhishing);
+      elements.securityMainBtn?.addEventListener('click', toggleCertDetails);
       elements.themeSelect?.addEventListener('change', async () => {
         const theme = elements.themeSelect.value || 'system';
         applyPopupTheme(theme);
         await setStorage({ theme });
       });
-      // Header action buttons
-      elements.whitelistBtn?.addEventListener('click', quickWhitelist);
-      elements.blacklistBtn?.addEventListener('click', quickBlacklist);
+      // Tri-state site actions — clicking an active state clears it
+      elements.whitelistBtn?.addEventListener('click', async () => {
+        if (isWhitelisted) {
+          await toggleWhitelist(); // removes
+        } else {
+          await quickWhitelist();
+        }
+        await refreshTriStateButtons();
+      });
+      elements.blacklistBtn?.addEventListener('click', async () => {
+        const host = getActiveHostname();
+        if (!host) return;
+        if (isBlacklisted) {
+          const resp = await sendToBackground({ type: 'REMOVE_DOMAIN_BLOCK', domain: host });
+          if (resp?.success) {
+            isBlacklisted = false;
+            showToast('Unblocked ' + host);
+          }
+        } else {
+          await quickBlacklist();
+        }
+        await refreshTriStateButtons();
+      });
       elements.whitelistToggleBtn?.addEventListener('click', toggleWhitelist);
+
+      // Pause split button — main click opens menu, menu items pause for duration
+      elements.pauseBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!elements.pauseMenu) return;
+        if (elements.pauseMenu.hidden) openPauseMenu();
+        else closePauseMenu();
+      });
+      elements.pauseMenu?.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-duration]');
+        if (!btn) return;
+        e.stopPropagation();
+        pauseForDuration(btn.dataset.duration);
+      });
+      // Outside click (use mousedown so menu item clicks still resolve) + Escape
+      document.addEventListener('mousedown', (e) => {
+        if (!elements.pauseMenu || elements.pauseMenu.hidden) return;
+        if (e.target.closest('.pause-split')) return;
+        closePauseMenu();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closePauseMenu();
+      });
+
+      elements.pauseResumeBtn?.addEventListener('click', async () => {
+        const host = getActiveHostname();
+        if (!host) return;
+        const resp = await sendToBackground({ type: 'UNPAUSE_SITE', hostname: host });
+        if (resp?.success) {
+          pauseExpiry = 0;
+          setPausedVisualState(false);
+          showToast('Resumed protection for ' + host);
+        } else {
+          showToast(resp?.error || 'Failed to resume');
+        }
+      });
+      elements.reportBrokenBtn?.addEventListener('click', handleReportBroken);
 
       // Listen for messages from content script or background
       api.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Handle incoming messages
         if (message.type === 'FRAMES_DETECTED' || message.type === 'FRAME_INFO_UPDATED') {
           updateFramesFromContent(message.frames || []);
+        }
+
+        if (message.type === 'BLOCKED_COUNT_UPDATED' && currentTab?.id && message.tabId === currentTab.id) {
+          if (elements.networkBlockedCount) {
+            animateCount(elements.networkBlockedCount, message.count || 0);
+          }
+          if (elements.dataSaved) {
+            const dataSaved = (message.count || 0) * 2.5;
+            elements.dataSaved.textContent = dataSaved >= 1024
+              ? (dataSaved / 1024).toFixed(1) + ' MB'
+              : Math.round(dataSaved) + ' KB';
+          }
         }
 
         // Return true to indicate async response
