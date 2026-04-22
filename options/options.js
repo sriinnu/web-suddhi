@@ -1402,6 +1402,7 @@
       const input = document.createElement('input');
       input.type = 'checkbox';
       input.checked = isSubscribed;
+      input.setAttribute('aria-label', 'Toggle ' + list.name);
       const toggleSwitch = document.createElement('span');
       toggleSwitch.className = 'toggle-switch small';
       toggleSwitch.innerHTML = '<span class="slider"></span>';
