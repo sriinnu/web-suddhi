@@ -2008,7 +2008,13 @@ try {
       // Set up listeners
       api.runtime.onMessage.addListener((message, sender, sendResponse) => {
         handleMessage(message, sender, sendResponse)
-          .then(result => sendResponse(result))
+          .then(result => {
+            if (result === true) {
+              sendResponse({ success: true });
+              return;
+            }
+            sendResponse(result);
+          })
           .catch(err => sendResponse({ success: false, error: err.message }));
         return true; // Keep port open for async response
       });
