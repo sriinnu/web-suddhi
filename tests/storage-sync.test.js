@@ -190,7 +190,7 @@ it('includes theme and synced preferences in full backup import/export', async (
   expect(exported.settings.enabledLanguageFilters).toEqual(['german']);
 
   const result = await globalThis.WebSuddhi.importExport.importSettings({
-    version: '2.2.0',
+    version: '2.3.0',
     exportedAt: new Date().toISOString(),
     settings: {
       syncEnabled: true,

@@ -1,6 +1,6 @@
 {
   "name": "websuddhi",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Block ads, remove paywalls, strip trackers, and clean up any website",
   "main": "background/background.js",
   "scripts": {

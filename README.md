@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="#installation"><img src="https://img.shields.io/badge/version-2.2.0-blue?style=flat-square" alt="Version"></a>
+  <a href="#installation"><img src="https://img.shields.io/badge/version-2.3.0-blue?style=flat-square" alt="Version"></a>
   <a href="#supported-browsers"><img src="https://img.shields.io/badge/Chrome-MV3-4285F4?style=flat-square&logo=google-chrome&logoColor=white" alt="Chrome"></a>
   <a href="#supported-browsers"><img src="https://img.shields.io/badge/Firefox-MV2-FF7139?style=flat-square&logo=firefox-browser&logoColor=white" alt="Firefox"></a>
   <a href="#supported-browsers"><img src="https://img.shields.io/badge/Safari-macOS%20%7C%20iOS-000?style=flat-square&logo=safari&logoColor=white" alt="Safari"></a>
@@ -66,6 +66,9 @@ One extension. 40,000+ blocking rules. Zero data collection. Every browser.
 | 10 | **Filter Lists** | Subscribe to custom blocklists or use our curated HaGeZi/AdGuard/PhishTank compilation. |
 | 11 | **Element Picker** | Point-and-click to permanently block any element on any page. |
 | 12 | **Statistics** | Track blocks over time with per-site breakdown, category charts, and trend graphs. |
+| 13 | **Site Detail Drawer** | Click any site in Top Sites to see what's blocked there, unblock a single selector, preview it first, or clear the site's stats. |
+| 14 | **Pause per Site** | Pause protection on a site for 15 min / 1 hour / 1 day without adding it to your permanent whitelist. Auto-resumes when the timer runs out. |
+| 15 | **Report Broken Site** | One click from the popup pauses the current site for an hour and logs a report, so you can keep browsing and fix the rule later. |
 
 ---
 
@@ -174,6 +177,30 @@ Rebuild anytime: `node scripts/build-blocklists.mjs`
 | `Alt+P` | Toggle element picker |
 | `Alt+W` | Toggle whitelist for current site |
 | `Alt+S` | Open settings |
+| Popup → "Site broken?" | Pause current site for 1 hour and log a report |
+
+---
+
+## Custom Themes
+
+The palette picker ships with 10+ built-in themes. To add your own, edit `shared/themes.json` — each entry becomes a card in Settings → Appearance. No rebuild, no JS edits.
+
+```json
+{
+  "id": "my-theme",
+  "name": "My Theme",
+  "recommendedFont": "Geist",
+  "swatches": ["#F4EFE6", "#7C5CFF", "#2AA6A0", "#1A1A2E"],
+  "tokens": {
+    "--bg-primary": "#F4EFE6",
+    "--text-primary": "#1A1A2E",
+    "--accent": "#7C5CFF",
+    "--font-family": "'Geist', -apple-system, sans-serif"
+  }
+}
+```
+
+`tokens` maps to the same CSS custom properties used by every built-in theme (full list in `shared/themes.css`). `recommendedFont` sets the theme's default type; the user can still override it from the Font Family picker. Delete an entry and it disappears from the UI on next reload.
 
 ---
 

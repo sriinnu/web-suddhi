@@ -463,7 +463,7 @@
   function applyFontFamily(fontFamily) {
     if (!fontFamily || fontFamily === 'system') {
       document.documentElement.style.removeProperty('font-family');
-      document.documentElement.style.removeProperty('--font-active');
+      document.documentElement.style.removeProperty('--font-family');
       return;
     }
     var stack = FONT_STACKS[fontFamily];
@@ -471,7 +471,7 @@
       // Custom font — name from fonts.json
       stack = "'" + fontFamily + "', " + FONT_STACKS.system;
     }
-    document.documentElement.style.setProperty('--font-active', stack);
+    document.documentElement.style.setProperty('--font-family', stack);
     document.documentElement.style.fontFamily = stack;
   }
 
@@ -481,6 +481,63 @@
     document.documentElement.style.setProperty('--radius-lg', Math.min(val + 6, 30) + 'px');
   }
 
+  function bindThemeCardClicks() {
+    document.querySelectorAll('.theme-card').forEach(btn => {
+      if (btn.dataset.wired === '1') return;
+      btn.dataset.wired = '1';
+      btn.addEventListener('click', async () => {
+        const theme = btn.dataset.theme;
+        applyTheme(theme);
+        updateThemeButtons(theme);
+        updateThemeOptionButtons(theme);
+        await setStorage({ theme });
+      });
+    });
+  }
+
+  // Read shared/themes.json and append a theme card per entry.
+  // Runs after options DOM is ready; custom-themes-loader.js has already
+  // injected the CSS variables, so applyTheme() will take effect instantly.
+  async function renderCustomThemeCards() {
+    try {
+      const grid = document.getElementById('themeGrid');
+      if (!grid) return;
+      let themes = window.__websuddhiCustomThemes;
+      if (!Array.isArray(themes)) {
+        const url = api.runtime.getURL('shared/themes.json');
+        const resp = await fetch(url);
+        if (!resp.ok) return;
+        themes = await resp.json();
+      }
+      if (!Array.isArray(themes)) return;
+      const existing = new Set(
+        Array.from(grid.querySelectorAll('.theme-card')).map(b => b.dataset.theme)
+      );
+      for (const t of themes) {
+        if (!t || !t.id || existing.has(t.id)) continue;
+        const swatches = Array.isArray(t.swatches) ? t.swatches.slice(0, 4) : [];
+        const btn = document.createElement('button');
+        btn.className = 'theme-card';
+        btn.dataset.theme = t.id;
+        btn.title = (t.name || t.id) + (t.recommendedFont ? ' · ' + t.recommendedFont : '');
+        const preview = document.createElement('div');
+        preview.className = 'theme-preview';
+        for (const hex of swatches) {
+          const span = document.createElement('span');
+          span.className = 'swatch';
+          span.style.background = hex;
+          preview.appendChild(span);
+        }
+        const nameEl = document.createElement('span');
+        nameEl.className = 'theme-card-name';
+        nameEl.textContent = t.name || t.id;
+        btn.appendChild(preview);
+        btn.appendChild(nameEl);
+        grid.appendChild(btn);
+      }
+    } catch (_) { /* themes.json missing — silent */ }
+  }
+
   async function loadCustomFonts(selectEl) {
     try {
       const url = api.runtime.getURL('fonts/fonts.json');
@@ -488,37 +545,43 @@
       if (!resp.ok) return;
       const fonts = await resp.json();
 
-      // Deduplicate font family names
-      const families = [...new Set(fonts.map(f => f.name))];
+      // Preserve JSON order while deduplicating family names
+      const orderedFamilies = [];
+      const seen = new Set();
+      for (const f of fonts) {
+        if (!seen.has(f.name)) { seen.add(f.name); orderedFamilies.push(f.name); }
+      }
 
-      // Register @font-face for each entry
-      for (const entry of fonts) {
+      // Track which families landed at least one working face
+      const loadedFamilies = new Set();
+
+      // Load faces in parallel — face.load() rejects on its own if the file is missing,
+      // so no HEAD pre-check is needed (and it can false-negative on extension URLs).
+      const loads = fonts.map(async (entry) => {
         const fontUrl = api.runtime.getURL('fonts/' + entry.file);
-        // Check if file exists (fetch HEAD)
-        try {
-          const check = await fetch(fontUrl, { method: 'HEAD' });
-          if (!check.ok) continue;
-        } catch (_) { continue; }
-
-        const face = new FontFace(entry.name, 'url(' + fontUrl + ')', {
+        const descriptors = {
           weight: String(entry.weight || 400),
           style: entry.style || 'normal'
-        });
+        };
+        if (entry.unicodeRange) descriptors.unicodeRange = entry.unicodeRange;
+        const face = new FontFace(entry.name, 'url(' + fontUrl + ')', descriptors);
         try {
           await face.load();
           document.fonts.add(face);
-        } catch (_) { /* font file missing or corrupt — skip */ }
-      }
-
-      // Add available families to select
-      for (const name of families) {
-        // Only add if at least one face loaded
-        if (document.fonts.check('12px "' + name + '"')) {
-          const opt = document.createElement('option');
-          opt.value = name;
-          opt.textContent = name;
-          selectEl.appendChild(opt);
+          loadedFamilies.add(entry.name);
+        } catch (err) {
+          console.warn('[websuddhi] font load failed:', entry.name, entry.file, err);
         }
+      });
+      await Promise.all(loads);
+
+      // Add families with at least one working face, in JSON order
+      for (const name of orderedFamilies) {
+        if (!loadedFamilies.has(name)) continue;
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        selectEl.appendChild(opt);
       }
 
       // Restore saved selection
@@ -526,8 +589,8 @@
       if (storage.fontFamily && selectEl) {
         selectEl.value = storage.fontFamily;
       }
-    } catch (_) {
-      // fonts.json not found or invalid — no custom fonts
+    } catch (err) {
+      console.warn('[websuddhi] loadCustomFonts failed:', err);
     }
   }
 
@@ -959,6 +1022,17 @@
       row.appendChild(trackDiv);
       row.appendChild(valueSpan);
       row.appendChild(actionBtn);
+
+      // For Top Sites rows, clicking the bar track opens the Site Detail drawer.
+      // Keep the label's click-to-copy and the X-button's unblock unchanged.
+      if (isSiteData) {
+        trackDiv.style.cursor = 'pointer';
+        trackDiv.title = 'View details for ' + label;
+        trackDiv.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openSiteDetailDrawer(label);
+        });
+      }
 
       container.appendChild(row);
     }
@@ -1772,16 +1846,10 @@
       });
     });
 
-    // Theme grid cards (in General > Appearance)
-    document.querySelectorAll('.theme-card').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const theme = btn.dataset.theme;
-        applyTheme(theme);
-        updateThemeButtons(theme);
-        updateThemeOptionButtons(theme);
-        await setStorage({ theme });
-      });
-    });
+    // Render custom themes from shared/themes.json into the picker and bind clicks.
+    // bindThemeCardClicks handles cards that already exist and the ones appended async.
+    bindThemeCardClicks();
+    renderCustomThemeCards().then(bindThemeCardClicks).catch(() => {});
 
     // Font family select
     const fontFamilySelect = document.getElementById('fontFamilySelect');
@@ -2234,6 +2302,373 @@
     if (!toast || !toast.parentElement) return;
     toast.classList.add('toast-out');
     setTimeout(() => toast.remove(), 200);
+  }
+
+  // ============================================
+  // SITE DETAIL DRAWER
+  // ============================================
+  const SELECTOR_CATEGORY_COLORS = {
+    ad: '#ef4444',
+    tracker: '#f59e0b',
+    chat: '#3b82f6',
+    newsletter: '#8b5cf6',
+    push: '#10b981',
+    'app-install': '#0ea5e9',
+    'social-gate': '#ec4899',
+    paywall: '#ec4899',
+    annoyance: '#8b5cf6',
+    other: '#6b7280'
+  };
+
+  let currentSiteDetailHost = null;
+
+  function formatSelectorPreview(selector) {
+    if (!selector) return '';
+    const max = 72;
+    return selector.length > max ? selector.slice(0, max - 1) + '…' : selector;
+  }
+
+  function formatExpiryDelta(expiryMs) {
+    if (!expiryMs) return '';
+    const remaining = expiryMs - Date.now();
+    if (remaining <= 0) return 'expired';
+    const mins = Math.round(remaining / 60000);
+    if (mins < 60) return mins + ' min left';
+    const hrs = Math.floor(mins / 60);
+    const rem = mins % 60;
+    return rem === 0 ? hrs + ' hr left' : hrs + ' hr ' + rem + ' min left';
+  }
+
+  async function openSiteDetailDrawer(hostname) {
+    const drawer = document.getElementById('siteDetailDrawer');
+    const backdrop = document.getElementById('siteDetailBackdrop');
+    if (!drawer || !backdrop) return;
+
+    currentSiteDetailHost = hostname;
+    drawer.hidden = false;
+    backdrop.hidden = false;
+    // Force reflow so CSS transition fires
+    void drawer.offsetWidth;
+    drawer.classList.add('is-open');
+    backdrop.classList.add('is-open');
+
+    // Wire close handlers once
+    if (!drawer.dataset.wired) {
+      drawer.dataset.wired = '1';
+      document.getElementById('siteDetailClose').addEventListener('click', closeSiteDetailDrawer);
+      backdrop.addEventListener('click', closeSiteDetailDrawer);
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && drawer.classList.contains('is-open')) {
+          closeSiteDetailDrawer();
+        }
+      });
+      wireSiteDetailActions();
+    }
+
+    await refreshSiteDetailDrawer();
+  }
+
+  function closeSiteDetailDrawer() {
+    const drawer = document.getElementById('siteDetailDrawer');
+    const backdrop = document.getElementById('siteDetailBackdrop');
+    if (!drawer || !backdrop) return;
+    drawer.classList.remove('is-open');
+    backdrop.classList.remove('is-open');
+    setTimeout(() => {
+      drawer.hidden = true;
+      backdrop.hidden = true;
+    }, 220);
+    currentSiteDetailHost = null;
+  }
+
+  async function refreshSiteDetailDrawer() {
+    if (!currentSiteDetailHost) return;
+    const response = await sendMessage({ type: 'GET_SITE_DETAIL', hostname: currentSiteDetailHost }).catch(() => null);
+    if (!response || !response.success) {
+      showToast('Could not load site details', 'error');
+      return;
+    }
+    renderSiteDetail(response);
+  }
+
+  function renderSiteDetail(detail) {
+    const title = document.getElementById('siteDetailTitle');
+    const badges = document.getElementById('siteDetailBadges');
+    const networkEl = document.getElementById('siteDetailNetwork');
+    const cosmeticEl = document.getElementById('siteDetailCosmetic');
+    const totalEl = document.getElementById('siteDetailTotal');
+    const selectorsEl = document.getElementById('siteDetailSelectors');
+    const allowedSection = document.getElementById('siteDetailAllowedSection');
+    const allowedEl = document.getElementById('siteDetailAllowed');
+
+    title.textContent = detail.hostname;
+
+    clearElement(badges);
+    if (detail.whitelisted) badges.appendChild(makeBadge('Whitelisted', 'warn'));
+    if (detail.paused) badges.appendChild(makeBadge('Paused · ' + formatExpiryDelta(detail.pausedExpiry), 'info'));
+
+    const net = detail.siteStats?.network || 0;
+    const cos = detail.siteStats?.cosmetic || 0;
+    networkEl.textContent = formatNumber(net);
+    cosmeticEl.textContent = formatNumber(cos);
+    totalEl.textContent = formatNumber(net + cos);
+
+    // Update action button labels based on state
+    const whitelistBtn = document.querySelector('#siteDetailDrawer [data-action="whitelist"] [data-role="label"]');
+    if (whitelistBtn) {
+      whitelistBtn.textContent = detail.whitelisted ? 'Remove from whitelist' : 'Whitelist permanently';
+    }
+
+    // Selectors list
+    clearElement(selectorsEl);
+    const selectors = detail.topSelectors || [];
+    if (selectors.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'site-detail-empty';
+      empty.textContent = 'No cosmetic blocks recorded on this site yet.';
+      selectorsEl.appendChild(empty);
+    } else {
+      for (const entry of selectors) {
+        selectorsEl.appendChild(makeSelectorRow(entry, detail.hostname, false));
+      }
+    }
+
+    // Already-allowed list (user said "not junk")
+    if (Array.isArray(detail.allowedSelectors) && detail.allowedSelectors.length > 0) {
+      allowedSection.hidden = false;
+      clearElement(allowedEl);
+      for (const selector of detail.allowedSelectors) {
+        allowedEl.appendChild(makeSelectorRow({ selector, count: 0, category: 'allowed' }, detail.hostname, true));
+      }
+    } else {
+      allowedSection.hidden = true;
+    }
+  }
+
+  function makeBadge(text, variant) {
+    const span = document.createElement('span');
+    span.className = 'site-detail-badge site-detail-badge-' + (variant || 'info');
+    span.textContent = text;
+    return span;
+  }
+
+  function makeSelectorRow(entry, host, isAllowed) {
+    const row = document.createElement('div');
+    row.className = 'site-detail-selector-row';
+
+    const meta = document.createElement('div');
+    meta.className = 'site-detail-selector-meta';
+
+    const dot = document.createElement('span');
+    dot.className = 'site-detail-selector-dot';
+    dot.style.background = SELECTOR_CATEGORY_COLORS[entry.category] || SELECTOR_CATEGORY_COLORS.other;
+    dot.title = entry.category || 'other';
+
+    const selectorText = document.createElement('code');
+    selectorText.className = 'site-detail-selector-text';
+    selectorText.textContent = formatSelectorPreview(entry.selector);
+    selectorText.title = entry.selector;
+
+    meta.appendChild(dot);
+    meta.appendChild(selectorText);
+    if (!isAllowed && typeof entry.count === 'number' && entry.count > 0) {
+      const count = document.createElement('span');
+      count.className = 'site-detail-selector-count';
+      count.textContent = '×' + formatNumber(entry.count);
+      meta.appendChild(count);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'site-detail-selector-actions';
+
+    if (!isAllowed) {
+      const previewBtn = document.createElement('button');
+      previewBtn.type = 'button';
+      previewBtn.className = 'site-detail-icon-btn';
+      previewBtn.title = 'Preview on active tab';
+      previewBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="2.5"/><path d="M1.5 8C3 4.5 5 3 8 3s5 1.5 6.5 5c-1.5 3.5-3.5 5-6.5 5s-5-1.5-6.5-5z"/></svg>';
+      previewBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await previewSelectorOnActiveTab(host, entry.selector);
+      });
+      actions.appendChild(previewBtn);
+
+      const unblockBtn = document.createElement('button');
+      unblockBtn.type = 'button';
+      unblockBtn.className = 'site-detail-btn site-detail-btn-sm';
+      unblockBtn.textContent = 'Unblock just this';
+      unblockBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const resp = await sendMessage({
+          type: 'ALLOW_SELECTOR_ON_SITE',
+          hostname: host,
+          selector: entry.selector
+        }).catch(() => null);
+        if (resp?.success) {
+          row.style.opacity = '0.4';
+          showUndoToast('Unblocked on ' + host, async () => {
+            await sendMessage({
+              type: 'REMOVE_ALLOWED_SELECTOR',
+              hostname: host,
+              selector: entry.selector
+            }).catch(() => null);
+            await refreshSiteDetailDrawer();
+          });
+          setTimeout(refreshSiteDetailDrawer, 600);
+        } else {
+          showToast(resp?.error || 'Failed to unblock', 'error');
+        }
+      });
+      actions.appendChild(unblockBtn);
+    } else {
+      const restoreBtn = document.createElement('button');
+      restoreBtn.type = 'button';
+      restoreBtn.className = 'site-detail-btn site-detail-btn-sm site-detail-btn-subtle';
+      restoreBtn.textContent = 'Re-block';
+      restoreBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const resp = await sendMessage({
+          type: 'REMOVE_ALLOWED_SELECTOR',
+          hostname: host,
+          selector: entry.selector
+        }).catch(() => null);
+        if (resp?.success) {
+          showUndoToast('Re-blocked on ' + host, async () => {
+            await sendMessage({
+              type: 'ALLOW_SELECTOR_ON_SITE',
+              hostname: host,
+              selector: entry.selector
+            }).catch(() => null);
+            await refreshSiteDetailDrawer();
+          });
+          await refreshSiteDetailDrawer();
+        }
+      });
+      actions.appendChild(restoreBtn);
+    }
+
+    row.appendChild(meta);
+    row.appendChild(actions);
+    return row;
+  }
+
+  async function previewSelectorOnActiveTab(host, selector) {
+    try {
+      const tabs = await new Promise((resolve) => api.tabs.query({ active: true, currentWindow: true }, resolve));
+      const active = tabs && tabs[0];
+      if (!active) {
+        showToast('No active tab to preview on', 'warn');
+        return;
+      }
+      const activeHost = (() => {
+        try { return new URL(active.url).hostname.replace(/^www\./, ''); }
+        catch (e) { return ''; }
+      })();
+      if (activeHost !== host) {
+        showToast('Switch to ' + host + ' first to preview', 'info');
+        return;
+      }
+      await sendMessage({ type: 'PREVIEW_SELECTOR', tabId: active.id, selector, durationMs: 1200 });
+    } catch (err) {
+      showToast('Preview unavailable: ' + (err.message || 'unknown'), 'error');
+    }
+  }
+
+  function wireSiteDetailActions() {
+    const drawer = document.getElementById('siteDetailDrawer');
+    if (!drawer) return;
+
+    drawer.addEventListener('click', async (e) => {
+      const target = e.target.closest('[data-action], [data-pause]');
+      if (!target || !currentSiteDetailHost) return;
+      const host = currentSiteDetailHost;
+
+      if (target.dataset.action === 'whitelist') {
+        const resp = await sendMessage({ type: 'TOGGLE_WHITELIST', hostname: host }).catch(() => null);
+        if (resp?.success) {
+          const now = !!resp.whitelisted;
+          showUndoToast(now ? 'Whitelisted ' + host : 'Removed ' + host + ' from whitelist', async () => {
+            await sendMessage({ type: 'TOGGLE_WHITELIST', hostname: host }).catch(() => null);
+            await refreshSiteDetailDrawer();
+          });
+          await refreshSiteDetailDrawer();
+        }
+      } else if (target.dataset.action === 'clearStats') {
+        if (!confirm('Clear today’s stats for ' + host + '?')) return;
+        const resp = await sendMessage({ type: 'CLEAR_SITE_STATS', hostname: host }).catch(() => null);
+        if (resp?.success) {
+          showToast('Cleared stats for ' + host, 'success');
+          await refreshSiteDetailDrawer();
+          await loadStats().catch(() => {});
+        }
+      } else if (target.dataset.pause) {
+        const mins = parseInt(target.dataset.pause, 10);
+        const resp = await sendMessage({
+          type: 'PAUSE_SITE',
+          hostname: host,
+          durationMs: mins * 60 * 1000
+        }).catch(() => null);
+        if (resp?.success) {
+          showUndoToast('Paused ' + host + ' for ' + mins + ' min', async () => {
+            await sendMessage({ type: 'UNPAUSE_SITE', hostname: host }).catch(() => null);
+            await refreshSiteDetailDrawer();
+          });
+          await refreshSiteDetailDrawer();
+        }
+      }
+    });
+  }
+
+  // ============================================
+  // UNDO TOAST
+  // ============================================
+  let undoTimer = null;
+  let undoCountdown = null;
+  let undoAction = null;
+
+  function showUndoToast(message, onUndo, seconds) {
+    const toast = document.getElementById('undoToast');
+    const msg = document.getElementById('undoToastMessage');
+    const btn = document.getElementById('undoToastBtn');
+    const cd = document.getElementById('undoToastCountdown');
+    if (!toast || !msg || !btn || !cd) return;
+
+    hideUndoToast();
+
+    msg.textContent = message;
+    undoAction = typeof onUndo === 'function' ? onUndo : null;
+
+    let remaining = typeof seconds === 'number' ? seconds : 5;
+    cd.textContent = String(remaining);
+    toast.hidden = false;
+    toast.classList.add('is-open');
+
+    btn.onclick = async () => {
+      hideUndoToast();
+      if (undoAction) {
+        try { await undoAction(); } catch (err) { /* swallow */ }
+      }
+      undoAction = null;
+    };
+
+    undoCountdown = setInterval(() => {
+      remaining -= 1;
+      cd.textContent = String(Math.max(0, remaining));
+      if (remaining <= 0) hideUndoToast();
+    }, 1000);
+    undoTimer = setTimeout(() => {
+      hideUndoToast();
+      undoAction = null;
+    }, remaining * 1000);
+  }
+
+  function hideUndoToast() {
+    const toast = document.getElementById('undoToast');
+    if (!toast) return;
+    toast.classList.remove('is-open');
+    setTimeout(() => { if (toast) toast.hidden = true; }, 200);
+    if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+    if (undoCountdown) { clearInterval(undoCountdown); undoCountdown = null; }
   }
 
   // ============================================

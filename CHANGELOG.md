@@ -2,7 +2,42 @@
 
 All notable changes to WebSuddhi are documented here.
 
-## v2.2.0 (Current)
+## v2.3.0 (Current)
+
+### Granular Site Control
+- **Pause per site** — temporarily pause protection for 15 min / 1 hour / 1 day without permanent whitelisting; auto-resumes when timer expires
+- **Per-site selector allowlist** — allow a single cosmetic rule on one site without disabling the whole list
+- **Site Detail Drawer** — click any site in Top Sites to see what's blocked there, preview an unblock, or clear that site's stats
+- **Report Broken Site** — one-click from the popup pauses the current site for an hour and logs a report so you can keep browsing and fix the rule later
+- Full cross-browser parity: new message handlers (PAUSE_SITE, UNPAUSE_SITE, IS_PAUSED, GET_PAUSED_SITES, ALLOW_SELECTOR_ON_SITE, REMOVE_ALLOWED_SELECTOR, GET_ALLOWED_SELECTORS) wired across Chrome/Firefox/Safari macOS/Safari iOS
+
+### Popup Badge Counter
+- **Fixed zero-count bug** — popup showed 0 even when cosmetic rules were actively hiding elements
+- New per-tab cosmetic-blocks map; total (network + cosmetic) is what the popup and toolbar badge reflect
+- Live updates while popup is open — throttled `BLOCKED_COUNT_UPDATED` broadcast keeps the count current without polling
+- Navigation and tab-close reset both the network and cosmetic counters
+
+### New Themes (Pixar-polish pack)
+- **Aurora** — modern pastel glass, pairs with Geist
+- **Mocha** — Pantone 2024 warm neutrals, pairs with Plus Jakarta Sans
+- **Sunset '79** — 1970s Wes-Anderson warmth, pairs with Outfit
+- **Vaporwave** — 1980s synthwave neon, pairs with Space Grotesk
+- Each theme declares a `recommendedFont`; the font picker still overrides
+
+### User-Extensible Themes
+- `shared/themes.json` is the single source of truth — add or delete entries, no build step, no JS edits
+- Runtime loader (`shared/custom-themes-loader.js`) injects `[data-theme="<id>"]` rules on popup/options load
+- Popup dropdown and options grid both pick up new entries automatically
+- Schema: `{ id, name, description, recommendedFont, swatches, tokens }` where tokens map directly to the CSS custom properties in `shared/themes.css`
+
+### Fonts
+- Added @font-face for Geist, Plus Jakarta Sans, Outfit, Sora (Regular + Bold) so the popup renders custom-theme fonts correctly without relying on the options-page FontFace API
+
+### Housekeeping
+- Version bumped to 2.3.0 across manifests, HTML, JS, shared modules, and Safari targets
+- Extended message-contract test coverage for the new granular control handlers
+
+## v2.2.0
 
 ### Blocking Engine
 - **40,000 curated blocking rules** compiled from HaGeZi, AdGuard, and PhishTank

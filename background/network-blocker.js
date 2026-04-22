@@ -20,8 +20,9 @@
     }
   };
 
-  // Per-tab blocked request counts
+  // Per-tab blocked request counts (network + cosmetic, tracked separately so nav-reset can clear both)
   const tabBlockedCounts = new Map();
+  const tabCosmeticCounts = new Map();
 
   // MV2 domain blocklist for webRequest fallback
   const MV2_AD_DOMAINS = new Set([
@@ -88,7 +89,7 @@
   // INITIALIZATION
   // ============================================
   async function initNetworkBlocker() {
-    const storage = await getStorage(['networkBlockingEnabled', 'whitelistedSites', 'blockedDomains', 'allowedDomains']);
+    const storage = await getStorage(['networkBlockingEnabled', 'whitelistedSites', 'blockedDomains', 'allowedDomains', 'pausedSites']);
     const enabled = storage.networkBlockingEnabled !== false;
 
     if (!enabled) {
@@ -198,6 +199,14 @@
     const allowedDomains = normalizeDomainList(storage.allowedDomains || []);
     const whitelistedSites = normalizeDomainList(storage.whitelistedSites || [], true);
 
+    // Merge non-expired paused sites as transient whitelist entries
+    const now = Date.now();
+    const pausedMap = (storage.pausedSites && typeof storage.pausedSites === 'object') ? storage.pausedSites : {};
+    const pausedActive = Object.entries(pausedMap)
+      .filter(([, exp]) => typeof exp === 'number' && exp > now)
+      .map(([host]) => host);
+    const effectiveWhitelist = [...new Set([...whitelistedSites, ...normalizeDomainList(pausedActive, true)])];
+
     // Build dynamic rules
     const rules = [];
     let ruleId = NETWORK_DYNAMIC_RULE_ID_START;
@@ -236,8 +245,8 @@
       })) break;
     }
 
-    // Whitelisted sites: full-site exemption by initiator domain.
-    for (const domain of whitelistedSites) {
+    // Whitelisted + currently-paused sites: full-site exemption by initiator domain.
+    for (const domain of effectiveWhitelist) {
       if (!pushManagedRule({
         priority: 3,
         action: { type: 'allow' },
@@ -260,7 +269,7 @@
       return { success: true, refreshed: false, reason: 'dnr_unavailable' };
     }
 
-    const storage = await getStorage(['networkBlockingEnabled', 'blockedDomains', 'allowedDomains', 'whitelistedSites']);
+    const storage = await getStorage(['networkBlockingEnabled', 'blockedDomains', 'allowedDomains', 'whitelistedSites', 'pausedSites']);
     const enabled = storage.networkBlockingEnabled !== false;
 
     if (!enabled) {
@@ -278,9 +287,9 @@
       api.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
         if (info.request && info.request.tabId >= 0) {
           const tabId = info.request.tabId;
-          const count = (tabBlockedCounts.get(tabId) || 0) + 1;
-          tabBlockedCounts.set(tabId, count);
-          updateBadge(tabId, count);
+          tabBlockedCounts.set(tabId, (tabBlockedCounts.get(tabId) || 0) + 1);
+          updateBadge(tabId, getTotalBlockedCount(tabId));
+          notifyCountUpdate(tabId);
 
           if (self.WebSuddhi.reportNetworkBlock) {
             try {
@@ -305,7 +314,7 @@
               const count = result.rulesMatchedInfo ? result.rulesMatchedInfo.length : 0;
               if (count > 0) {
                 tabBlockedCounts.set(tabs[0].id, count);
-                updateBadge(tabs[0].id, count);
+                updateBadge(tabs[0].id, getTotalBlockedCount(tabs[0].id));
               }
             }
           } catch (e) {}
@@ -341,6 +350,12 @@
     const whitelistedSites = new Set(storage.whitelistedSites || []);
     const userBlockedDomains = new Set(storage.blockedDomains || []);
     const allowedDomains = new Set(storage.allowedDomains || []);
+    // Paused sites act as a transient whitelist; checked live so expiry honors ticks.
+    const pausedMap = (storage.pausedSites && typeof storage.pausedSites === 'object') ? storage.pausedSites : {};
+    const isPaused = (host) => {
+      const exp = pausedMap[host];
+      return typeof exp === 'number' && exp > Date.now();
+    };
 
     // Combine all blocked domains
     const allBlocked = new Set([...MV2_AD_DOMAINS, ...MV2_TRACKING_DOMAINS, ...userBlockedDomains]);
@@ -354,13 +369,13 @@
           const url = new URL(details.url);
           const domain = url.hostname;
 
-          // Check if initiator is whitelisted
+          // Check if initiator is whitelisted or currently paused
           let initiatorHost = null;
           if (details.initiator || details.documentUrl) {
             const initiatorUrl = details.initiator || details.documentUrl;
             try {
               initiatorHost = new URL(initiatorUrl).hostname.replace(/^www\./, '');
-              if (whitelistedSites.has(initiatorHost)) return {};
+              if (whitelistedSites.has(initiatorHost) || isPaused(initiatorHost)) return {};
             } catch (e) {}
           }
 
@@ -371,9 +386,9 @@
           if (isDomainBlocked(domain, allBlocked)) {
             const tabId = details.tabId;
             if (tabId >= 0) {
-              const count = (tabBlockedCounts.get(tabId) || 0) + 1;
-              tabBlockedCounts.set(tabId, count);
-              updateBadge(tabId, count);
+              tabBlockedCounts.set(tabId, (tabBlockedCounts.get(tabId) || 0) + 1);
+              updateBadge(tabId, getTotalBlockedCount(tabId));
+              notifyCountUpdate(tabId);
 
               if (self.WebSuddhi.reportNetworkBlock) {
                 // Get initiator site for logging (reuse parsed value if available)
@@ -427,6 +442,7 @@
     if (api.tabs && api.tabs.onRemoved) {
       api.tabs.onRemoved.addListener((tabId) => {
         tabBlockedCounts.delete(tabId);
+        tabCosmeticCounts.delete(tabId);
       });
     }
   }
@@ -437,6 +453,7 @@
       api.webNavigation.onCommitted.addListener((details) => {
         if (details.frameId === 0) {
           tabBlockedCounts.set(details.tabId, 0);
+          tabCosmeticCounts.set(details.tabId, 0);
           updateBadge(details.tabId, 0);
         }
       });
@@ -444,6 +461,7 @@
       api.tabs.onUpdated.addListener((tabId, changeInfo) => {
         if (changeInfo.status === 'loading') {
           tabBlockedCounts.set(tabId, 0);
+          tabCosmeticCounts.set(tabId, 0);
           updateBadge(tabId, 0);
         }
       });
@@ -480,6 +498,29 @@
 
   function getNetworkBlockedCount(tabId) {
     return tabBlockedCounts.get(tabId) || 0;
+  }
+
+  function getCosmeticBlockedCount(tabId) {
+    return tabCosmeticCounts.get(tabId) || 0;
+  }
+
+  function getTotalBlockedCount(tabId) {
+    return (tabBlockedCounts.get(tabId) || 0) + (tabCosmeticCounts.get(tabId) || 0);
+  }
+
+  function incrementCosmeticForTab(tabId, count) {
+    if (typeof tabId !== 'number' || tabId < 0) return;
+    const inc = Number.isFinite(count) && count > 0 ? count : 1;
+    const next = (tabCosmeticCounts.get(tabId) || 0) + inc;
+    tabCosmeticCounts.set(tabId, next);
+    updateBadge(tabId, getTotalBlockedCount(tabId));
+    notifyCountUpdate(tabId);
+  }
+
+  function notifyCountUpdate(tabId) {
+    if (typeof self.WebSuddhi.broadcastBlockedCountUpdate === 'function') {
+      self.WebSuddhi.broadcastBlockedCountUpdate(tabId);
+    }
   }
 
   async function toggleNetworkBlocking(enabled) {
@@ -520,6 +561,9 @@
     addDomainBlock,
     removeDomainBlock,
     getNetworkBlockedCount,
+    getCosmeticBlockedCount,
+    getTotalBlockedCount,
+    incrementCosmeticForTab,
     refreshDynamicRules,
     rebuildDynamicRules: refreshDynamicRules,
     toggleNetworkBlocking,

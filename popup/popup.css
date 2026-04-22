@@ -275,10 +275,9 @@ body {
    ============================================ */
 .site-card {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
 }
 
 .site-info {
@@ -286,7 +285,6 @@ body {
   flex-direction: column;
   gap: 3px;
   min-width: 0;
-  flex: 1;
 }
 
 .site-label {
@@ -326,8 +324,30 @@ body {
 
 .site-actions {
   display: flex;
-  gap: 8px;
-  flex-shrink: 0;
+  gap: 6px;
+  width: 100%;
+}
+
+.site-actions .btn-tri {
+  flex: 1 1 0;
+  justify-content: center;
+  padding: 7px 8px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.site-actions .btn-tri .btn-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.site-actions .pause-split {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.site-actions .pause-split .btn-tri {
+  width: 100%;
 }
 
 .btn {
@@ -620,9 +640,93 @@ body {
 
 .security-main {
   display: grid;
-  grid-template-columns: 40px 1fr auto;
+  grid-template-columns: 40px 1fr auto auto;
   gap: 12px;
   align-items: center;
+}
+
+.security-main-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  width: 100%;
+  border-radius: var(--radius-md);
+  transition: background 0.15s ease;
+}
+.security-main-btn:hover {
+  background: var(--bg-tertiary);
+}
+.security-main-btn:focus-visible {
+  outline: 2px solid var(--primary, var(--accent));
+  outline-offset: 2px;
+}
+
+.security-expand-chevron {
+  width: 10px;
+  height: 6px;
+  color: var(--text-tertiary);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+.security-main-btn[aria-expanded="true"] .security-expand-chevron {
+  transform: rotate(180deg);
+}
+
+.cert-details-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  margin-top: 4px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  animation: cert-expand 0.22s ease-out;
+}
+.cert-details-panel[hidden] {
+  display: none;
+}
+@keyframes cert-expand {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.cert-details-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 0.75rem;
+}
+.cert-details-grid dt {
+  color: var(--text-tertiary);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.65rem;
+  align-self: center;
+}
+.cert-details-grid dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+  word-break: break-all;
+  font-size: 0.72rem;
+}
+
+.cert-details-note {
+  margin: 0;
+  padding: 6px 8px;
+  background: var(--bg-secondary);
+  border-left: 2px solid var(--accent);
+  border-radius: 4px;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
 }
 
 .security-icon-wrap {
@@ -1132,4 +1236,159 @@ body {
 .feature-item:focus-within .feature-card {
   outline: 2px solid var(--accent, var(--primary));
   outline-offset: 2px;
+}
+
+/* ============================================
+   Site actions — tri-state Allow / Block / Pause
+   ============================================ */
+.site-card {
+  position: relative;
+}
+
+.btn-tri {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  position: relative;
+}
+.btn-tri:hover:not([aria-pressed="true"]):not(:disabled) {
+  background: var(--border);
+  color: var(--text-primary);
+}
+.btn-allow[aria-pressed="true"] {
+  background: var(--success-bg, rgba(52, 199, 89, 0.15));
+  color: var(--success, #34C759);
+  border-color: var(--success, #34C759);
+  box-shadow: 0 0 0 2px var(--success-bg, rgba(52, 199, 89, 0.15));
+}
+.btn-block[aria-pressed="true"] {
+  background: var(--danger-bg, rgba(255, 59, 48, 0.15));
+  color: var(--danger, #FF3B30);
+  border-color: var(--danger, #FF3B30);
+  box-shadow: 0 0 0 2px var(--danger-bg, rgba(255, 59, 48, 0.15));
+}
+.btn-pause[aria-pressed="true"] {
+  background: rgba(245, 158, 11, 0.18);
+  color: #b45309;
+  border-color: rgba(245, 158, 11, 0.5);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.12);
+}
+
+.pause-split {
+  position: relative;
+  display: flex;
+}
+.pause-chevron {
+  width: 8px;
+  height: 5px;
+  margin-left: 2px;
+  opacity: 0.7;
+}
+.pause-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 130px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 4px;
+  z-index: 1000;
+  flex-direction: column;
+  gap: 2px;
+}
+.pause-menu:not([hidden]) {
+  display: flex;
+}
+.pause-menu[hidden] {
+  display: none;
+}
+.pause-menu button {
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  padding: 7px 10px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.pause-menu button:hover,
+.pause-menu button:focus {
+  background: var(--bg-tertiary);
+  outline: none;
+}
+
+/* ============================================
+   Pause ribbon (active paused state)
+   ============================================ */
+.pause-ribbon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px -4px 10px -4px;
+  padding: 7px 12px;
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.22), rgba(245, 158, 11, 0.10));
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 8px;
+  font-size: 0.76rem;
+  color: #b45309;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.pause-ribbon[hidden] {
+  display: none;
+}
+.pause-ribbon-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.25);
+  animation: pulse-pause 1.8s ease-in-out infinite;
+  flex-shrink: 0;
+}
+@keyframes pulse-pause {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.85); }
+}
+.pause-ribbon-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pause-ribbon-resume {
+  background: #b45309;
+  color: white;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+  flex-shrink: 0;
+}
+.pause-ribbon-resume:hover {
+  background: #92400e;
+}
+.pause-ribbon-resume:active {
+  transform: scale(0.96);
+}
+
+/* Paused state desaturates the rest of the popup */
+body.is-paused .features-section,
+body.is-paused .stats-card,
+body.is-paused .tracker-summary-card {
+  opacity: 0.45;
+  filter: saturate(0.35);
+  pointer-events: none;
+  transition: opacity 0.25s ease, filter 0.25s ease;
 }

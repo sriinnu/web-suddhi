@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "WebSuddhi",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Block ads, remove paywalls, strip trackers, and clean up any website. Privacy-first, no tracking.",
   "permissions": [
     "storage",
@@ -69,7 +69,12 @@
     "128": "icons/icon128.png"
   },
   "web_accessible_resources": [
-    "content/ad-blocker.css"
+    "content/ad-blocker.css",
+    "icons/icon16.png",
+    "icons/icon32.png",
+    "icons/icon48.png",
+    "icons/icon128.png",
+    "fonts/*"
   ],
   "commands": {
     "toggle-pick-mode": {

@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="../fonts/fonts.css">
   <link rel="stylesheet" href="../shared/themes.css">
   <link rel="stylesheet" href="popup.css">
+  <script src="../shared/custom-themes-loader.js"></script>
   <script src="../shared/theme-loader.js"></script>
 </head>
 <body>
@@ -49,25 +50,47 @@
       </section>
 
       <!-- Current Site -->
-      <section class="card site-card">
+      <section class="card site-card" id="siteCard">
+        <div class="pause-ribbon" id="pauseRibbon" hidden>
+          <span class="pause-ribbon-dot" aria-hidden="true"></span>
+          <span class="pause-ribbon-text" id="pauseRibbonText">Paused</span>
+          <button type="button" class="pause-ribbon-resume" id="pauseResumeBtn">Resume</button>
+        </div>
         <div class="site-info">
           <span class="site-label">Current Website</span>
           <span class="site-domain loading" id="currentSite">loading...</span>
         </div>
-        <div class="site-actions">
-          <button class="btn btn-secondary" id="whitelistBtn">
+        <div class="site-actions" id="siteActions">
+          <button class="btn btn-tri btn-allow" id="whitelistBtn" aria-pressed="false" title="Allow all on this site">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="20 6 9 17 4 12"/>
             </svg>
-            Allow
+            <span class="btn-label">Allow</span>
           </button>
-          <button class="btn btn-danger" id="blacklistBtn">
+          <button class="btn btn-tri btn-block" id="blacklistBtn" aria-pressed="false" title="Block all from this site">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
-            Block
+            <span class="btn-label">Block</span>
           </button>
+          <div class="pause-split">
+            <button class="btn btn-tri btn-pause" id="pauseBtn" aria-haspopup="menu" aria-expanded="false" title="Pause protection on this site">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="6" y="5" width="4" height="14" rx="1"/>
+                <rect x="14" y="5" width="4" height="14" rx="1"/>
+              </svg>
+              <span class="btn-label">Pause</span>
+              <svg class="pause-chevron" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M1 1l4 4 4-4"/>
+              </svg>
+            </button>
+            <div class="pause-menu" id="pauseMenu" role="menu" hidden>
+              <button type="button" role="menuitem" data-duration="900000">15 minutes</button>
+              <button type="button" role="menuitem" data-duration="3600000">1 hour</button>
+              <button type="button" role="menuitem" data-duration="86400000">1 day</button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -75,7 +98,7 @@
       <section class="card site-security-card">
         <h3 class="section-title">Site Security</h3>
         <div id="siteInfoSection" class="site-security-content">
-          <div class="security-main">
+          <button type="button" class="security-main security-main-btn" id="securityMainBtn" aria-expanded="false" aria-controls="certDetailsPanel" title="Click for certificate details">
             <div id="siteIcon" class="security-icon-wrap">
               <svg class="icon icon-secure" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M17 11V7a5 5 0 0 0-10 0v4"/>
@@ -100,11 +123,18 @@
               <span class="mascot-happy">[+]</span>
               <span class="mascot-worried">[!]</span>
             </div>
-          </div>
-          <div id="certOwnerSection" class="cert-owner">
-            <span class="cert-owner-title">Certificate Owner</span>
-            <span id="certOwnerName"></span>
-            <span id="certOwnerDetails"></span>
+            <svg class="security-expand-chevron" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M1 1l4 4 4-4"/>
+            </svg>
+          </button>
+          <div id="certDetailsPanel" class="cert-details-panel" hidden>
+            <div id="certOwnerSection" class="cert-owner">
+              <span class="cert-owner-title">Certificate Owner</span>
+              <span id="certOwnerName"></span>
+              <span id="certOwnerDetails"></span>
+            </div>
+            <dl class="cert-details-grid" id="certDetailsGrid"></dl>
+            <p class="cert-details-note" id="certDetailsNote"></p>
           </div>
           <div id="phishingRiskSection" class="phishing-risk" style="display: none;">
             <div class="phishing-risk-header">
@@ -334,6 +364,16 @@
             </div>
             <span class="action-label" id="whitelistBtnText">Whitelist</span>
           </button>
+          <button class="action-item" id="reportBrokenBtn" title="Pause blocking for 1 hour and log a report">
+            <div class="action-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+            <span class="action-label">Site broken?</span>
+          </button>
           <button class="action-item" id="openOptionsBtn">
             <div class="action-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -365,7 +405,7 @@
     <footer class="footer">
       <div class="footer-row">
         <div class="footer-left">
-          <span class="version">v2.2.0</span>
+          <span class="version">v2.3.0</span>
           <span class="footer-sep"></span>
           <a href="https://github.com/sriinnu/web-suddhi" target="_blank" rel="noopener noreferrer" class="footer-author">by <strong>Srinivas Pendela</strong></a>
           <a href="https://buymeacoffee.com/sriinnu" target="_blank" rel="noopener noreferrer" class="footer-coffee" title="Buy me a coffee">

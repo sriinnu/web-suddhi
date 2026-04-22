@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="../fonts/fonts.css">
   <link rel="stylesheet" href="../shared/themes.css">
   <link rel="stylesheet" href="options.css">
+  <script src="../shared/custom-themes-loader.js"></script>
   <script src="../shared/theme-loader.js"></script>
 </head>
 <body>
@@ -19,7 +20,7 @@
         <img src="../icons/icon48.png" alt="WebSuddhi" class="logo">
         <div class="brand">
           <h1>WebSuddhi</h1>
-          <span class="version">v2.2.0</span>
+          <span class="version">v2.3.0</span>
         </div>
         <button id="themeToggle" class="theme-toggle" title="Toggle dark mode">
           <svg class="sun-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -829,7 +830,7 @@
         <div class="about-content">
           <img src="../icons/icon48.png" alt="WebSuddhi" class="about-logo">
           <div class="about-text">
-            <strong>WebSuddhi</strong> v2.2.0
+            <strong>WebSuddhi</strong> v2.3.0
             <p>Privacy-first ad blocker by <strong>Srinivas Pendela</strong></p>
           </div>
           <div class="about-links">
@@ -843,6 +844,67 @@
 
   <!-- Toast notification container -->
   <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Site Detail drawer -->
+  <div id="siteDetailBackdrop" class="site-detail-backdrop" hidden></div>
+  <aside id="siteDetailDrawer" class="site-detail-drawer" role="dialog" aria-modal="true" aria-labelledby="siteDetailTitle" hidden>
+    <header class="site-detail-header">
+      <div class="site-detail-title-row">
+        <h3 id="siteDetailTitle" class="site-detail-title">&nbsp;</h3>
+        <button type="button" id="siteDetailClose" class="site-detail-close" aria-label="Close">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="4" x2="4" y2="12"/><line x1="4" y1="4" x2="12" y2="12"/></svg>
+        </button>
+      </div>
+      <div class="site-detail-badges" id="siteDetailBadges"></div>
+      <div class="site-detail-counts">
+        <div class="site-detail-count">
+          <span class="site-detail-count-label">Network</span>
+          <span class="site-detail-count-value" id="siteDetailNetwork">0</span>
+        </div>
+        <div class="site-detail-count">
+          <span class="site-detail-count-label">Cosmetic</span>
+          <span class="site-detail-count-value" id="siteDetailCosmetic">0</span>
+        </div>
+        <div class="site-detail-count">
+          <span class="site-detail-count-label">Total</span>
+          <span class="site-detail-count-value" id="siteDetailTotal">0</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="site-detail-section">
+      <h4>Site actions</h4>
+      <div class="site-detail-actions">
+        <button type="button" class="site-detail-btn" data-action="whitelist">
+          <span data-role="label">Whitelist permanently</span>
+        </button>
+        <div class="site-detail-pause">
+          <span class="site-detail-pause-label">Pause:</span>
+          <button type="button" class="site-detail-btn site-detail-btn-sm" data-pause="15">15 min</button>
+          <button type="button" class="site-detail-btn site-detail-btn-sm" data-pause="60">1 hr</button>
+          <button type="button" class="site-detail-btn site-detail-btn-sm" data-pause="1440">1 day</button>
+        </div>
+        <button type="button" class="site-detail-btn site-detail-btn-subtle" data-action="clearStats">Clear stats for this site</button>
+      </div>
+    </section>
+
+    <section class="site-detail-section">
+      <h4>Selectors that fired on this site</h4>
+      <div class="site-detail-selectors" id="siteDetailSelectors"></div>
+    </section>
+
+    <section class="site-detail-section site-detail-allowed" id="siteDetailAllowedSection" hidden>
+      <h4>You chose to keep these on this site</h4>
+      <div class="site-detail-selectors" id="siteDetailAllowed"></div>
+    </section>
+  </aside>
+
+  <!-- Undo toast -->
+  <div id="undoToast" class="undo-toast" hidden>
+    <span id="undoToastMessage" class="undo-toast-message"></span>
+    <button type="button" id="undoToastBtn" class="undo-toast-btn">Undo</button>
+    <span id="undoToastCountdown" class="undo-toast-countdown">5</span>
+  </div>
 
   <script src="../shared/utils.js"></script>
   <script src="../shared/import-export.js"></script>
