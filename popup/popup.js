@@ -1358,6 +1358,54 @@
     init();
   }
 
+  let listenersWired = false;
+  function setupEventListeners() {
+    if (listenersWired) return;
+    listenersWired = true;
+
+    // Main protection toggle
+    elements.enableToggle?.addEventListener('change', toggleEnabled);
+
+    // Feature toggles - use checkbox state after the browser updates it.
+    elements.networkBlockingToggle?.addEventListener('change', toggleNetworkBlocking);
+    elements.urlCleaningToggle?.addEventListener('change', toggleUrlCleaning);
+    elements.cookieConsentToggle?.addEventListener('change', toggleCookieConsent);
+    elements.annoyanceToggle?.addEventListener('change', toggleAnnoyanceBlocking);
+    elements.paywallToggle?.addEventListener('change', togglePaywall);
+    elements.socialBlockingToggle?.addEventListener('change', toggleSocialBlocking);
+    elements.removePaywallBtn?.addEventListener('click', removePaywall);
+    elements.pickModeBtn?.addEventListener('click', togglePickMode);
+    elements.zapModeBtn?.addEventListener('click', toggleZapMode);
+    elements.openOptionsBtn?.addEventListener('click', () => openOptions());
+    elements.reportIssue?.addEventListener('click', (e) => {
+      e.preventDefault();
+      openGitHubIssues();
+    });
+    elements.blockedClose?.addEventListener('click', hideBlockedPanel);
+    elements.viewAllBlocked?.addEventListener('click', () => openOptions('stats'));
+    elements.networkStatBtn?.addEventListener('click', showNetworkStats);
+    elements.cosmeticStatBtn?.addEventListener('click', showCosmeticStats);
+    elements.copyDomainBtn?.addEventListener('click', copyCurrentDomain);
+    elements.reportPhishingBtn?.addEventListener('click', reportCurrentSiteAsPhishing);
+    elements.themeSelect?.addEventListener('change', async () => {
+      const theme = elements.themeSelect.value || 'system';
+      applyPopupTheme(theme);
+      await setStorage({ theme });
+    });
+    // Header action buttons
+    elements.whitelistBtn?.addEventListener('click', quickWhitelist);
+    elements.blacklistBtn?.addEventListener('click', quickBlacklist);
+    elements.whitelistToggleBtn?.addEventListener('click', toggleWhitelist);
+
+    // Listen for messages from content script or background
+    api.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message.type === 'FRAMES_DETECTED' || message.type === 'FRAME_INFO_UPDATED') {
+        updateFramesFromContent(message.frames || []);
+      }
+      return false;
+    });
+  }
+
   async function init() {
     try {
       // Apply saved theme immediately
@@ -1368,6 +1416,11 @@
         api.tabs.query({ active: true, currentWindow: true }, resolve);
       });
       currentTab = tabs[0];
+
+      // Wire up listeners as soon as the tab is known, BEFORE the slow data
+      // loads below — otherwise the first click during init is lost (the
+      // "Allow needs two clicks" bug).
+      setupEventListeners();
 
       // Update site display
       if (currentTab?.url) {
@@ -1421,51 +1474,6 @@
         }
       }
 
-      // Set up event listeners
-      // Main protection toggle
-      elements.enableToggle?.addEventListener('change', toggleEnabled);
-
-      // Feature toggles - use checkbox state after the browser updates it.
-      elements.networkBlockingToggle?.addEventListener('change', toggleNetworkBlocking);
-      elements.urlCleaningToggle?.addEventListener('change', toggleUrlCleaning);
-      elements.cookieConsentToggle?.addEventListener('change', toggleCookieConsent);
-      elements.annoyanceToggle?.addEventListener('change', toggleAnnoyanceBlocking);
-      elements.paywallToggle?.addEventListener('change', togglePaywall);
-      elements.socialBlockingToggle?.addEventListener('change', toggleSocialBlocking);
-      elements.removePaywallBtn?.addEventListener('click', removePaywall);
-      elements.pickModeBtn?.addEventListener('click', togglePickMode);
-      elements.zapModeBtn?.addEventListener('click', toggleZapMode);
-      elements.openOptionsBtn?.addEventListener('click', () => openOptions());
-      elements.reportIssue?.addEventListener('click', (e) => {
-        e.preventDefault();
-        openGitHubIssues();
-      });
-      elements.blockedClose?.addEventListener('click', hideBlockedPanel);
-      elements.viewAllBlocked?.addEventListener('click', () => openOptions('stats'));
-      elements.networkStatBtn?.addEventListener('click', showNetworkStats);
-      elements.cosmeticStatBtn?.addEventListener('click', showCosmeticStats);
-      elements.copyDomainBtn?.addEventListener('click', copyCurrentDomain);
-      elements.reportPhishingBtn?.addEventListener('click', reportCurrentSiteAsPhishing);
-      elements.themeSelect?.addEventListener('change', async () => {
-        const theme = elements.themeSelect.value || 'system';
-        applyPopupTheme(theme);
-        await setStorage({ theme });
-      });
-      // Header action buttons
-      elements.whitelistBtn?.addEventListener('click', quickWhitelist);
-      elements.blacklistBtn?.addEventListener('click', quickBlacklist);
-      elements.whitelistToggleBtn?.addEventListener('click', toggleWhitelist);
-
-      // Listen for messages from content script or background
-      api.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        // Handle incoming messages
-        if (message.type === 'FRAMES_DETECTED' || message.type === 'FRAME_INFO_UPDATED') {
-          updateFramesFromContent(message.frames || []);
-        }
-
-        // Return true to indicate async response
-        return false;
-      });
     } catch (e) {
       logError('Init error:', e);
     }
