@@ -109,3 +109,21 @@ describe('reset + cleanup', () => {
     expect(reg._tabs.has(5)).toBe(false);
   });
 });
+
+describe('recompute honours per-frame rules', () => {
+  it('a persisted "allowed" rule keeps a known ad frame allowed (survives recompute)', () => {
+    reg.registerFrame(11, 2, 0, { domain: 'doubleclick.net' });
+    reg.recompute(11, ctx({ frameRules: { 'doubleclick.net': { persistentRule: 'allowed' } } }));
+    expect(reg.getCensus(11).frames[0].action).toBe('allow');
+  });
+  it('a session "blocked" rule blocks an otherwise-allowed frame', () => {
+    reg.registerFrame(11, 2, 0, { domain: 'random-unknown.com', width: 300, height: 250 });
+    reg.recompute(11, ctx({ frameRules: { 'random-unknown.com': { sessionRule: 'blocked' } } }));
+    expect(reg.getCensus(11).frames[0].action).toBe('block');
+  });
+  it('frames with no rule fall through to the default decision', () => {
+    reg.registerFrame(11, 2, 0, { domain: 'doubleclick.net' });
+    reg.recompute(11, ctx({ frameRules: {} }));
+    expect(reg.getCensus(11).frames[0].action).toBe('block'); // known ad
+  });
+});

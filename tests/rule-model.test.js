@@ -112,3 +112,34 @@ describe('frame-rule persistence + session rules', () => {
     expect(await rm.getPersistentFrameRule('a.com', 'x.com')).toBeNull();
   });
 });
+
+describe('frame rules for a site (bulk read)', () => {
+  beforeEach(() => {
+    const store = {};
+    globalThis.WebSuddhi.utils = {
+      getStorage: async (keys) => {
+        const ks = Array.isArray(keys) ? keys : [keys];
+        return Object.fromEntries(ks.map((k) => [k, store[k]]).filter(([, v]) => v !== undefined));
+      },
+      setStorage: async (data) => { Object.assign(store, data); }
+    };
+    rm.clearSessionFrameRules();
+  });
+
+  it('getFrameRulesForSite returns the persisted map for that site only', async () => {
+    await rm.setFrameRule('office.com', 'outlook.office.com', 'allowed', { persist: true });
+    await rm.setFrameRule('office.com', 'doubleclick.net', 'blocked', { persist: true });
+    await rm.setFrameRule('other.com', 'x.com', 'blocked', { persist: true });
+    const map = await rm.getFrameRulesForSite('office.com');
+    expect(map).toEqual({ 'outlook.office.com': 'allowed', 'doubleclick.net': 'blocked' });
+    expect(await rm.getFrameRulesForSite('nope.com')).toEqual({});
+  });
+
+  it('getSessionFrameRulesForSite returns only that site\'s session rules', async () => {
+    await rm.setFrameRule('office.com', 'a.com', 'allowed', { persist: false });
+    await rm.setFrameRule('office.com', 'b.com', 'blocked', { persist: false });
+    await rm.setFrameRule('other.com', 'c.com', 'blocked', { persist: false });
+    expect(rm.getSessionFrameRulesForSite('office.com')).toEqual({ 'a.com': 'allowed', 'b.com': 'blocked' });
+    expect(rm.getSessionFrameRulesForSite('zzz.com')).toEqual({});
+  });
+});

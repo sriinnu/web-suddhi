@@ -61,11 +61,18 @@
   };
 
   // Re-run classify/decide for every frame in the tab using current metrics + ctx.
+  // ctxBase.frameRules (optional): { [frameDomain]: { persistentRule, sessionRule } }
   reg.recompute = function (tabId, ctxBase) {
     const t = tabs.get(tabId);
     if (!t) return;
+    const frameRules = (ctxBase && ctxBase.frameRules) || {};
     for (const rec of t.frames.values()) {
-      const ctx = Object.assign({}, ctxBase, { metrics: { bytes: rec.bytes, longTaskMs: rec.longTaskMs } });
+      const fr = frameRules[rec.domain] || {};
+      const ctx = Object.assign({}, ctxBase, {
+        metrics: { bytes: rec.bytes, longTaskMs: rec.longTaskMs },
+        persistentRule: fr.persistentRule || null,
+        sessionRule: fr.sessionRule || null
+      });
       const d = reg.classifyAndDecide({ url: rec.url, domain: rec.domain, width: rec.width, height: rec.height }, ctx);
       Object.assign(rec, d);
     }

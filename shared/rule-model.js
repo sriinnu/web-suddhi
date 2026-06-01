@@ -112,4 +112,21 @@
     }
     await u.setStorage({ [STORAGE_KEYS.FRAME_RULES]: map });
   };
+
+  rm.getFrameRulesForSite = async function (site) {
+    const u = utils();
+    if (!u) return {};
+    const data = await u.getStorage([STORAGE_KEYS.FRAME_RULES]);
+    const map = (data && data[STORAGE_KEYS.FRAME_RULES]) || {};
+    return Object.assign({}, map[site] || {});
+  };
+
+  rm.getSessionFrameRulesForSite = function (site) {
+    const out = {};
+    const prefix = site + '|';
+    for (const [key, rule] of sessionFrameRules.entries()) {
+      if (key.indexOf(prefix) === 0) out[key.slice(prefix.length)] = rule;
+    }
+    return out;
+  };
 })();
