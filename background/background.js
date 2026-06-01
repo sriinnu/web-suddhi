@@ -7,12 +7,16 @@ try {
   if (typeof importScripts === 'function') {
     importScripts(
       '../shared/utils.js',
+      '../shared/rule-model.js',
+      'classifier.js',
+      'list-loader.js',
       'network-blocker.js',
       'url-cleaner.js',
       'stats-manager.js',
       'privacy.js',
       'filter-lists.js',
-      'phishing-detector.js'
+      'phishing-detector.js',
+      'frame-registry.js'
     );
   }
 } catch (e) {
@@ -1290,6 +1294,29 @@ try {
     };
   }
 
+  // Recompute the per-tab frame census decisions using current site state + dial.
+  async function recomputeTab(tabId) {
+    const reg = self.WebSuddhi.frameRegistry;
+    const ruleModel = self.WebSuddhi.ruleModel;
+    const loader = self.WebSuddhi.listLoader;
+    if (!reg || !ruleModel || !loader) return;
+    let hostname = '';
+    try {
+      const tab = await api.tabs.get(tabId);
+      hostname = new URL(tab.url).hostname;
+    } catch (e) { /* tab gone or non-http */ }
+    const settings = await getStorage(['aggressiveness']);
+    const ctx = {
+      lists: await loader.loadLists(),
+      budget: { bytes: 500 * 1024, ms: 150 },
+      siteState: hostname ? await ruleModel.getSiteState(hostname) : 'default',
+      aggressiveness: settings.aggressiveness || 'balanced',
+      persistentRule: null,
+      sessionRule: null
+    };
+    reg.recompute(tabId, ctx);
+  }
+
   // ============================================
   // MESSAGE HANDLER
   // ============================================
@@ -1350,6 +1377,38 @@ try {
             return { success: true, count: self.WebSuddhi.networkBlocker.getNetworkBlockedCount(message.tabId) };
           }
           return { success: true, count: getNetworkBlockedCount(message.tabId) };
+
+        // Frame engine (Plan 2)
+        case 'FRAME_ANNOUNCE':
+          if (self.WebSuddhi.frameRegistry && sender.tab) {
+            self.WebSuddhi.frameRegistry.registerFrame(
+              sender.tab.id, sender.frameId, sender.frameId === 0 ? -1 : 0, message.frameInfo || {}
+            );
+            await recomputeTab(sender.tab.id);
+          }
+          return { success: true };
+
+        case 'FRAME_METRICS':
+          if (self.WebSuddhi.frameRegistry && sender.tab) {
+            self.WebSuddhi.frameRegistry.updateMetrics(sender.tab.id, sender.frameId, message);
+            await recomputeTab(sender.tab.id);
+          }
+          return { success: true };
+
+        case 'FRAME_CHILDREN':
+          return { success: true }; // recorded opportunistically; full sandbox-fallback in a later plan
+
+        case 'REPORT_COSMETIC':
+          if (self.WebSuddhi.frameRegistry && sender.tab) {
+            self.WebSuddhi.frameRegistry.addCosmeticCount(sender.tab.id, message.count || 0);
+          }
+          return { success: true };
+
+        case 'GET_TAB_CENSUS':
+          if (self.WebSuddhi.frameRegistry) {
+            return { success: true, census: self.WebSuddhi.frameRegistry.getCensus(message.tabId) };
+          }
+          return { success: true, census: { frames: [], counts: { frames: 0, heavy: 0, blocked: 0, flagged: 0, cosmetic: 0 } } };
 
         case 'TOGGLE_NETWORK_BLOCKING':
           if (self.WebSuddhi.networkBlocker) {
@@ -1734,8 +1793,19 @@ try {
         api.tabs.onRemoved.addListener((tabId) => {
           tabFrameMap.delete(tabId);
           stopIconBlink(tabId);
+          if (self.WebSuddhi.frameRegistry) self.WebSuddhi.frameRegistry.removeTab(tabId);
         });
       }
+      // Reset the per-tab frame census on top-frame navigation (per-page counts).
+      if (api.webNavigation && api.webNavigation.onCommitted) {
+        api.webNavigation.onCommitted.addListener((details) => {
+          if (details.frameId === 0 && self.WebSuddhi.frameRegistry) {
+            self.WebSuddhi.frameRegistry.resetTab(details.tabId);
+          }
+        });
+      }
+      // Warm the rule-list cache so the first FRAME_ANNOUNCE classifies correctly.
+      if (self.WebSuddhi.listLoader) self.WebSuddhi.listLoader.loadLists();
       if (api.tabs && api.tabs.onUpdated) {
         api.tabs.onUpdated.addListener((tabId, changeInfo) => {
           if (changeInfo && changeInfo.status === 'loading') {

@@ -52,7 +52,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["shared/utils.js", "content/ad-blocker.js"],
+      "js": ["shared/utils.js", "content/ad-blocker.js", "content/frame-agent.js"],
       "css": ["content/ad-blocker.css"],
       "run_at": "document_start",
       "all_frames": true

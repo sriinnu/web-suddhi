@@ -21,20 +21,24 @@
   "background": {
     "scripts": [
       "shared/utils.js",
+      "shared/rule-model.js",
       "background/background.js",
+      "background/classifier.js",
+      "background/list-loader.js",
       "background/network-blocker.js",
       "background/url-cleaner.js",
       "background/stats-manager.js",
       "background/privacy.js",
       "background/filter-lists.js",
-      "background/phishing-detector.js"
+      "background/phishing-detector.js",
+      "background/frame-registry.js"
     ],
     "persistent": true
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["shared/utils.js", "content/ad-blocker.js"],
+      "js": ["shared/utils.js", "content/ad-blocker.js", "content/frame-agent.js"],
       "css": ["content/ad-blocker.css"],
       "run_at": "document_start",
       "all_frames": true

@@ -70,4 +70,42 @@
     }
     return removed;
   };
+
+  // ---- Runtime bootstrap (skipped in tests where there's no chrome.runtime) ----
+  const api = (typeof browser !== 'undefined' && browser.runtime) ? browser
+            : (typeof chrome !== 'undefined' && chrome.runtime) ? chrome : null;
+
+  function send(msg) {
+    if (!api) return;
+    try { api.runtime.sendMessage(msg, () => void api.runtime.lastError); } catch (e) { /* frame torn down */ }
+  }
+
+  agent.start = function () {
+    if (!api || typeof window === 'undefined') return;
+    if (window.location.protocol !== 'http:' && window.location.protocol !== 'https:') return;
+
+    send({ type: 'FRAME_ANNOUNCE', frameInfo: agent.buildFrameInfo(window) });
+
+    // Parent enumerates its child iframes for the sandbox/no-script fallback.
+    if (document && document.querySelectorAll) {
+      const children = Array.from(document.querySelectorAll('iframe'))
+        .map((f) => ({ src: f.getAttribute('src') || f.src || '' }))
+        .filter((c) => c.src);
+      if (children.length) send({ type: 'FRAME_CHILDREN', children });
+    }
+
+    agent.startMeasuring(window);
+    // Report metrics at settle points rather than polling continuously.
+    const report = () => send({ type: 'FRAME_METRICS', bytes: agent.measureBytes(window.performance), longTaskMs: agent.getLongTaskMs() });
+    setTimeout(report, 1500);
+    setTimeout(report, 5000);
+
+    api.runtime.onMessage.addListener((msg) => {
+      if (msg && msg.type === 'TEARDOWN_FRAME') agent.teardownChildFrames(document, msg.matchUrl);
+    });
+  };
+
+  if (api && typeof window !== 'undefined' && !self.__WS_FRAME_AGENT_TEST__) {
+    agent.start();
+  }
 })();
