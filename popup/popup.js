@@ -89,7 +89,9 @@
     framesHogsList: document.getElementById('framesHogsList'),
     killAllHogsBtn: document.getElementById('killAllHogsBtn'),
     relaxBtn: document.getElementById('relaxBtn'),
-    // Site state control
+    // Pinned action bar + site state control
+    actAllowBtn: document.getElementById('actAllowBtn'),
+    actBlockBtn: document.getElementById('actBlockBtn'),
     siteStateProtected: document.getElementById('siteStateProtected'),
     siteStateDefault: document.getElementById('siteStateDefault'),
     siteStatePaused: document.getElementById('siteStatePaused'),
@@ -532,12 +534,12 @@
     isPickMode = !isPickMode;
 
     if (isPickMode) {
-      setButtonContent(elements.pickModeBtn, SVG_PATHS.cancel, 'Cancel Pick');
+      setButtonContent(elements.pickModeBtn, SVG_PATHS.cancel, 'Cancel');
       elements.pickModeBtn.classList.add('active');
-      showToast('Pick mode: Click an element to block');
+      showToast('Pick mode: Click an element or frame to block');
       await sendToContentScript({ type: 'START_PICK_MODE' });
     } else {
-      setButtonContent(elements.pickModeBtn, SVG_PATHS.pick, 'Pick Element');
+      setButtonContent(elements.pickModeBtn, SVG_PATHS.pick, 'Pick');
       elements.pickModeBtn.classList.remove('active');
       await sendToContentScript({ type: 'STOP_PICK_MODE' });
     }
@@ -1401,6 +1403,9 @@
     for (const key of Object.keys(map)) {
       if (map[key]) map[key].classList.toggle('is-active', key === stateValue);
     }
+    // Mirror onto the pinned action bar (Allow = paused, Block = protected).
+    if (elements.actAllowBtn) elements.actAllowBtn.classList.toggle('is-active', stateValue === 'paused');
+    if (elements.actBlockBtn) elements.actBlockBtn.classList.toggle('is-active', stateValue === 'protected');
   }
 
   async function loadSiteState() {
@@ -1496,7 +1501,9 @@
     elements.blacklistBtn?.addEventListener('click', quickBlacklist);
     elements.whitelistToggleBtn?.addEventListener('click', toggleWhitelist);
 
-    // Frames panel + relax + site state
+    // Pinned action bar: Allow (pause) / Block (protect) / Pick / Looks-broken
+    elements.actAllowBtn?.addEventListener('click', () => setSiteState('paused'));
+    elements.actBlockBtn?.addEventListener('click', () => setSiteState('protected'));
     elements.relaxBtn?.addEventListener('click', relaxCosmetic);
     elements.killAllHogsBtn?.addEventListener('click', killAllHogs);
     elements.siteStateProtected?.addEventListener('click', () => setSiteState('protected'));

@@ -29,54 +29,41 @@
     </header>
 
     <main class="main-content">
-      <!-- Protection Toggle -->
-      <section class="card protection-card">
-        <div class="card-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-          </svg>
+      <!-- Pinned top: site + master toggle + action bar + site state -->
+      <section class="card top-card">
+        <div class="top-row">
+          <div class="site-info">
+            <span class="site-label">Current site</span>
+            <span class="site-domain" id="currentSite">loading...</span>
+          </div>
+          <label class="toggle" title="Master protection">
+            <input type="checkbox" id="enableToggle" checked>
+            <span class="toggle-track">
+              <span class="toggle-thumb"></span>
+            </span>
+          </label>
         </div>
-        <div class="card-body">
-          <h2>Protection</h2>
-          <p>Block ads, trackers, and annoyances</p>
-        </div>
-        <label class="toggle">
-          <input type="checkbox" id="enableToggle" checked>
-          <span class="toggle-track">
-            <span class="toggle-thumb"></span>
-          </span>
-        </label>
-      </section>
 
-      <!-- Current Site -->
-      <section class="card site-card">
-        <div class="site-info">
-          <span class="site-label">Current Website</span>
-          <span class="site-domain" id="currentSite">loading...</span>
-        </div>
-        <div class="site-actions">
-          <button class="btn btn-secondary" id="whitelistBtn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-            Allow
+        <!-- Pinned action bar -->
+        <div class="action-bar" role="group" aria-label="Quick actions">
+          <button class="act-btn" id="actAllowBtn" title="Pause blocking on this site">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>Allow</span>
           </button>
-          <button class="btn btn-danger" id="blacklistBtn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-            Block
+          <button class="act-btn" id="actBlockBtn" title="Full blocking on this site">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <span>Block</span>
           </button>
-          <button class="btn btn-warning" id="relaxBtn" title="Relax cosmetic blocking on this site; network blocking stays on">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-              <line x1="12" y1="9" x2="12" y2="13"/>
-              <line x1="12" y1="17" x2="12.01" y2="17"/>
-            </svg>
-            Looks broken?
+          <button class="act-btn" id="pickModeBtn" title="Pick an element or frame to block">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2l12 11.5-5.5 1.2 3.3 6.8-2.2 1-3.2-7L7 20V2z"/></svg>
+            <span>Pick</span>
+          </button>
+          <button class="act-btn warn" id="relaxBtn" title="Relax cosmetic blocking on this site; network blocking stays on">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span>Looks broken?</span>
           </button>
         </div>
+
         <!-- Site state: Protected / Default / Paused (replaces whitelist) -->
         <div class="site-state-control" role="group" aria-label="Blocking level for this site">
           <button class="site-state-btn" data-state="protected" id="siteStateProtected" title="Full blocking">Protected</button>
@@ -85,9 +72,29 @@
         </div>
       </section>
 
+      <!-- Frames panel (hero) — live per-tab census -->
+      <section class="card frame-section" id="framesSection" style="display: none;">
+        <div class="frame-panel-head">
+          <h3 class="section-title">Frames <span id="framesCount" class="section-count">0</span></h3>
+          <span class="frame-summary" id="framesSummary"></span>
+        </div>
+
+        <!-- Pinned resource hogs -->
+        <div class="frame-hogs" id="framesHogs" style="display: none;">
+          <div class="frame-hogs-head">
+            <span class="frame-hogs-title">⚡ Resource hogs <span id="framesHogsCount" class="section-count">0</span></span>
+            <button class="frame-killall" id="killAllHogsBtn">Kill all</button>
+          </div>
+          <div id="framesHogsList" class="frame-list"></div>
+        </div>
+
+        <!-- Grouped-by-category list -->
+        <div id="framesList" class="frame-list frame-groups"></div>
+      </section>
+
       <!-- Site Security -->
-      <section class="card site-security-card">
-        <h3 class="section-title">Site Security</h3>
+      <details class="card acc site-security-card">
+        <summary class="section-title">Site Security</summary>
         <div id="siteInfoSection" class="site-security-content">
           <div class="security-main">
             <div id="siteIcon" class="security-icon-wrap">
@@ -133,38 +140,19 @@
             </div>
           </div>
         </div>
-      </section>
+      </details>
 
       <!-- Tracker Summary -->
-      <section class="card tracker-summary-card">
-        <h3 class="section-title">Tracker Summary</h3>
+      <details class="card acc tracker-summary-card">
+        <summary class="section-title">Tracker Summary</summary>
         <div id="trackerSummary" class="tracker-summary" style="display: none;">
           <div id="trackerCategories" class="tracker-categories"></div>
         </div>
-      </section>
-
-      <!-- Frames panel (hero) — live per-tab census -->
-      <section class="card frame-section" id="framesSection" style="display: none;">
-        <div class="frame-panel-head">
-          <h3 class="section-title">Frames <span id="framesCount" class="section-count">0</span></h3>
-          <span class="frame-summary" id="framesSummary"></span>
-        </div>
-
-        <!-- Pinned resource hogs -->
-        <div class="frame-hogs" id="framesHogs" style="display: none;">
-          <div class="frame-hogs-head">
-            <span class="frame-hogs-title">⚡ Resource hogs <span id="framesHogsCount" class="section-count">0</span></span>
-            <button class="frame-killall" id="killAllHogsBtn">Kill all</button>
-          </div>
-          <div id="framesHogsList" class="frame-list"></div>
-        </div>
-
-        <!-- Grouped-by-category list -->
-        <div id="framesList" class="frame-list frame-groups"></div>
-      </section>
+      </details>
 
       <!-- Stats -->
-      <section class="card stats-card">
+      <details class="card acc stats-card">
+        <summary class="section-title">Stats</summary>
         <div class="stats-grid">
           <div class="stat" id="networkStatBtn" style="cursor: pointer;">
             <span class="stat-value" id="networkBlockedCount">0</span>
@@ -185,11 +173,11 @@
           <span class="stat-sub" id="dataSaved">0 KB saved</span>
           <a href="#" class="view-all" id="viewAllBlocked">View All</a>
         </div>
-      </section>
+      </details>
 
       <!-- Features -->
-      <section class="features-section">
-        <h3 class="section-title">Blocking Features</h3>
+      <details class="card acc features-section">
+        <summary class="section-title">Blocking Features</summary>
         <div class="features-grid">
           <label class="feature-item">
             <input type="checkbox" id="networkBlockingToggle" checked>
@@ -330,39 +318,7 @@
             </div>
             <span class="action-label">Try Remove Paywall</span>
           </button>
-        </div>
-      </section>
-
-      <!-- Quick Actions -->
-      <section class="actions-section">
-        <h3 class="section-title">Quick Actions</h3>
-        <div class="actions-grid">
-          <button class="action-item" id="pickModeBtn">
-            <div class="action-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M7 2l12 11.5-5.5 1.2 3.3 6.8-2.2 1-3.2-7L7 20V2z"/>
-              </svg>
-            </div>
-            <span class="action-label">Pick Element</span>
-          </button>
-          <button class="action-item" id="zapModeBtn">
-            <div class="action-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-              </svg>
-            </div>
-            <span class="action-label">Quick Zap</span>
-          </button>
-          <button class="action-item" id="whitelistToggleBtn">
-            <div class="action-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M9 12l2 2 4-4"/>
-                <circle cx="12" cy="12" r="10"/>
-              </svg>
-            </div>
-            <span class="action-label" id="whitelistBtnText">Whitelist</span>
-          </button>
-          <button class="action-item" id="openOptionsBtn">
+          <button class="action-item" id="openOptionsBtn" style="width: 100%; margin-top: 8px;">
             <div class="action-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="3"/>
@@ -372,7 +328,7 @@
             <span class="action-label">Settings</span>
           </button>
         </div>
-      </section>
+      </details>
 
       <!-- Blocked Panel (hidden by default) -->
       <div class="blocked-panel" id="blockedPanel" style="display: none;">

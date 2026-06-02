@@ -1128,6 +1128,109 @@ body {
 }
 
 /* ============================================
+   Layout C — pinned top + action bar + accordion
+   ============================================ */
+.top-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.action-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.act-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 8px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  line-height: 1.1;
+}
+
+.act-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.act-btn:hover {
+  border-color: var(--accent, #0a84ff);
+}
+
+.act-btn.is-active,
+.act-btn.active {
+  background: var(--accent, #0a84ff);
+  border-color: var(--accent, #0a84ff);
+  color: #fff;
+}
+
+.act-btn.warn {
+  color: #ff9800;
+}
+
+.act-btn.warn:hover {
+  border-color: #ff9800;
+}
+
+/* Accordion sections */
+details.acc {
+  padding: 0;
+}
+
+details.acc > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 14px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  user-select: none;
+}
+
+details.acc > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.acc > summary::after {
+  content: '▸';
+  margin-left: auto;
+  color: var(--text-tertiary);
+  transition: transform 0.15s ease;
+}
+
+details.acc[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+details.acc > *:not(summary) {
+  padding: 0 14px 14px;
+}
+
+details.acc .stats-grid,
+details.acc .features-grid,
+details.acc .actions-grid {
+  margin-top: 0;
+}
+
+/* ============================================
    Footer — compact single-row
    ============================================ */
 .footer {
