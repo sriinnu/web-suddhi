@@ -836,10 +836,17 @@
     whitelistedSites: [],
     blockedSelectors: new Map(),
     pickMode: false,
-    pickModeShiftHeld: false,
-    pickModeCtrlHeld: false,
+    pickAltHeld: false,        // flip element/frame mode
+    pickCtrlHeld: false,       // specific selector (element mode)
+    pickZapHeld: false,        // quick-kill: skip confirm (Shift)
+    pickZapDefault: false,     // zap entry point: skip confirm by default
+    pickFrameMode: false,      // current resolution targets a whole frame
     pickDialogOpen: false,
-    zapMode: false,
+    pickOverlay: null,         // full-viewport hit-shield (catches events over iframes)
+    pickLastX: 0,
+    pickLastY: 0,
+    pickCommitting: false,     // re-entrancy guard
+    zapMode: false,            // legacy alias; true while a zap-default pick is active
     hoveredElement: null,
     observer: null,
     observerTimeout: null,
@@ -2213,18 +2220,27 @@
   // ============================================
   // PICK MODE - Select & Save Elements
   // ============================================
-  function startPickMode() {
-    // Only run pick mode in the top/main frame to avoid conflicts with iframes
+  // Pointer events we intercept in the capture phase so nothing leaks through to
+  // the page (or to an ad inside a cross-origin iframe).
+  const PICK_POINTER_EVENTS = ['pointerdown', 'mousedown', 'mouseup', 'click', 'auxclick', 'contextmenu'];
+
+  function startPickMode(opts = {}) {
+    // Only run pick mode in the top/main frame to avoid conflicts with iframes.
     if (window !== window.top) {
       return;
     }
 
-    if (state.zapMode) stopZapMode();
     state.pickMode = true;
-    state.pickModeShiftHeld = false;
-    state.pickModeCtrlHeld = false;
-    state.pickDialogOpen = false;
+    state.pickZapDefault = !!opts.zapDefault;
+    state.zapMode = !!opts.zapDefault; // legacy alias
+    state.pickAltHeld = false;
+    state.pickCtrlHeld = false;
+    state.pickZapHeld = false;
+    state.pickFrameMode = false;
+    state.pickCommitting = false;
+    state.hoveredElement = null;
     document.body.classList.add('websuddhi-pick-mode');
+    if (opts.zapDefault) document.body.classList.add('websuddhi-zap-mode');
 
     // Ensure document has focus for keyboard events
     window.focus();
@@ -2232,25 +2248,31 @@
       document.body.focus();
     }
 
-    addPickListeners();
-
     document.body.style.userSelect = 'none';
     document.body.style.webkitUserSelect = 'none';
 
-    // Create the preview panel
     createPreviewPanel();
+    addPickListeners(); // also installs the full-viewport hit-shield overlay
 
-    showToast('Pick mode: click an element to block it. Press Esc to cancel.');
+    showToast(opts.zapDefault
+      ? 'Zap: click to remove instantly. Alt = frame/element · Esc to exit.'
+      : 'Pick: click to block. Alt = frame/element · Shift = quick-kill · Esc cancel.');
   }
 
   function stopPickMode() {
     state.pickMode = false;
-    state.pickModeShiftHeld = false;
-    state.pickModeCtrlHeld = false;
-    state.pickDialogOpen = false;
+    state.zapMode = false;
+    state.pickZapDefault = false;
+    state.pickAltHeld = false;
+    state.pickCtrlHeld = false;
+    state.pickZapHeld = false;
+    state.pickFrameMode = false;
+    state.pickCommitting = false;
+    state.hoveredElement = null;
     document.body.classList.remove('websuddhi-pick-mode');
+    document.body.classList.remove('websuddhi-zap-mode');
 
-    removePickListeners();
+    removePickListeners(); // also removes the overlay
 
     document.body.style.userSelect = '';
     document.body.style.webkitUserSelect = '';
@@ -2265,6 +2287,72 @@
 
     const preview = document.querySelector('.websuddhi-pick-preview');
     if (preview) preview.remove();
+  }
+
+  // ============================================
+  // PICK OVERLAY — the fix for cross-origin iframe click-leak.
+  // A full-viewport transparent layer sits above ALL page content (including
+  // iframes), so pointer events land in the top document instead of routing
+  // into a child frame. We resolve what's underneath with elementFromPoint.
+  // ============================================
+  function createPickOverlay() {
+    removePickOverlay();
+    const ov = document.createElement('div');
+    ov.className = 'websuddhi-pick-overlay';
+    ov.style.cssText =
+      'position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;' +
+      'width:100vw!important;height:100vh!important;margin:0!important;padding:0!important;' +
+      'background:transparent!important;z-index:2147483646!important;cursor:crosshair!important;';
+    (document.documentElement || document.body).appendChild(ov);
+    state.pickOverlay = ov;
+    return ov;
+  }
+
+  function removePickOverlay() {
+    if (state.pickOverlay && state.pickOverlay.parentNode) state.pickOverlay.remove();
+    state.pickOverlay = null;
+    document.querySelectorAll('.websuddhi-pick-overlay').forEach((e) => e.remove());
+  }
+
+  // Resolve the page element under a viewport point, seeing *through* our overlay
+  // and ignoring our own UI.
+  function pickTargetAt(x, y) {
+    const ov = state.pickOverlay;
+    const had = ov ? ov.style.getPropertyValue('pointer-events') : '';
+    if (ov) ov.style.setProperty('pointer-events', 'none', 'important');
+    let el = null;
+    try { el = document.elementFromPoint(x, y); } catch (e) { el = null; }
+    if (ov) {
+      if (had) ov.style.setProperty('pointer-events', had, 'important');
+      else ov.style.removeProperty('pointer-events');
+    }
+    if (!el) return null;
+    if (el.classList && el.classList.contains('websuddhi-pick-overlay')) return null;
+    if (el.closest && (el.closest('.websuddhi-preview-panel') ||
+        el.closest('.websuddhi-pick-dialog') ||
+        el.closest('.websuddhi-toast') ||
+        el.closest('.websuddhi-pick-preview'))) return null;
+    return el;
+  }
+
+  // Decide whether a raw hit becomes an element pick or a whole-frame pick.
+  // Default: iframe -> frame mode, everything else -> element mode. Alt flips.
+  function resolvePickTarget(rawEl) {
+    if (!rawEl) return null;
+    const isIframe = rawEl.tagName === 'IFRAME';
+    let frameMode = isIframe;
+    if (state.pickAltHeld) frameMode = !frameMode;
+    let element = rawEl;
+    if (!frameMode && isIframe) {
+      // element mode forced onto an iframe (via Alt): target its container instead.
+      element = rawEl.parentElement || rawEl;
+    } else if (frameMode && !isIframe) {
+      // frame mode forced onto non-iframe (via Alt): climb to the nearest iframe.
+      const f = rawEl.closest && rawEl.closest('iframe');
+      if (f) element = f;
+      else frameMode = false;
+    }
+    return { element, frameMode };
   }
 
   // ============================================
@@ -2290,7 +2378,7 @@
       </div>
       <div class="websuddhi-preview-warning" style="display: none;"></div>
       <div class="websuddhi-preview-hint">
-        Click to block <kbd>Esc</kbd> cancel <kbd>Shift</kbd> parent <kbd>Ctrl</kbd> specific
+        Click to block <kbd>Esc</kbd> cancel <kbd>Alt</kbd> frame/element <kbd>Shift</kbd> quick-kill <kbd>Ctrl</kbd> specific
       </div>
     `;
     panel.style.display = 'none';
@@ -2303,26 +2391,28 @@
     if (panel) panel.remove();
   }
 
-  function updatePreviewPanel(element) {
+  function updatePreviewPanel(element, frameMode) {
     const panel = document.querySelector('.websuddhi-preview-panel');
     if (!panel || !element) {
       if (panel) panel.style.display = 'none';
       return;
     }
 
-    // Get the actual target element based on modifiers
-    let targetElement = element;
-    if (state.pickModeShiftHeld && element.parentElement && element.parentElement !== document.body) {
-      targetElement = element.parentElement;
-      // Update highlight to show parent instead
-      clearHighlights();
-      targetElement.classList.add('websuddhi-pick-highlight');
-    }
+    const targetElement = element;
 
-    // Generate selector based on modifiers
-    const selector = state.pickModeCtrlHeld
-      ? getSpecificSelector(targetElement)
-      : getUniqueSelector(targetElement);
+    // Frame mode: we collapse the whole iframe rather than picking a selector.
+    let selector;
+    if (frameMode) {
+      let host = '';
+      const src = targetElement.getAttribute && (targetElement.getAttribute('src') || targetElement.getAttribute('data-src') || '');
+      try { if (src) host = new URL(src, window.location.href).hostname; } catch (e) { host = ''; }
+      selector = host ? 'frame: ' + host : 'frame (whole iframe)';
+    } else {
+      // Generate selector based on modifiers
+      selector = state.pickCtrlHeld
+        ? getSpecificSelector(targetElement)
+        : getUniqueSelector(targetElement);
+    }
 
     // Count matching elements
     let matchCount = 0;
@@ -2464,6 +2554,25 @@
     return path.join(' > ');
   }
 
+  // Re-run hover resolution at the last pointer position (after a modifier change).
+  function refreshPickHover() {
+    if (!state.pickMode) return;
+    const raw = pickTargetAt(state.pickLastX, state.pickLastY);
+    const resolved = resolvePickTarget(raw);
+    clearHighlights();
+    if (!resolved || !resolved.element) {
+      state.hoveredElement = null;
+      state.pickFrameMode = false;
+      updatePreviewPanel(null);
+      return;
+    }
+    state.hoveredElement = resolved.element;
+    state.pickFrameMode = resolved.frameMode;
+    resolved.element.classList.add('websuddhi-pick-highlight');
+    if (resolved.frameMode) resolved.element.classList.add('websuddhi-pick-frame');
+    updatePreviewPanel(resolved.element, resolved.frameMode);
+  }
+
   // Keyboard handlers for pick mode modifiers
   function handlePickKeyDown(e) {
     if (!state.pickMode) return;
@@ -2476,175 +2585,110 @@
       return;
     }
 
-    // Track modifier keys
-    if (e.key === 'Shift' && !state.pickModeShiftHeld) {
-      state.pickModeShiftHeld = true;
-      // Update preview if we have a hovered element
-      if (state.hoveredElement) {
-        updatePreviewPanel(state.hoveredElement);
-      }
-    }
-
-    if ((e.key === 'Control' || e.key === 'Meta') && !state.pickModeCtrlHeld) {
-      state.pickModeCtrlHeld = true;
-      // Update preview if we have a hovered element
-      if (state.hoveredElement) {
-        updatePreviewPanel(state.hoveredElement);
-      }
-    }
+    let changed = false;
+    if (e.key === 'Alt' && !state.pickAltHeld) { state.pickAltHeld = true; changed = true; }
+    if (e.key === 'Shift' && !state.pickZapHeld) { state.pickZapHeld = true; }
+    if ((e.key === 'Control' || e.key === 'Meta') && !state.pickCtrlHeld) { state.pickCtrlHeld = true; changed = true; }
+    // Alt would otherwise trigger browser menus / lose focus while picking.
+    if (e.key === 'Alt') { e.preventDefault(); }
+    if (changed) refreshPickHover();
   }
 
   function handlePickKeyUp(e) {
     if (!state.pickMode) return;
 
-    if (e.key === 'Shift') {
-      state.pickModeShiftHeld = false;
-      // Update preview and restore highlight to original element
-      if (state.hoveredElement) {
-        clearHighlights();
-        state.hoveredElement.classList.add('websuddhi-pick-highlight');
-        updatePreviewPanel(state.hoveredElement);
-      }
-    }
-
-    if (e.key === 'Control' || e.key === 'Meta') {
-      state.pickModeCtrlHeld = false;
-      // Update preview
-      if (state.hoveredElement) {
-        updatePreviewPanel(state.hoveredElement);
-      }
-    }
+    let changed = false;
+    if (e.key === 'Alt') { state.pickAltHeld = false; changed = true; e.preventDefault(); }
+    if (e.key === 'Shift') { state.pickZapHeld = false; }
+    if (e.key === 'Control' || e.key === 'Meta') { state.pickCtrlHeld = false; changed = true; }
+    if (changed) refreshPickHover();
   }
 
   // ============================================
-  // ZAP MODE - Quick Hide Without Saving
+  // ZAP — now a thin alias: a pick session that skips the confirm dialog.
+  // Kept so existing entry points (keyboard shortcut, legacy menu) still work.
   // ============================================
   function startZapMode() {
-    // Only run zap mode in the top/main frame to avoid conflicts with iframes
-    if (window !== window.top) {
-      return;
-    }
-
-    if (state.pickMode) stopPickMode();
-    state.zapMode = true;
-    document.body.classList.add('websuddhi-zap-mode');
-
-    // Ensure document has focus for keyboard events
-    window.focus();
-    if (document.body) {
-      document.body.focus();
-    }
-
-    document.addEventListener('mouseover', handleMouseOver, true);
-    document.addEventListener('mouseout', handleMouseOut, true);
-    document.addEventListener('click', handleZapClick, true);
-    document.addEventListener('keydown', handleZapEscape, true);
-
-    document.body.style.userSelect = 'none';
-    document.body.style.webkitUserSelect = 'none';
-
-    showToast('Zap mode: click elements to hide them instantly. Press Esc to exit.');
+    startPickMode({ zapDefault: true });
   }
 
   function stopZapMode() {
-    state.zapMode = false;
-    document.body.classList.remove('websuddhi-zap-mode');
-
-    document.removeEventListener('mouseover', handleMouseOver, true);
-    document.removeEventListener('mouseout', handleMouseOut, true);
-    document.removeEventListener('click', handleZapClick, true);
-    document.removeEventListener('keydown', handleZapEscape, true);
-
-    document.body.style.userSelect = '';
-    document.body.style.webkitUserSelect = '';
-
-    clearHighlights();
-    removeToast();
+    stopPickMode();
   }
 
-  function handleZapClick(e) {
-    if (!state.zapMode) return;
+  // ============================================
+  // POINTER ENGINE — hover tracking + commit (pick or quick-kill)
+  // ============================================
+  function handlePickPointerMove(e) {
+    if (!state.pickMode) return;
+    state.pickLastX = e.clientX;
+    state.pickLastY = e.clientY;
+    refreshPickHover();
+  }
+
+  // Swallow every pointer event in the capture phase so nothing reaches the page
+  // or an ad inside a cross-origin iframe. Commit on click (left) or contextmenu (right).
+  function handlePickPointer(e) {
+    if (!state.pickMode) return;
+    // Let clicks on our own dialog/panel through.
+    if (e.target && e.target.closest && (
+      e.target.closest('.websuddhi-pick-dialog') ||
+      e.target.closest('.websuddhi-preview-panel'))) return;
+
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
 
-    const el = e.target;
-    if (el.classList.contains('websuddhi-pick-preview') || el.closest('.websuddhi-pick-preview')) return;
-
-    hideElement(el);
-    showToast('Element hidden (not saved)');
-  }
-
-  function handleZapEscape(e) {
-    if (e.key === 'Escape' && state.zapMode) {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      stopZapMode();
+    if (e.type === 'click' || e.type === 'contextmenu') {
+      if (typeof e.clientX === 'number') { state.pickLastX = e.clientX; state.pickLastY = e.clientY; }
+      commitPick();
     }
   }
 
-  // ============================================
-  // SHARED PICK/ZAP HANDLERS
-  // ============================================
-  function handleMouseOver(e) {
-    if (!state.pickMode && !state.zapMode) return;
-    e.stopPropagation();
+  // Act on the currently-resolved target: collapse a frame, or block/hide an element.
+  function commitPick() {
+    if (state.pickCommitting) return;
+    const raw = pickTargetAt(state.pickLastX, state.pickLastY);
+    const resolved = resolvePickTarget(raw);
+    if (!resolved || !resolved.element) return;
+    state.pickCommitting = true;
 
-    // Don't highlight our own UI
-    if (e.target.classList.contains('websuddhi-pick-preview') ||
-        e.target.closest('.websuddhi-pick-preview') ||
-        e.target.classList.contains('websuddhi-preview-panel') ||
-        e.target.closest('.websuddhi-preview-panel') ||
-        e.target.classList.contains('websuddhi-pick-dialog') ||
-        e.target.closest('.websuddhi-pick-dialog') ||
-        e.target.classList.contains('websuddhi-toast') ||
-        e.target === document.body ||
-        e.target === document.documentElement) return;
+    const el = resolved.element;
+    const frameMode = resolved.frameMode;
+    const quick = state.pickZapDefault || state.pickZapHeld;
 
-    clearHighlights();
-    state.hoveredElement = e.target;
-    state.hoveredElement.classList.add('websuddhi-pick-highlight');
-
-    if (state.pickMode) {
-      // Use the new enhanced preview panel
-      updatePreviewPanel(e.target);
+    if (frameMode) {
+      let domain = '';
+      const src = (el.getAttribute && (el.getAttribute('src') || el.getAttribute('data-src'))) || '';
+      try { if (src) domain = new URL(src, window.location.href).hostname; } catch (e) { domain = ''; }
+      hideElement(el); // instant DOM teardown (works on every browser)
+      if (!quick && domain) {
+        // Persist a real frame block so it stays dead across reloads/navigation.
+        sendMessage({ type: 'SET_FRAME_RULE', frameDomain: domain, rule: 'blocked', persist: true }).catch(() => {});
+        showToast('Frame blocked: ' + domain);
+      } else {
+        showToast(domain ? 'Frame removed: ' + domain : 'Frame removed');
+      }
+      stopPickMode();
+      return;
     }
-  }
 
-  function handleMouseOut(e) {
-    if (!state.pickMode && !state.zapMode) return;
-    if (e.target === state.hoveredElement) {
-      e.target.classList.remove('websuddhi-pick-highlight');
-      state.hoveredElement = null;
+    const selector = state.pickCtrlHeld ? getSpecificSelector(el) : getUniqueSelector(el);
+    if (quick) {
+      hideElement(el, selector);
+      showToast('Element removed (not saved)');
+      stopPickMode();
+    } else {
+      state.pickCommitting = false; // dialog drives the next step
+      showConfirmDialog(selector, el);
     }
   }
 
   function clearHighlights() {
     document.querySelectorAll('.websuddhi-pick-highlight').forEach(el => {
       el.classList.remove('websuddhi-pick-highlight');
+      el.classList.remove('websuddhi-pick-frame');
     });
-  }
-
-  function handlePickClick(e) {
-    if (!state.pickMode) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-
-    // Determine target element based on modifiers
-    let targetElement = e.target;
-    if (state.pickModeShiftHeld && e.target.parentElement && e.target.parentElement !== document.body) {
-      targetElement = e.target.parentElement;
-    }
-
-    // Generate selector based on modifiers
-    const selector = state.pickModeCtrlHeld
-      ? getSpecificSelector(targetElement)
-      : getUniqueSelector(targetElement);
-
-    showConfirmDialog(selector, targetElement);
   }
 
   // ============================================
@@ -2718,62 +2762,23 @@
   }
 
   // ============================================
-  // UI DIALOGS
+  // LISTENERS — all capture-phase on the document; the overlay is the hit-shield
+  // that forces events to land in the top document (even over cross-origin frames).
   // ============================================
-  function showPreview(element) {
-    let preview = document.querySelector('.websuddhi-pick-preview');
-    if (!preview) {
-      preview = document.createElement('div');
-      preview.className = 'websuddhi-pick-preview';
-      document.body.appendChild(preview);
-    }
-
-    const rect = element.getBoundingClientRect();
-    const selector = getUniqueSelector(element);
-    const tagName = element.tagName.toLowerCase();
-    const dims = Math.round(rect.width) + 'x' + Math.round(rect.height);
-
-    preview.innerHTML =
-      '<div class="websuddhi-pick-info">' +
-        '<span>Click to block</span>' +
-        '<code>' + escapeHtml(selector.substring(0, 80)) + (selector.length > 80 ? '...' : '') + '</code>' +
-        '<span class="websuddhi-pick-hint">&lt;' + tagName + '&gt; ' + dims + ' | Esc to cancel</span>' +
-      '</div>';
-
-    const padding = 10;
-    let top = rect.bottom + padding;
-    let left = rect.left;
-
-    if (left + 300 > window.innerWidth) {
-      left = window.innerWidth - 320;
-    }
-    if (left < 10) left = 10;
-    if (top + 100 > window.innerHeight) {
-      top = rect.top - 110;
-    }
-    if (top < 0) top = 10;
-
-    preview.style.cssText =
-      'position:fixed!important;z-index:2147483647!important;' +
-      'top:' + top + 'px!important;left:' + left + 'px!important;';
-  }
-
   function removePickListeners() {
-    document.removeEventListener('mouseover', handleMouseOver, true);
-    document.removeEventListener('mouseout', handleMouseOut, true);
-    document.removeEventListener('click', handlePickClick, true);
-    document.removeEventListener('contextmenu', handlePickClick, true);
+    document.removeEventListener('pointermove', handlePickPointerMove, true);
     document.removeEventListener('keydown', handlePickKeyDown, true);
     document.removeEventListener('keyup', handlePickKeyUp, true);
+    PICK_POINTER_EVENTS.forEach((t) => document.removeEventListener(t, handlePickPointer, true));
+    removePickOverlay();
   }
 
   function addPickListeners() {
-    document.addEventListener('mouseover', handleMouseOver, true);
-    document.addEventListener('mouseout', handleMouseOut, true);
-    document.addEventListener('click', handlePickClick, true);
-    document.addEventListener('contextmenu', handlePickClick, true);
+    createPickOverlay();
+    document.addEventListener('pointermove', handlePickPointerMove, true);
     document.addEventListener('keydown', handlePickKeyDown, true);
     document.addEventListener('keyup', handlePickKeyUp, true);
+    PICK_POINTER_EVENTS.forEach((t) => document.addEventListener(t, handlePickPointer, true));
   }
 
   function showConfirmDialog(selector, element) {
@@ -2955,12 +2960,6 @@
         reject(new Error('No messaging API available'));
       }
     });
-  }
-
-  function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.textContent;
   }
 
   // ============================================

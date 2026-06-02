@@ -36,3 +36,18 @@ it('wires the SET_FRAME_RULE blocking contract', () => {
   expect(backgroundSource).toContain('addNetworkBlock');
   expect(backgroundSource).toContain('applyTab');
 });
+
+it('picker captures every pointer event + uses an overlay (no click leak to iframes)', () => {
+  const src = readSource('content/ad-blocker.js');
+  // All pointer events intercepted in the capture phase.
+  for (const ev of ['pointerdown', 'mousedown', 'mouseup', 'click', 'auxclick', 'contextmenu']) {
+    expect(src).toContain(`'${ev}'`);
+  }
+  // The hit-shield overlay + elementFromPoint resolution is the iframe fix.
+  expect(src).toContain('websuddhi-pick-overlay');
+  expect(src).toContain('elementFromPoint');
+  // Frame-aware modes + Alt flip + zap-as-modifier.
+  expect(src).toContain('resolvePickTarget');
+  expect(src).toContain('pickAltHeld');
+  expect(src).toContain('pickZapDefault');
+});
