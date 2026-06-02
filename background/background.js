@@ -16,7 +16,8 @@ try {
       'privacy.js',
       'filter-lists.js',
       'phishing-detector.js',
-      'frame-registry.js'
+      'frame-registry.js',
+      'frame-blocker.js'
     );
   }
 } catch (e) {
@@ -1294,27 +1295,39 @@ try {
     };
   }
 
-  // Recompute the per-tab frame census decisions using current site state + dial.
+  // Recompute the per-tab frame census (honouring site + per-frame rules) and
+  // apply the resulting decisions (tear down blocked frames).
   async function recomputeTab(tabId) {
     const reg = self.WebSuddhi.frameRegistry;
     const ruleModel = self.WebSuddhi.ruleModel;
     const loader = self.WebSuddhi.listLoader;
+    const blocker = self.WebSuddhi.frameBlocker;
     if (!reg || !ruleModel || !loader) return;
     let hostname = '';
     try {
       const tab = await api.tabs.get(tabId);
-      hostname = new URL(tab.url).hostname;
+      hostname = normalizeHostname(new URL(tab.url).hostname, true);
     } catch (e) { /* tab gone or non-http */ }
     const settings = await getStorage(['aggressiveness']);
+
+    // Merge persisted + session frame rules for this top-site (session wins).
+    const frameRules = {};
+    if (hostname) {
+      const persisted = await ruleModel.getFrameRulesForSite(hostname);
+      const session = ruleModel.getSessionFrameRulesForSite(hostname);
+      for (const d of Object.keys(persisted)) frameRules[d] = { persistentRule: persisted[d] };
+      for (const d of Object.keys(session)) frameRules[d] = Object.assign(frameRules[d] || {}, { sessionRule: session[d] });
+    }
+
     const ctx = {
       lists: await loader.loadLists(),
       budget: { bytes: 500 * 1024, ms: 150 },
       siteState: hostname ? await ruleModel.getSiteState(hostname) : 'default',
       aggressiveness: settings.aggressiveness || 'balanced',
-      persistentRule: null,
-      sessionRule: null
+      frameRules
     };
     reg.recompute(tabId, ctx);
+    if (blocker) blocker.applyTab(api, tabId, reg.getCensus(tabId));
   }
 
   // ============================================
@@ -1409,6 +1422,29 @@ try {
             return { success: true, census: self.WebSuddhi.frameRegistry.getCensus(message.tabId) };
           }
           return { success: true, census: { frames: [], counts: { frames: 0, heavy: 0, blocked: 0, flagged: 0, cosmetic: 0 } } };
+
+        case 'SET_FRAME_RULE': {
+          const reg = self.WebSuddhi.frameRegistry;
+          const ruleModel = self.WebSuddhi.ruleModel;
+          const blocker = self.WebSuddhi.frameBlocker;
+          if (!reg || !ruleModel) return { success: false, error: 'Frame engine unavailable' };
+          const tabId = Number.isInteger(message.tabId) ? message.tabId : sender.tab?.id;
+          let site = '';
+          try {
+            const tab = await api.tabs.get(tabId);
+            site = normalizeHostname(new URL(tab.url).hostname, true);
+          } catch (e) { return { success: false, error: 'No tab URL' }; }
+          if (!site || !message.frameDomain) return { success: false, error: 'Missing site or frameDomain' };
+
+          await ruleModel.setFrameRule(site, message.frameDomain, message.rule || null, { persist: message.persist !== false });
+          // Persisted block also gets a network rule so it does not reload.
+          if (blocker) {
+            if (message.rule === 'blocked' && message.persist !== false) await blocker.addNetworkBlock(api, message.frameDomain);
+            else await blocker.removeNetworkBlock(api, message.frameDomain);
+          }
+          await recomputeTab(tabId);
+          return { success: true, census: reg.getCensus(tabId) };
+        }
 
         case 'TOGGLE_NETWORK_BLOCKING':
           if (self.WebSuddhi.networkBlocker) {

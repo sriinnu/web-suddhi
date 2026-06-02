@@ -29,3 +29,10 @@ it('wires the frame-engine message types end to end', () => {
   // The agent listens for teardown commands (background issues them in a later plan).
   expect(agentSource).toContain("'TEARDOWN_FRAME'");
 });
+
+it('wires the SET_FRAME_RULE blocking contract', () => {
+  const backgroundSource = readSource('background/background.js');
+  expect(backgroundSource).toContain("case 'SET_FRAME_RULE'");
+  expect(backgroundSource).toContain('addNetworkBlock');
+  expect(backgroundSource).toContain('applyTab');
+});

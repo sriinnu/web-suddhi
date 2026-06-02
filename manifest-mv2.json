@@ -31,7 +31,8 @@
       "background/privacy.js",
       "background/filter-lists.js",
       "background/phishing-detector.js",
-      "background/frame-registry.js"
+      "background/frame-registry.js",
+      "background/frame-blocker.js"
     ],
     "persistent": true
   },
