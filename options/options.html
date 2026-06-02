@@ -138,6 +138,25 @@
         </div>
 
         <div class="card">
+          <h3>Blocking Aggressiveness</h3>
+          <p class="setting-desc" style="margin-bottom: 14px;">How hard WebSuddhi blocks unknown, resource-heavy frames. Known ad/tracker domains are always blocked; payment, captcha, sign-in and core embeds are always protected.</p>
+          <div class="aggr-dial" id="aggressivenessDial" role="radiogroup" aria-label="Blocking aggressiveness">
+            <button class="aggr-option" data-aggr="conservative" role="radio" aria-checked="false">
+              <span class="aggr-name">Conservative</span>
+              <span class="aggr-desc">Only known ad/tracker domains. Nothing else is touched.</span>
+            </button>
+            <button class="aggr-option is-active" data-aggr="balanced" role="radio" aria-checked="true">
+              <span class="aggr-name">Balanced <span class="aggr-tag">default</span></span>
+              <span class="aggr-desc">Known ad/trackers blocked; heavy unknown frames flagged for one-tap kill.</span>
+            </button>
+            <button class="aggr-option" data-aggr="aggressive" role="radio" aria-checked="false">
+              <span class="aggr-name">Aggressive</span>
+              <span class="aggr-desc">Also auto-blocks heavy unknown frames. May break some sites.</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
           <div class="setting">
             <label class="toggle-label">
               <span class="setting-text">

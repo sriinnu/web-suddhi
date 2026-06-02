@@ -298,7 +298,8 @@ it('disables sync on browsers without storage.sync and keeps custom themes toggl
       thirdPartyCookieBlockingEnabled: false,
       syncEnabled: true,
       loggingEnabled: true,
-      toastDuration: 3
+      toastDuration: 3,
+      aggressiveness: 'aggressive'
     },
     runtimeHandlers: {
       GET_FILTER_SUBSCRIPTIONS: () => ({ success: true, subscriptions: [] }),
@@ -335,6 +336,13 @@ it('disables sync on browsers without storage.sync and keeps custom themes toggl
   expect(document.querySelector('.theme-btn[data-theme="forest-dark"]').classList.contains('active')).toBe(true);
   expect(document.getElementById('enableSync').disabled).toBe(true);
   expect(document.getElementById('syncDescription').textContent).toContain('settings stay local');
+
+  // Aggressiveness dial reflects stored value and persists a change.
+  expect(document.querySelector('.aggr-option[data-aggr="aggressive"]').classList.contains('is-active')).toBe(true);
+  document.querySelector('.aggr-option[data-aggr="conservative"]').click();
+  await flushAsyncWork();
+  expect(storageData.aggressiveness).toBe('conservative');
+  expect(document.querySelector('.aggr-option[data-aggr="conservative"]').classList.contains('is-active')).toBe(true);
 
   document.getElementById('themeToggle').click();
   await flushAsyncWork();

@@ -274,7 +274,7 @@
       'cookieConsentEnabled', 'annoyanceBlockingEnabled', 'socialBlockingEnabled',
       'pingProtectionEnabled', 'referrerStrippingEnabled', 'webrtcProtectionEnabled',
       'phishingProtectionEnabled', 'telemetryBlockingEnabled', 'thirdPartyCookieBlockingEnabled',
-      'syncEnabled', 'enabledLanguageFilters', 'loggingEnabled', 'toastDuration'
+      'syncEnabled', 'enabledLanguageFilters', 'loggingEnabled', 'toastDuration', 'aggressiveness'
     ]);
 
     // Load logging setting (default true if not set)
@@ -316,8 +316,21 @@
       }
     }
 
+    // Blocking aggressiveness dial
+    reflectAggressiveness(storage.aggressiveness || 'balanced');
+
     // Load language filter states based on actual subscriptions
     await loadLanguageFilterStates();
+  }
+
+  function reflectAggressiveness(value) {
+    const dial = document.getElementById('aggressivenessDial');
+    if (!dial) return;
+    dial.querySelectorAll('.aggr-option').forEach((btn) => {
+      const active = btn.getAttribute('data-aggr') === value;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-checked', active ? 'true' : 'false');
+    });
   }
 
   // Load language filter checkbox states by checking actual subscriptions
@@ -1189,6 +1202,16 @@
       try {
         await sendMessage({ type: 'TOGGLE_ENABLED', enabled });
       } catch (e) {}
+    });
+
+    // Blocking aggressiveness dial — storage-driven; applies on next recompute.
+    const aggrDial = document.getElementById('aggressivenessDial');
+    aggrDial?.querySelectorAll('.aggr-option').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const value = btn.getAttribute('data-aggr') || 'balanced';
+        reflectAggressiveness(value);
+        await setStorage({ aggressiveness: value });
+      });
     });
 
     // Toggle paywall

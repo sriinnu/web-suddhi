@@ -84,6 +84,7 @@ try {
     syncEnabled: false,
     loggingEnabled: true,
     toastDuration: 3,
+    aggressiveness: 'balanced',
     performanceStats: {
       totalBlocked: 0,
       byCategory: { ads: 0, trackers: 0, annoyances: 0, paywall: 0 },
