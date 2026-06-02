@@ -928,6 +928,206 @@ body {
 }
 
 /* ============================================
+   Frames panel (hero) — census-driven
+   ============================================ */
+.frame-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.frame-summary {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.frame-hogs {
+  background: rgba(255, 152, 0, 0.08);
+  border: 1px solid rgba(255, 152, 0, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  margin-bottom: 10px;
+}
+
+.frame-hogs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.frame-hogs-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ff9800;
+}
+
+.frame-killall,
+.frame-group-blockall {
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 59, 48, 0.15);
+  color: var(--danger, #ff3b30);
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.frame-killall:hover,
+.frame-group-blockall:hover {
+  background: rgba(255, 59, 48, 0.28);
+}
+
+.frame-groups {
+  gap: 12px;
+}
+
+.frame-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.frame-group-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+}
+
+.frame-group-cost {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+
+.frame-group-head .frame-group-blockall {
+  margin-left: 8px;
+}
+
+.frame-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.frame-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.frame-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-tertiary, rgba(120, 120, 128, 0.16));
+  color: var(--text-secondary);
+}
+
+.frame-tag.cat-ad,
+.frame-tag.cat-analytics,
+.frame-tag.cat-session-replay {
+  background: rgba(255, 59, 48, 0.15);
+  color: var(--danger, #ff3b30);
+}
+
+.frame-tag.protected {
+  background: rgba(52, 199, 89, 0.15);
+  color: var(--success);
+}
+
+.frame-heat {
+  font-size: 10px;
+  font-weight: 600;
+  color: #ff9800;
+}
+
+.frame-size {
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.frame-item.heavy {
+  border-color: rgba(255, 152, 0, 0.4);
+}
+
+.frame-toggle {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.frame-toggle.is-allowed {
+  background: rgba(255, 59, 48, 0.15);
+  color: var(--danger, #ff3b30);
+}
+
+.frame-toggle.is-blocked {
+  background: rgba(52, 199, 89, 0.15);
+  color: var(--success);
+}
+
+.frame-toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Relax ("Looks broken?") button */
+.btn-warning {
+  background: rgba(255, 152, 0, 0.15);
+  color: #ff9800;
+}
+
+.btn-warning:hover {
+  background: rgba(255, 152, 0, 0.28);
+}
+
+/* Site state control (Protected / Default / Paused) */
+.site-state-control {
+  display: flex;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 3px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.site-state-btn {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: calc(var(--radius-sm) - 2px);
+  cursor: pointer;
+}
+
+.site-state-btn:hover {
+  color: var(--text-primary);
+}
+
+.site-state-btn.is-active {
+  background: var(--accent, #0a84ff);
+  color: #fff;
+}
+
+/* ============================================
    Footer — compact single-row
    ============================================ */
 .footer {

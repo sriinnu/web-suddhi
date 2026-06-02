@@ -68,6 +68,20 @@
             </svg>
             Block
           </button>
+          <button class="btn btn-warning" id="relaxBtn" title="Relax cosmetic blocking on this site; network blocking stays on">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            Looks broken?
+          </button>
+        </div>
+        <!-- Site state: Protected / Default / Paused (replaces whitelist) -->
+        <div class="site-state-control" role="group" aria-label="Blocking level for this site">
+          <button class="site-state-btn" data-state="protected" id="siteStateProtected" title="Full blocking">Protected</button>
+          <button class="site-state-btn is-active" data-state="default" id="siteStateDefault" title="Normal blocking">Default</button>
+          <button class="site-state-btn" data-state="paused" id="siteStatePaused" title="Blocking off here">Paused</button>
         </div>
       </section>
 
@@ -129,10 +143,24 @@
         </div>
       </section>
 
-      <!-- Third-Party Frames -->
+      <!-- Frames panel (hero) — live per-tab census -->
       <section class="card frame-section" id="framesSection" style="display: none;">
-        <h3 class="section-title">Third-Party Frames <span id="framesCount" class="section-count">0</span></h3>
-        <div id="framesList" class="frame-list"></div>
+        <div class="frame-panel-head">
+          <h3 class="section-title">Frames <span id="framesCount" class="section-count">0</span></h3>
+          <span class="frame-summary" id="framesSummary"></span>
+        </div>
+
+        <!-- Pinned resource hogs -->
+        <div class="frame-hogs" id="framesHogs" style="display: none;">
+          <div class="frame-hogs-head">
+            <span class="frame-hogs-title">⚡ Resource hogs <span id="framesHogsCount" class="section-count">0</span></span>
+            <button class="frame-killall" id="killAllHogsBtn">Kill all</button>
+          </div>
+          <div id="framesHogsList" class="frame-list"></div>
+        </div>
+
+        <!-- Grouped-by-category list -->
+        <div id="framesList" class="frame-list frame-groups"></div>
       </section>
 
       <!-- Stats -->

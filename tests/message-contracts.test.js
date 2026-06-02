@@ -37,6 +37,18 @@ it('wires the SET_FRAME_RULE blocking contract', () => {
   expect(backgroundSource).toContain('applyTab');
 });
 
+it('wires the site-state model end to end (popup <-> background)', () => {
+  const backgroundSource = readSource('background/background.js');
+  const popupSource = readSource('popup/popup.js');
+  expect(backgroundSource).toContain("case 'GET_SITE_STATE'");
+  expect(backgroundSource).toContain("case 'SET_SITE_STATE'");
+  expect(popupSource).toContain("type: 'GET_SITE_STATE'");
+  expect(popupSource).toContain("type: 'SET_SITE_STATE'");
+  // Popup drives per-frame blocking + the live census.
+  expect(popupSource).toContain("type: 'SET_FRAME_RULE'");
+  expect(popupSource).toContain("type: 'GET_TAB_CENSUS'");
+});
+
 it('picker captures every pointer event + uses an overlay (no click leak to iframes)', () => {
   const src = readSource('content/ad-blocker.js');
   // All pointer events intercepted in the capture phase.

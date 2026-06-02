@@ -1502,6 +1502,24 @@ try {
           const storage = await getStorage(['whitelistedSites']);
           return { success: true, whitelistedSites: storage.whitelistedSites || [] };
 
+        // Site state model: protected / default / paused (replaces whitelist).
+        case 'GET_SITE_STATE': {
+          const ruleModel = self.WebSuddhi.ruleModel;
+          if (!ruleModel || !message.hostname) return { success: true, state: 'default' };
+          const site = normalizeHostname(message.hostname, true);
+          return { success: true, state: await ruleModel.getSiteState(site) };
+        }
+
+        case 'SET_SITE_STATE': {
+          const ruleModel = self.WebSuddhi.ruleModel;
+          if (!ruleModel || !message.hostname) return { success: false, error: 'Frame engine unavailable' };
+          const site = normalizeHostname(message.hostname, true);
+          await ruleModel.setSiteState(site, message.state || 'default');
+          const stateTabId = Number.isInteger(message.tabId) ? message.tabId : sender.tab?.id;
+          if (Number.isInteger(stateTabId)) await recomputeTab(stateTabId);
+          return { success: true, state: message.state || 'default' };
+        }
+
         case 'REPORT_FRAME':
           return await reportFrame(message, sender);
 

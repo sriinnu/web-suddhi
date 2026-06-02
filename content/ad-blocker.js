@@ -1153,6 +1153,11 @@
         stopZapMode();
         return { success: true };
 
+      case 'RELAX_COSMETIC':
+        // "Looks broken?" — restore everything we cosmetically hid on this page.
+        // Network blocking is unaffected (it lives in the background).
+        return { success: true, restored: relaxCosmeticHides() };
+
       case 'REMOVE_PAYWALL':
         const removed = removePaywall();
         return { success: true, removed };
@@ -2054,6 +2059,20 @@
     // Try to get a meaningful selector for logging
     const selectorForLog = matchedSelector || getElementDescriptor(el);
     reportCosmeticBlockDebounced(selectorForLog);
+  }
+
+  // Undo cosmetic hides: reveal elements WebSuddhi hid on this page. Network
+  // blocking is untouched (background-owned). Returns the count restored.
+  function relaxCosmeticHides() {
+    let restored = 0;
+    const hidden = document.querySelectorAll('[data-websuddhi-blocked], .websuddhi-hidden');
+    hidden.forEach((el) => {
+      el.classList.remove('websuddhi-hidden');
+      el.removeAttribute('data-websuddhi-blocked');
+      ['display', 'visibility', 'opacity', 'position', 'pointer-events', 'z-index'].forEach((p) => el.style.removeProperty(p));
+      restored += 1;
+    });
+    return restored;
   }
 
   function getElementDescriptor(el) {

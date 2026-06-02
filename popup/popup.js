@@ -82,7 +82,17 @@
     // Frames elements
     framesSection: document.getElementById('framesSection'),
     framesCount: document.getElementById('framesCount'),
+    framesSummary: document.getElementById('framesSummary'),
     framesList: document.getElementById('framesList'),
+    framesHogs: document.getElementById('framesHogs'),
+    framesHogsCount: document.getElementById('framesHogsCount'),
+    framesHogsList: document.getElementById('framesHogsList'),
+    killAllHogsBtn: document.getElementById('killAllHogsBtn'),
+    relaxBtn: document.getElementById('relaxBtn'),
+    // Site state control
+    siteStateProtected: document.getElementById('siteStateProtected'),
+    siteStateDefault: document.getElementById('siteStateDefault'),
+    siteStatePaused: document.getElementById('siteStatePaused'),
     // Blocked panel elements
     networkStatBtn: document.getElementById('networkStatBtn'),
     cosmeticStatBtn: document.getElementById('cosmeticStatBtn'),
@@ -262,25 +272,6 @@
     if (Array.isArray(response?.log)) return response.log;
     if (Array.isArray(response?.entries)) return response.entries;
     return [];
-  }
-
-  function normalizeFrameList(frames, blocked) {
-    if (!Array.isArray(frames)) return [];
-    return frames.map((frame) => {
-      if (!frame) return null;
-      if (typeof frame === 'string') {
-        return { host: frame, url: frame, blocked };
-      }
-
-      const host = frame.host || frame.hostname || frame.domain;
-      if (!host) return null;
-
-      return {
-        host,
-        url: frame.url || frame.src || frame.frameUrl || host,
-        blocked: frame.blocked === true || blocked
-      };
-    }).filter(Boolean);
   }
 
   function extractCertificate(securityInfo) {
@@ -1130,37 +1121,8 @@
         }
       }
 
-      let allowedFrames = normalizeFrameList(
-        securityInfo?.thirdPartyDomains ||
-        securityInfo?.allowedFrames ||
-        securityInfo?.frames?.allowed ||
-        securityInfo?.frameInfo?.allowed,
-        false
-      );
-      let blockedFrames = normalizeFrameList(
-        securityInfo?.blockedFrames ||
-        securityInfo?.frames?.blocked ||
-        securityInfo?.frameInfo?.blocked,
-        true
-      );
-
-      // Fallback to content script frame detection for older/newer handlers.
-      if (allowedFrames.length === 0 && blockedFrames.length === 0) {
-        try {
-          const frameResponse = await sendToContentScript({ type: 'GET_FRAMES' });
-          const frames = Array.isArray(frameResponse?.frames) ? frameResponse.frames : [];
-          allowedFrames = normalizeFrameList(frames.filter(frame => frame?.blocked !== true), false);
-          blockedFrames = normalizeFrameList(frames.filter(frame => frame?.blocked === true), true);
-        } catch (e) {}
-      }
-
-      // Update frames section
-      if (elements.framesSection && (allowedFrames.length > 0 || blockedFrames.length > 0)) {
-        renderFramesList(allowedFrames, blockedFrames);
-        elements.framesSection.style.display = 'block';
-      } else if (elements.framesSection) {
-        elements.framesSection.style.display = 'none';
-      }
+      // Frames are owned by the live census panel (loadFrameCensus), not here.
+      await loadFrameCensus();
     } catch (err) {
       setPhishingRiskState(fallbackConnection, {
         isSuspicious: false,
@@ -1214,139 +1176,276 @@
     return normalized;
   }
 
-  // Render frames list
-  function renderFramesList(allowed, blocked) {
-    if (!elements.framesList) return;
+  // ============================================
+  // FRAMES PANEL — driven by the live per-tab census (GET_TAB_CENSUS)
+  // ============================================
+  const CATEGORY_LABELS = {
+    ad: 'Ads', analytics: 'Analytics', 'session-replay': 'Session replay',
+    payment: 'Payments', captcha: 'Captcha', auth: 'Sign-in', embed: 'Embeds',
+    social: 'Social', other: 'Other'
+  };
 
-    while (elements.framesList.firstChild) {
-      elements.framesList.removeChild(elements.framesList.firstChild);
-    }
-
-    // Show blocked frames first
-    for (const frame of blocked) {
-      const item = document.createElement('div');
-      item.className = 'frame-item blocked';
-
-      const host = document.createElement('span');
-      host.className = 'frame-host';
-      host.textContent = frame.host;
-      host.title = frame.url || frame.host;
-      item.appendChild(host);
-
-      const allowBtn = document.createElement('button');
-      allowBtn.className = 'frame-allow-btn';
-      allowBtn.textContent = 'Allow';
-      allowBtn.addEventListener('click', () => allowFrame(frame.host, frame.url));
-      item.appendChild(allowBtn);
-
-      elements.framesList.appendChild(item);
-    }
-
-    // Show allowed frames
-    for (const frame of allowed) {
-      const item = document.createElement('div');
-      item.className = 'frame-item';
-
-      const host = document.createElement('span');
-      host.className = 'frame-host';
-      host.textContent = frame.host;
-      host.title = frame.url || frame.host;
-      item.appendChild(host);
-
-      const status = document.createElement('span');
-      status.className = 'frame-status allowed';
-      status.textContent = 'loaded';
-      item.appendChild(status);
-
-      elements.framesList.appendChild(item);
-    }
-
-    // Update count
-    if (elements.framesCount) {
-      elements.framesCount.textContent = allowed.length + blocked.length;
-    }
+  function formatBytes(bytes) {
+    const n = Number(bytes) || 0;
+    if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    if (n >= 1024) return Math.round(n / 1024) + ' KB';
+    return n + ' B';
   }
 
-  // Update frames from content script detection
-  function updateFramesFromContent(frames) {
-    if (!elements.framesList || !frames.length) return;
+  async function loadFrameCensus() {
+    if (!elements.framesSection || !currentTab) return;
+    let census = null;
+    try {
+      const resp = await sendToBackground({ type: 'GET_TAB_CENSUS', tabId: currentTab.id });
+      census = resp && resp.census;
+    } catch (e) { census = null; }
 
-    // Get existing hosts
-    const existingHosts = new Set();
-    elements.framesList.querySelectorAll('.frame-host').forEach(el => {
-      existingHosts.add(el.textContent);
-    });
+    const frames = (census && Array.isArray(census.frames)) ? census.frames : [];
+    if (frames.length === 0) {
+      elements.framesSection.style.display = 'none';
+      return;
+    }
+    elements.framesSection.style.display = 'block';
+    renderCensus(census);
+  }
 
-    // Add new frames
-    for (const frame of frames) {
-      if (existingHosts.has(frame.host)) continue;
+  function renderCensus(census) {
+    const frames = census.frames.slice();
+    const counts = census.counts || {};
 
-      const item = document.createElement('div');
-      item.className = 'frame-item' + (frame.blocked ? ' blocked' : '');
+    if (elements.framesCount) elements.framesCount.textContent = String(frames.length);
+    if (elements.framesSummary) {
+      const blocked = counts.blocked || 0;
+      const flagged = counts.flagged || 0;
+      const parts = [];
+      if (blocked) parts.push(blocked + ' blocked');
+      if (flagged) parts.push(flagged + ' flagged');
+      elements.framesSummary.textContent = parts.join(' · ');
+    }
 
-      const host = document.createElement('span');
-      host.className = 'frame-host';
-      host.textContent = frame.host;
-      host.title = frame.src || frame.host;
-      item.appendChild(host);
-
-      if (frame.blocked) {
-        const allowBtn = document.createElement('button');
-        allowBtn.className = 'frame-allow-btn';
-        allowBtn.textContent = 'Allow';
-        allowBtn.addEventListener('click', () => allowFrame(frame.host, frame.src));
-        item.appendChild(allowBtn);
+    // --- Pinned resource hogs (heavy frames, any category) ---
+    const hogs = frames.filter((f) => f.isHeavy);
+    if (elements.framesHogs && elements.framesHogsList) {
+      if (hogs.length) {
+        elements.framesHogs.style.display = 'block';
+        if (elements.framesHogsCount) elements.framesHogsCount.textContent = String(hogs.length);
+        renderFrameRows(elements.framesHogsList, hogs.slice().sort(byWeightDesc));
       } else {
-        const status = document.createElement('span');
-        status.className = 'frame-status allowed';
-        status.textContent = 'loaded';
-        item.appendChild(status);
+        elements.framesHogs.style.display = 'none';
+      }
+    }
+
+    // --- Grouped by category, groups sorted by aggregate weight ---
+    if (!elements.framesList) return;
+    while (elements.framesList.firstChild) elements.framesList.removeChild(elements.framesList.firstChild);
+
+    const groups = new Map();
+    for (const f of frames) {
+      const key = f.category || 'other';
+      if (!groups.has(key)) groups.set(key, { frames: [], bytes: 0 });
+      const g = groups.get(key);
+      g.frames.push(f);
+      g.bytes += Number(f.bytes) || 0;
+    }
+    const ordered = Array.from(groups.entries()).sort((a, b) => b[1].bytes - a[1].bytes);
+
+    for (const [category, g] of ordered) {
+      const groupEl = document.createElement('div');
+      groupEl.className = 'frame-group';
+
+      const head = document.createElement('div');
+      head.className = 'frame-group-head';
+
+      const label = document.createElement('span');
+      label.className = 'frame-group-label';
+      label.textContent = (CATEGORY_LABELS[category] || category) + ' (' + g.frames.length + ')';
+      head.appendChild(label);
+
+      const cost = document.createElement('span');
+      cost.className = 'frame-group-cost';
+      cost.textContent = formatBytes(g.bytes);
+      head.appendChild(cost);
+
+      // Block-all for non-protected groups.
+      const blockable = g.frames.filter((f) => !f.isProtected);
+      if (blockable.length) {
+        const blockAll = document.createElement('button');
+        blockAll.className = 'frame-group-blockall';
+        blockAll.textContent = 'Block all';
+        blockAll.addEventListener('click', async () => {
+          for (const f of blockable) await applyFrameRule(f.domain, 'blocked');
+          await loadFrameCensus();
+        });
+        head.appendChild(blockAll);
       }
 
-      elements.framesList.appendChild(item);
-      existingHosts.add(frame.host);
-    }
+      groupEl.appendChild(head);
 
-    // Update count
-    if (elements.framesCount) {
-      elements.framesCount.textContent = existingHosts.size;
-    }
+      const rows = document.createElement('div');
+      rows.className = 'frame-list';
+      renderFrameRows(rows, g.frames.slice().sort(byWeightDesc));
+      groupEl.appendChild(rows);
 
-    // Show section if we have frames
-    if (existingHosts.size > 0 && elements.framesSection) {
-      elements.framesSection.style.display = 'block';
+      elements.framesList.appendChild(groupEl);
     }
   }
 
-  // Allow a blocked frame
-  async function allowFrame(host, url) {
-    try {
-      try {
-        await sendToBackgroundWithFallback(
-          ['ALLOW_FRAME', 'ALLOW_THIRD_PARTY_FRAME', 'UNBLOCK_FRAME'],
-          {
-            tabId: currentTab.id,
-            frameHost: host,
-            frameUrl: url,
-            host,
-            url
-          }
-        );
-      } catch (e) {}
+  function byWeightDesc(a, b) {
+    return (Number(b.bytes) || 0) - (Number(a.bytes) || 0);
+  }
 
-      // Notify content script to unblock
-      await sendToContentScript({
-        type: 'ALLOW_FRAME',
-        frameHost: host
-      });
-
-      showToast('Allowed: ' + host);
-
-      // Refresh the list
-      await loadSecurityDetails();
-    } catch (e) {
-      showToast('Failed to allow frame');
+  // Render a flat list of frame rows into a container.
+  function renderFrameRows(container, frames) {
+    while (container.firstChild) container.removeChild(container.firstChild);
+    for (const f of frames) {
+      container.appendChild(buildFrameRow(f));
     }
+  }
+
+  function buildFrameRow(frame) {
+    const blocked = frame.action === 'block';
+    const item = document.createElement('div');
+    item.className = 'frame-item' + (blocked ? ' blocked' : '') + (frame.isHeavy ? ' heavy' : '');
+
+    const main = document.createElement('div');
+    main.className = 'frame-main';
+
+    const host = document.createElement('span');
+    host.className = 'frame-host';
+    host.textContent = frame.domain;
+    host.title = frame.url || frame.domain;
+    main.appendChild(host);
+
+    const meta = document.createElement('div');
+    meta.className = 'frame-meta';
+
+    const tag = document.createElement('span');
+    tag.className = 'frame-tag cat-' + (frame.category || 'other');
+    tag.textContent = CATEGORY_LABELS[frame.category] || frame.category || 'Other';
+    meta.appendChild(tag);
+
+    if (frame.isProtected) {
+      const prot = document.createElement('span');
+      prot.className = 'frame-tag protected';
+      prot.textContent = 'Protected';
+      meta.appendChild(prot);
+    }
+
+    if (frame.isHeavy) {
+      const heavy = document.createElement('span');
+      heavy.className = 'frame-heat';
+      heavy.textContent = '⚡ ' + formatBytes(frame.bytes) + ' (est.)';
+      meta.appendChild(heavy);
+    } else if (frame.bytes) {
+      const size = document.createElement('span');
+      size.className = 'frame-size';
+      size.textContent = formatBytes(frame.bytes) + ' (est.)';
+      meta.appendChild(size);
+    }
+
+    main.appendChild(meta);
+    item.appendChild(main);
+
+    // Allow/Block toggle — protected frames can't be auto-blocked but can be paused/blocked manually.
+    const btn = document.createElement('button');
+    btn.className = 'frame-toggle ' + (blocked ? 'is-blocked' : 'is-allowed');
+    btn.textContent = blocked ? 'Allow' : 'Block';
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      await applyFrameRule(frame.domain, blocked ? 'allowed' : 'blocked');
+      await loadFrameCensus();
+    });
+    item.appendChild(btn);
+
+    return item;
+  }
+
+  // Persist a per-frame rule (this-site, persisted) and apply it.
+  async function applyFrameRule(frameDomain, rule) {
+    try {
+      await sendToBackground({
+        type: 'SET_FRAME_RULE',
+        tabId: currentTab.id,
+        frameDomain,
+        rule,
+        persist: true
+      });
+    } catch (e) {
+      showToast('Failed to update frame');
+    }
+  }
+
+  // Kill every resource hog at once.
+  async function killAllHogs() {
+    try {
+      const resp = await sendToBackground({ type: 'GET_TAB_CENSUS', tabId: currentTab.id });
+      const frames = (resp && resp.census && resp.census.frames) || [];
+      const hogs = frames.filter((f) => f.isHeavy && !f.isProtected);
+      for (const f of hogs) await applyFrameRule(f.domain, 'blocked');
+      showToast('Blocked ' + hogs.length + ' resource hog' + (hogs.length === 1 ? '' : 's'));
+      await loadFrameCensus();
+    } catch (e) {
+      showToast('Failed to kill hogs');
+    }
+  }
+
+  // ============================================
+  // SITE STATE — protected / default / paused
+  // ============================================
+  function reflectSiteState(stateValue) {
+    const map = {
+      protected: elements.siteStateProtected,
+      default: elements.siteStateDefault,
+      paused: elements.siteStatePaused
+    };
+    for (const key of Object.keys(map)) {
+      if (map[key]) map[key].classList.toggle('is-active', key === stateValue);
+    }
+  }
+
+  async function loadSiteState() {
+    if (!currentTab?.url) return;
+    try {
+      const hostname = new URL(currentTab.url).hostname;
+      const resp = await sendToBackground({ type: 'GET_SITE_STATE', hostname });
+      reflectSiteState((resp && resp.state) || 'default');
+    } catch (e) { /* non-http */ }
+  }
+
+  async function setSiteState(stateValue) {
+    if (!currentTab?.url) return;
+    try {
+      const hostname = new URL(currentTab.url).hostname;
+      await sendToBackground({ type: 'SET_SITE_STATE', hostname, state: stateValue, tabId: currentTab.id });
+      reflectSiteState(stateValue);
+      showToast(stateValue === 'paused' ? 'Blocking paused on ' + hostname
+        : stateValue === 'protected' ? 'Full blocking on ' + hostname
+          : 'Default blocking on ' + hostname);
+      await loadFrameCensus();
+    } catch (e) {
+      showToast('Failed to change site state');
+    }
+  }
+
+  // ============================================
+  // RELAX — "Looks broken?" : drop cosmetic layers, keep network blocking on.
+  // ============================================
+  async function relaxCosmetic() {
+    const cosmeticToggles = [
+      { el: elements.annoyanceToggle, fn: toggleAnnoyanceBlocking },
+      { el: elements.paywallToggle, fn: togglePaywall },
+      { el: elements.socialBlockingToggle, fn: toggleSocialBlocking },
+      { el: elements.cookieConsentToggle, fn: toggleCookieConsent }
+    ];
+    for (const { el, fn } of cosmeticToggles) {
+      if (el && el.checked) {
+        el.checked = false;
+        try { await fn(); } catch (e) {}
+      }
+    }
+    // Ask the page to restore anything cosmetically hidden.
+    try { await sendToContentScript({ type: 'RELAX_COSMETIC' }); } catch (e) {}
+    showToast('Relaxed cosmetic blocking — network blocking still on');
   }
 
   // ============================================
@@ -1397,10 +1496,17 @@
     elements.blacklistBtn?.addEventListener('click', quickBlacklist);
     elements.whitelistToggleBtn?.addEventListener('click', toggleWhitelist);
 
-    // Listen for messages from content script or background
+    // Frames panel + relax + site state
+    elements.relaxBtn?.addEventListener('click', relaxCosmetic);
+    elements.killAllHogsBtn?.addEventListener('click', killAllHogs);
+    elements.siteStateProtected?.addEventListener('click', () => setSiteState('protected'));
+    elements.siteStateDefault?.addEventListener('click', () => setSiteState('default'));
+    elements.siteStatePaused?.addEventListener('click', () => setSiteState('paused'));
+
+    // Listen for live frame updates from the background census.
     api.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      if (message.type === 'FRAMES_DETECTED' || message.type === 'FRAME_INFO_UPDATED') {
-        updateFramesFromContent(message.frames || []);
+      if (message.type === 'FRAMES_DETECTED' || message.type === 'FRAME_INFO_UPDATED' || message.type === 'CENSUS_UPDATED') {
+        loadFrameCensus();
       }
       return false;
     });
@@ -1433,11 +1539,14 @@
           // Update security info
           updateSecurityInfo(url);
 
-          // Get security details
+          // Get security details (also loads the frame census)
           await loadSecurityDetails();
 
           // Load tracker summary
           await loadTrackerSummary();
+
+          // Load this-site blocking state (protected / default / paused)
+          await loadSiteState();
         } catch (e) {
           if (elements.currentSite) {
             elements.currentSite.textContent = 'Unknown site';

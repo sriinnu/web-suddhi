@@ -237,6 +237,48 @@ it('loads the popup with the saved theme and persists quick theme changes', asyn
   expect(document.documentElement.getAttribute('data-theme')).toBe('coastal');
 });
 
+it('renders the frame census panel and blocks a frame via SET_FRAME_RULE', async () => {
+  const census = {
+    frames: [
+      { domain: 'doubleclick.net', url: 'https://doubleclick.net/a', category: 'ad', action: 'block', isProtected: false, isHeavy: true, bytes: 1572864 },
+      { domain: 'youtube.com', url: 'https://youtube.com/embed/x', category: 'embed', action: 'allow', isProtected: false, isHeavy: false, bytes: 51200 }
+    ],
+    counts: { frames: 2, heavy: 1, blocked: 1, flagged: 0, cosmetic: 0 }
+  };
+  const setFrameRuleCalls = [];
+  const { api } = createExtensionApiMock({
+    storageData: { theme: 'system', enabled: true, networkBlockingEnabled: true },
+    runtimeHandlers: {
+      GET_ALL_SETTINGS: () => ({ success: true, settings: { enabled: true, networkBlockingEnabled: true } }),
+      IS_WHITELISTED: () => ({ success: true, whitelisted: false }),
+      GET_SITE_STATE: () => ({ success: true, state: 'default' }),
+      GET_SECURITY_INFO: () => ({ success: true, connection: { protocol: 'https:', host: 'example.com' }, phishing: { isSuspicious: false } }),
+      GET_TAB_CENSUS: () => ({ success: true, census }),
+      SET_FRAME_RULE: (message) => { setFrameRuleCalls.push(message); return { success: true, census }; }
+    }
+  });
+
+  await mountExtensionPage('popup/popup.html', 'popup/popup.js', api);
+
+  const framesSection = document.getElementById('framesSection');
+  expect(framesSection.style.display).toBe('block');
+  expect(document.getElementById('framesCount').textContent).toBe('2');
+  // The heavy ad frame appears in the pinned resource-hogs section.
+  expect(document.getElementById('framesHogs').style.display).toBe('block');
+  expect(document.getElementById('framesHogsCount').textContent).toBe('1');
+
+  // Click the first "Block" toggle (on the allowed youtube embed row).
+  const blockBtn = Array.from(document.querySelectorAll('.frame-toggle')).find((b) => b.textContent === 'Block');
+  expect(blockBtn).toBeTruthy();
+  blockBtn.click();
+  await flushAsyncWork();
+
+  const call = setFrameRuleCalls.find((c) => c.rule === 'blocked');
+  expect(call).toBeTruthy();
+  expect(call.persist).toBe(true);
+  expect(typeof call.frameDomain).toBe('string');
+});
+
 it('disables sync on browsers without storage.sync and keeps custom themes toggleable', async () => {
   const { api, storageData } = createExtensionApiMock({
     storageData: {
