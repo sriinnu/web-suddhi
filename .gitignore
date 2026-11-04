@@ -99,3 +99,6 @@ rules/provenance.json
 
 # Chrome extension build artifacts
 _metadata/
+
+# Session handoff (local only)
+PICKUP.md
