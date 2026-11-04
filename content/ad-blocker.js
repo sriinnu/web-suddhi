@@ -563,11 +563,10 @@
       '[class^="ad-"]', '[class*=" ad-"]',
       '[class^="ads-"]', '[class*=" ads-"]',
       '[class*="advert"]',
-      '[id^="ad-"]', '[id^="ads-"]',
       '[id*="advert"]',
       '[data-ad]', '[data-ads]', '[data-advertisement]',
       '[data-ad-width]', '[data-ad-height]',
-      '[data-google-query-id]', '[data-slot]',
+      '[data-google-query-id]', '[data-ad-slot]',
       '[data-adsbygoogle]', '[data-ad-client]',
       '.ad', '.ads', '.ad-container', '.ads-container',
       '.ad-wrapper', '.ads-wrapper', '.ad-unit', '.ads-unit',
@@ -882,8 +881,9 @@
     try {
       const { whitelisted } = await refreshLocalSettings();
 
-      // Auto-detect and remove paywalls (only if not whitelisted)
-      if (state.paywallEnabled && !whitelisted) {
+      // Auto-detect and remove paywalls (only if blocking is actually active —
+      // pausing a site must not let paywall removal keep mutating the page)
+      if (state.paywallEnabled && state.enabled && !whitelisted && !isSitePaused()) {
         setTimeout(() => detectAndRemovePaywall(), 1000);
         setTimeout(() => detectAndRemovePaywall(), 3000);
       }
@@ -897,8 +897,6 @@
         setTimeout(() => removeAntiAdblockOverlays(), 5000);
       }
 
-      // Setup listeners
-      setupMessageListener();
       // Only start observer when body exists
       if (document.body) {
         setupMutationObserver();
@@ -1177,8 +1175,10 @@
         return { success: true };
 
       case 'REMOVE_SELECTOR':
+        // Storage is the background's job here (it broadcasts this after
+        // removing). Writing it back from a tab would resurrect selectors that
+        // another tab already dropped.
         state.blockedSelectors.delete(message.selector);
-        await saveSelectors();
         unblockSelector(message.selector);
         return { success: true };
 
@@ -2061,9 +2061,13 @@
     if (!state.enabled || isSiteWhitelisted() || isSitePaused()) return;
 
     const allowed = getAllowedSelectorSet();
+    const currentHost = getCurrentHostname();
 
-    for (const selector of state.blockedSelectors.keys()) {
+    // Saved pick-mode selectors are site-specific: an id or DOM path picked on
+    // one site usually exists elsewhere and would hide an unrelated element.
+    for (const [selector, info] of state.blockedSelectors) {
       if (allowed.has(selector)) continue;
+      if (!selectorIsForThisSite(info, currentHost)) continue;
       blockSelector(selector);
     }
 
@@ -2073,12 +2077,31 @@
     }
 
     blockByAttributes();
+    handleShadowDOM();
     handleDynamicContent();
 
     // Also apply social blocking if enabled
     if (state.socialBlockingEnabled) {
       applySocialBlocking();
     }
+  }
+
+  function selectorIsForThisSite(info, currentHost) {
+    const rawHost = typeof info === 'string' ? info : (info && info.url);
+    // Entries saved before the hostname was recorded have no scope; keep the
+    // old global behaviour for those rather than silently dropping them.
+    if (!rawHost || !currentHost) return true;
+
+    const normalize = (value) => String(value)
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .split('/')[0]
+      .replace(/^www\./, '');
+
+    const entryHost = normalize(rawHost);
+    const siteHost = normalize(currentHost);
+
+    return entryHost === siteHost || siteHost.endsWith('.' + entryHost);
   }
 
   function blockSelector(selector) {
@@ -2244,12 +2267,18 @@
     if (tag === 'html' || tag === 'body' || tag === 'main' || tag === 'article') return true;
     if (el.querySelector && el.querySelector('main, article, [role="main"]')) return true;
 
+    // A large box holding media is content — unless it labels itself as an ad.
+    // Without this check, full-viewport video/exit-intent ads were never hidden.
+    const descriptor = `${el.id || ''} ${typeof el.className === 'string' ? el.className : ''}`;
+    const looksLikeAd = /(^|[\s_-])(ad|ads|advert\w*|sponsor\w*|promoted|interstitial|banner|overlay)([\s_-]|$)/i
+      .test(descriptor);
+    if (looksLikeAd) return false;
+
     try {
       const rect = el.getBoundingClientRect();
       const vw = window.innerWidth || document.documentElement.clientWidth || 0;
       const vh = window.innerHeight || document.documentElement.clientHeight || 0;
       if (vw && vh && rect.width * rect.height >= vw * vh * 0.5) {
-        // A half-screen box holding an image or a heading is content, not an ad slot.
         if (el.querySelector && el.querySelector('img, picture, video, h1, h2')) return true;
       }
     } catch (e) {}
@@ -3192,6 +3221,11 @@
   // ============================================
   // START
   // ============================================
+  // Register the message listener synchronously. It used to be installed at the
+  // end of an async init(), so a storage failure left the page permanently deaf
+  // to pick mode, toggles and whitelist messages.
+  setupMessageListener();
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {

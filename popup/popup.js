@@ -588,7 +588,16 @@
     const enabled = elements.enableToggle.checked;
 
     try {
-      await sendToBackground({ type: 'TOGGLE_ENABLED', enabled });
+      const response = await sendToBackground({ type: 'TOGGLE_ENABLED', enabled });
+
+      // sendToBackground resolves null when the worker is unreachable; without
+      // this check the badge flipped and claimed success while nothing persisted.
+      if (!response?.success) {
+        elements.enableToggle.checked = !enabled;
+        setStatusBadgeState(!enabled);
+        showToast('Could not reach the background — try again');
+        return;
+      }
 
       // Update status badge
       setStatusBadgeState(enabled);
@@ -704,7 +713,7 @@
     const hostname = new URL(currentTab.url).hostname;
     const response = await sendToBackground({ type: 'WHITELIST_SITE', hostname });
 
-    if (response.success) {
+    if (response?.success) {
       isWhitelisted = true;
       // Update button text
       const btnText = elements.whitelistToggleBtn?.querySelector('#whitelistBtnText');
@@ -804,8 +813,11 @@
       const storage = await getStorage(['whitelistedSites', 'blockedDomains']);
       const whitelist = Array.isArray(storage.whitelistedSites) ? storage.whitelistedSites : [];
       const blocklist = Array.isArray(storage.blockedDomains) ? storage.blockedDomains : [];
-      isWhitelisted = whitelist.includes(host) || whitelist.includes(currentTab?.url && new URL(currentTab.url).hostname);
-      isBlacklisted = blocklist.includes(host);
+      const bare = (value) => String(value || '').toLowerCase().replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '');
+      // Normalize stored entries: older builds saved the raw www. hostname, which
+      // never matched this www-stripped comparison.
+      isWhitelisted = whitelist.some((entry) => bare(entry) === host);
+      isBlacklisted = blocklist.some((entry) => bare(entry) === host);
     } catch (e) {
       // silent
     }
@@ -891,7 +903,7 @@
     const hostname = new URL(currentTab.url).hostname;
     const response = await sendToBackground({ type: 'ADD_DOMAIN_BLOCK', domain: hostname });
 
-    if (response.success) {
+    if (response?.success) {
       showToast(`Blocked: ${hostname}`);
       // Blacklisting doesn't need immediate content script update
       // DNR rules will handle network blocking

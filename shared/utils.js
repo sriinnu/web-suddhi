@@ -745,7 +745,11 @@
 
   // Check if element is visible (works in DOM context)
   utils.isVisible = function(el) {
-    if (!el || !el.parentElement) return false;
+    if (!el) return false;
+    // Elements that are direct children of an open shadow root have no
+    // parentElement, which used to make every shadow-DOM ad look "invisible".
+    const inShadowRoot = typeof ShadowRoot !== 'undefined' && el.parentNode instanceof ShadowRoot;
+    if (!el.parentElement && !inShadowRoot) return false;
 
     try {
       const style = window.getComputedStyle(el);
