@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # package-lock.json is gitignored in this repo, so `npm ci` is not usable.
+      - run: npm install --no-audit --no-fund
+
+      - run: npm run lint
+
+      - run: npm test
+
+      - name: Build browser bundles
+        run: npm run build:targets

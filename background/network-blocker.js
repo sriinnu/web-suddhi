@@ -523,15 +523,32 @@
     }
   }
 
+  // Every ruleset the manifest declares — including the generated blocklist
+  // chunks. Hardcoding three IDs left 40,000 generated rules blocking even
+  // when the user switched network blocking off.
+  function getStaticRulesetIds() {
+    try {
+      const resources = api.runtime.getManifest()?.declarative_net_request?.rule_resources || [];
+      const ids = resources.map((resource) => resource && resource.id).filter(Boolean);
+      if (ids.length) return ids;
+    } catch (e) {
+      logError('Could not read ruleset ids from manifest:', e);
+    }
+    return ['ad_domains', 'tracking_domains', 'tracking_params'];
+  }
+
   async function toggleNetworkBlocking(enabled) {
     await setStorage({ networkBlockingEnabled: enabled });
 
     if (api.declarativeNetRequest) {
+      const rulesetIds = getStaticRulesetIds();
+
       try {
-        await api.declarativeNetRequest.updateEnabledRulesets({
-          enableRulesetIds: enabled ? ['ad_domains', 'tracking_domains', 'tracking_params'] : [],
-          disableRulesetIds: enabled ? [] : ['ad_domains', 'tracking_domains', 'tracking_params']
-        });
+        await api.declarativeNetRequest.updateEnabledRulesets(
+          enabled
+            ? { enableRulesetIds: rulesetIds, disableRulesetIds: [] }
+            : { enableRulesetIds: [], disableRulesetIds: rulesetIds }
+        );
       } catch (e) {
         logError('Failed to toggle rulesets:', e);
       }

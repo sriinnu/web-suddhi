@@ -9,7 +9,7 @@
  * Usage: node scripts/build-blocklists.mjs [--no-cache] [--dry-run] [--verbose]
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -182,12 +182,25 @@ async function main() {
 
   if (totalRules > settings.totalBudget) {
     console.log(`\n  [trim] ${totalRules} rules exceeds budget of ${settings.totalBudget}`);
-    const ratio = settings.totalBudget / totalRules;
-    for (const cat of Object.keys(categoryDomains)) {
+    // Trim by priority, not proportionally. A proportional cut silently drops
+    // malware/phishing entries at the same rate as ad entries.
+    const priority = settings.categoryPriority || Object.keys(categoryDomains);
+    let remaining = settings.totalBudget;
+
+    for (const cat of priority) {
+      if (!categoryDomains[cat]) continue;
       const before = categoryDomains[cat].length;
-      categoryDomains[cat] = categoryDomains[cat].slice(0, Math.floor(before * ratio));
-      if (VERBOSE) console.log(`    ${cat}: ${before} → ${categoryDomains[cat].length}`);
+      categoryDomains[cat] = categoryDomains[cat].slice(0, Math.max(0, remaining));
+      remaining -= categoryDomains[cat].length;
+      if (VERBOSE || before !== categoryDomains[cat].length) {
+        console.log(`    ${cat}: ${before} → ${categoryDomains[cat].length}`);
+      }
     }
+
+    for (const cat of Object.keys(categoryDomains)) {
+      if (!priority.includes(cat)) categoryDomains[cat] = [];
+    }
+
     totalRules = Object.values(categoryDomains).reduce((s, d) => s + d.length, 0);
   }
 
@@ -251,7 +264,32 @@ async function main() {
   const provPath = join(RULES_DIR, 'provenance.json');
   writeFileSync(provPath, JSON.stringify(provenance, null, 0), 'utf8');
 
-  console.log('\n  Done. Update manifest.json with the entries from generated-manifest-snippet.json');
+  // Keep the manifest in step with what we actually wrote. Hand-maintaining the
+  // ruleset list meant half the generated chunks were never loaded, and entries
+  // pointed at files that no longer existed.
+  const manifestPath = join(ROOT, 'manifest.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const dnr = manifest.declarative_net_request || {};
+  const handCurated = (dnr.rule_resources || []).filter(
+    (resource) => resource && !String(resource.id).startsWith('generated_')
+  );
+
+  dnr.rule_resources = [...handCurated, ...manifestEntries];
+  manifest.declarative_net_request = dnr;
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  console.log(`  [write] manifest.json — ${handCurated.length} curated + ${manifestEntries.length} generated rulesets`);
+
+  // Remove generated files from earlier runs that we no longer produce.
+  const written = new Set(manifestEntries.map((entry) => entry.path.split('/').pop()));
+  for (const file of readdirSync(RULES_DIR)) {
+    if (file.startsWith('generated-') && file.endsWith('.json') &&
+        file !== 'generated-manifest-snippet.json' && !written.has(file)) {
+      rmSync(join(RULES_DIR, file));
+      console.log(`  [clean] ${file}`);
+    }
+  }
+
+  console.log('\n  Done.');
   console.log(`  Total: ${totalRules.toLocaleString()} rules across ${manifestEntries.length} rulesets\n`);
 }
 

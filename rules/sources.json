@@ -15,7 +15,7 @@
       "name": "HaGeZi Threat Intelligence Feeds Mini",
       "url": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/tif.mini.txt",
       "category": "security",
-      "maxDomains": 10000,
+      "maxDomains": 8000,
       "enabled": true
     },
     {
@@ -23,7 +23,7 @@
       "name": "HaGeZi Fake/Scam DNS Blocklist",
       "url": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/fake.txt",
       "category": "security",
-      "maxDomains": 5000,
+      "maxDomains": 3000,
       "enabled": true
     },
     {
@@ -54,7 +54,7 @@
       "name": "Phishing URL Blocklist",
       "url": "https://malware-filter.gitlab.io/malware-filter/phishing-filter-ag.txt",
       "category": "security",
-      "maxDomains": 5000,
+      "maxDomains": 3000,
       "enabled": true
     },
     {
@@ -66,13 +66,38 @@
     }
   ],
   "categories": {
-    "ads": { "idStart": 100001, "description": "Advertising and tracker domains" },
-    "security": { "idStart": 150001, "description": "Malware, phishing, scam, DynDNS" },
-    "spam": { "idStart": 200001, "description": "Spam TLDs and nuisance domains" }
+    "ads": {
+      "idStart": 100001,
+      "description": "Advertising and tracker domains"
+    },
+    "security": {
+      "idStart": 150001,
+      "description": "Malware, phishing, scam, DynDNS"
+    },
+    "spam": {
+      "idStart": 200001,
+      "description": "Spam TLDs and nuisance domains"
+    }
   },
   "settings": {
     "maxRulesPerFile": 8000,
     "totalBudget": 40000,
-    "resourceTypes": ["script", "image", "xmlhttprequest", "sub_frame", "stylesheet", "font", "media", "websocket", "ping", "other"]
+    "resourceTypes": [
+      "script",
+      "image",
+      "xmlhttprequest",
+      "sub_frame",
+      "stylesheet",
+      "font",
+      "media",
+      "websocket",
+      "ping",
+      "other"
+    ],
+    "categoryPriority": [
+      "security",
+      "spam",
+      "ads"
+    ]
   }
 }
