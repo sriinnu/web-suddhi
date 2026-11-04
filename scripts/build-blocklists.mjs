@@ -29,10 +29,13 @@ const VERBOSE = args.includes('--verbose');
 const config = JSON.parse(readFileSync(join(RULES_DIR, 'sources.json'), 'utf8'));
 const { sources, categories, settings } = config;
 
-console.log('\n  WebSuddhi Blocklist Compiler v1.0');
-console.log('  ─────────────────────────────────');
-console.log(`  Sources: ${sources.filter(s => s.enabled).length}`);
-console.log(`  Budget: ${settings.totalBudget.toLocaleString()} rules\n`);
+// Printed from main() so importing this module for tests stays quiet.
+function printBanner() {
+  console.log('\n  WebSuddhi Blocklist Compiler v1.0');
+  console.log('  ─────────────────────────────────');
+  console.log(`  Sources: ${sources.filter(s => s.enabled).length}`);
+  console.log(`  Budget: ${settings.totalBudget.toLocaleString()} rules\n`);
+}
 
 // ============================================
 // Stage 2: Fetch upstream lists
@@ -74,28 +77,137 @@ async function fetchSource(source) {
 // ============================================
 // Stage 3: Parse ABP syntax
 // ============================================
-function parseABP(text) {
-  const domains = [];
-  const re = /^\|\|([a-z0-9]([a-z0-9\-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9\-]*[a-z0-9])?)+)\^?(\$.*)?$/i;
+// ABP modifiers we can express in declarativeNetRequest.
+const ABP_RESOURCE_TYPES = {
+  script: 'script',
+  image: 'image',
+  stylesheet: 'stylesheet',
+  font: 'font',
+  media: 'media',
+  websocket: 'websocket',
+  ping: 'ping',
+  xmlhttprequest: 'xmlhttprequest',
+  subdocument: 'sub_frame',
+  object: 'object',
+  document: 'main_frame',
+  other: 'other'
+};
 
-  for (const line of text.split('\n')) {
-    const t = line.trim();
-    if (!t || t.startsWith('!') || t.startsWith('[') || t.startsWith('@@')) continue;
-    if (t.includes('##') || t.includes('#@#') || t.includes('#?#')) continue;
-    if (t.startsWith('/') && t.endsWith('/')) continue;
+// Modifiers with no DNR equivalent. A rule carrying one is DROPPED, never
+// broadened — turning `$popup` into a global block is worse than no rule.
+const UNSUPPORTED_MODIFIERS = new Set([
+  'popup', 'csp', 'redirect', 'redirect-rule', 'removeparam', 'rewrite',
+  'elemhide', 'generichide', 'specifichide', 'inline-script', 'inline-font',
+  'all', 'genericblock', 'strict1p', 'strict3p', 'denyallow', 'method'
+]);
 
-    const m = t.match(re);
-    if (m) {
-      const opts = m[5];
-      if (opts) {
-        const o = opts.substring(1);
-        if (o.includes('redirect') || o.includes('csp') || o.includes('rewrite')) continue;
-      }
-      domains.push(m[1].toLowerCase());
+function splitRuleOptions(line) {
+  // The options block starts at the last '$' that is outside a /regex/ literal.
+  let inRegex = false;
+  let splitAt = -1;
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (char === '/' && line[i - 1] !== '\\') inRegex = !inRegex;
+    if (char === '$' && !inRegex) splitAt = i;
+  }
+  if (splitAt === -1) return { pattern: line, options: [] };
+
+  return {
+    pattern: line.slice(0, splitAt),
+    options: line.slice(splitAt + 1).split(',').map((option) => option.trim()).filter(Boolean)
+  };
+}
+
+/**
+ * Parse ABP text into rule objects that keep their semantics.
+ * Returns { rules, badfilters, stats }.
+ */
+export function parseABP(text) {
+  const rules = [];
+  const badfilters = new Set();
+  const stats = { lines: 0, kept: 0, cosmetic: 0, regex: 0, unsupported: 0, malformed: 0 };
+
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('!') || line.startsWith('[')) continue;
+    stats.lines += 1;
+
+    if (line.includes('##') || line.includes('#@#') || line.includes('#?#')) {
+      stats.cosmetic += 1;
+      continue;
     }
+    if (line.startsWith('/') && line.endsWith('/')) {
+      // Regex rules have a hard 1,000-per-type cap and are easy to get wrong.
+      stats.regex += 1;
+      continue;
+    }
+
+    const exception = line.startsWith('@@');
+    const body = exception ? line.slice(2) : line;
+    const { pattern, options } = splitRuleOptions(body);
+
+    // Only `||host` / `||host^` / `||host/path` shapes are accepted.
+    if (!/^\|\|[a-z0-9]/i.test(pattern)) {
+      stats.malformed += 1;
+      continue;
+    }
+
+    const rule = {
+      urlFilter: pattern.toLowerCase(),
+      exception,
+      important: false,
+      domainType: null,
+      resourceTypes: [],
+      initiatorDomains: [],
+      excludedInitiatorDomains: [],
+      caseSensitive: false
+    };
+
+    let unsupported = false;
+
+    for (const option of options) {
+      const lower = option.toLowerCase();
+
+      if (lower === 'badfilter') {
+        badfilters.add(rule.urlFilter);
+        unsupported = true;
+        break;
+      }
+      if (lower === 'third-party') { rule.domainType = 'thirdParty'; continue; }
+      if (lower === '~third-party') { rule.domainType = 'firstParty'; continue; }
+      if (lower === 'first-party') { rule.domainType = 'firstParty'; continue; }
+      if (lower === 'important') { rule.important = true; continue; }
+      if (lower === 'match-case') { rule.caseSensitive = true; continue; }
+
+      if (lower.startsWith('domain=')) {
+        for (const entry of lower.slice('domain='.length).split('|')) {
+          if (!entry) continue;
+          if (entry.startsWith('~')) rule.excludedInitiatorDomains.push(entry.slice(1));
+          else rule.initiatorDomains.push(entry);
+        }
+        continue;
+      }
+
+      if (lower.startsWith('~')) { unsupported = true; break; } // negated type — cannot express
+      if (ABP_RESOURCE_TYPES[lower]) { rule.resourceTypes.push(ABP_RESOURCE_TYPES[lower]); continue; }
+      if (UNSUPPORTED_MODIFIERS.has(lower)) { unsupported = true; break; }
+
+      // Unknown modifier: keep the rule only if it is a bare host block.
+      unsupported = true;
+      break;
+    }
+
+    if (unsupported) {
+      stats.unsupported += 1;
+      continue;
+    }
+
+    rule.resourceTypes = [...new Set(rule.resourceTypes)];
+    rules.push(rule);
+    stats.kept += 1;
   }
 
-  return [...new Set(domains)];
+  return { rules, badfilters, stats };
 }
 
 // ============================================
@@ -129,19 +241,42 @@ function loadExistingDomains() {
 // ============================================
 // Stage 5: Build and write rulesets
 // ============================================
-function buildRule(id, domain, resourceTypes) {
+// Priority ladder. DNR evaluates higher priority first; on a tie, allow wins.
+const PRIORITY = {
+  block: 1,
+  allow: 100,
+  importantBlock: 200,
+  importantAllow: 300
+};
+
+export function buildRule(id, rule, defaultResourceTypes) {
+  const condition = {
+    urlFilter: rule.urlFilter,
+    resourceTypes: rule.resourceTypes.length ? rule.resourceTypes : defaultResourceTypes
+  };
+
+  if (rule.domainType) condition.domainType = rule.domainType;
+  if (rule.initiatorDomains.length) condition.initiatorDomains = rule.initiatorDomains;
+  if (rule.excludedInitiatorDomains.length) {
+    condition.excludedInitiatorDomains = rule.excludedInitiatorDomains;
+  }
+  if (rule.caseSensitive) condition.isUrlFilterCaseSensitive = true;
+
+  const priority = rule.exception
+    ? (rule.important ? PRIORITY.importantAllow : PRIORITY.allow)
+    : (rule.important ? PRIORITY.importantBlock : PRIORITY.block);
+
   return {
     id,
-    priority: 1,
-    action: { type: 'block' },
-    condition: {
-      urlFilter: '||' + domain + '^',
-      resourceTypes
-    }
+    priority,
+    action: { type: rule.exception ? 'allow' : 'block' },
+    condition
   };
 }
 
 async function main() {
+  printBanner();
+
   // Process in category-priority order. Dedup is first-wins, so an ads source
   // running first would claim domains that security feeds also list, and the
   // ads trim would then throw them away entirely.
@@ -158,32 +293,64 @@ async function main() {
     });
   const rawTexts = await Promise.all(enabledSources.map(s => fetchSource(s)));
 
-  // Parse and collect domains by category
+  // Parse every source first so `$badfilter` can cancel rules from any feed.
+  const parsedSources = rawTexts.map((text) => (
+    text ? parseABP(text) : { rules: [], badfilters: new Set(), stats: {} }
+  ));
+  const allBadfilters = new Set();
+  for (const parsed of parsedSources) {
+    for (const filter of parsed.badfilters) allBadfilters.add(filter);
+  }
+
   const existing = loadExistingDomains();
-  const globalSeen = new Set(existing); // Start with existing to dedup
+  const globalSeen = new Set(existing); // curated bare domains already covered
+  const globalRuleKeys = new Set();
   const categoryDomains = {};
+
+  const ruleKey = (rule) => [
+    rule.urlFilter,
+    rule.domainType || '',
+    rule.resourceTypes.slice().sort().join(','),
+    rule.initiatorDomains.join(','),
+    rule.excludedInitiatorDomains.join(','),
+    rule.exception ? 'allow' : 'block'
+  ].join('|');
 
   for (let i = 0; i < enabledSources.length; i++) {
     const source = enabledSources[i];
-    const text = rawTexts[i];
-    if (!text) continue;
+    const { rules, stats } = parsedSources[i];
+    if (!rules || rules.length === 0) continue;
 
-    const allDomains = parseABP(text);
     const maxDomains = source.maxDomains || Infinity;
-
     let added = 0;
     const cat = source.category || 'ads';
     if (!categoryDomains[cat]) categoryDomains[cat] = [];
 
-    for (const domain of allDomains) {
-      if (globalSeen.has(domain)) continue;
+    for (const rule of rules) {
+      if (allBadfilters.has(rule.urlFilter)) continue;
+
+      const key = ruleKey(rule);
+      if (globalRuleKeys.has(key)) continue;
+
+      // A bare block is redundant if the hand-curated lists already cover it.
+      const isBareBlock = !rule.exception && !rule.domainType &&
+        rule.resourceTypes.length === 0 && rule.initiatorDomains.length === 0;
+      if (isBareBlock) {
+        const bare = rule.urlFilter.replace(/^\|\|/, '').replace(/\^$/, '');
+        if (globalSeen.has(bare)) continue;
+      }
+
       if (added >= maxDomains) break;
-      globalSeen.add(domain);
-      categoryDomains[cat].push(domain);
+      globalRuleKeys.add(key);
+      if (isBareBlock) globalSeen.add(rule.urlFilter.replace(/^\|\|/, '').replace(/\^$/, ''));
+      categoryDomains[cat].push(rule);
       added++;
     }
 
-    console.log(`  ${source.id.padEnd(20)} ${allDomains.length.toString().padStart(7)} parsed → ${added.toString().padStart(6)} new (cap: ${maxDomains === Infinity ? 'none' : maxDomains})`);
+    console.log(
+      `  ${source.id.padEnd(20)} ${String(stats.lines).padStart(7)} lines → ${String(added).padStart(6)} new` +
+      ` (kept ${stats.kept}, cosmetic ${stats.cosmetic} skipped, ${stats.unsupported} unsupported, ${stats.regex} regex)`
+    );
   }
 
   // Enforce total budget
@@ -258,8 +425,8 @@ async function main() {
       const fileName = `generated-${cat}-${fileNum}.json`;
       const startId = catConfig.idStart + (c * settings.maxRulesPerFile);
 
-      const rules = chunk.map((domain, idx) =>
-        buildRule(startId + idx, domain, resourceTypes)
+      const rules = chunk.map((entry, idx) =>
+        buildRule(startId + idx, entry, resourceTypes)
       );
 
       const filePath = join(RULES_DIR, fileName);
@@ -284,7 +451,7 @@ async function main() {
   // Write provenance
   const provenance = {};
   for (const [cat, domains] of Object.entries(categoryDomains)) {
-    for (const d of domains) provenance[d] = cat;
+    for (const rule of domains) provenance[rule.urlFilter] = cat;
   }
   const provPath = join(RULES_DIR, 'provenance.json');
   writeFileSync(provPath, JSON.stringify(provenance, null, 0), 'utf8');
@@ -325,7 +492,12 @@ async function main() {
   const mv2DomainsFile = 'generated-mv2-domains.json';
   writeFileSync(
     join(RULES_DIR, mv2DomainsFile),
-    JSON.stringify(Object.values(categoryDomains).flat()),
+    JSON.stringify([...new Set(
+      Object.values(categoryDomains)
+        .flat()
+        .filter((rule) => !rule.exception)
+        .map((rule) => rule.urlFilter.replace(/^\|\|/, '').replace(/\^$/, ''))
+    )]),
     'utf8'
   );
   console.log(`  [write] ${mv2DomainsFile} — ${totalRules.toLocaleString()} domains for MV2`);
@@ -354,7 +526,9 @@ async function main() {
   console.log(`  Total: ${totalRules.toLocaleString()} rules across ${manifestEntries.length} rulesets\n`);
 }
 
-main().catch(e => {
-  console.error('Build failed:', e);
-  process.exit(1);
-});
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch(e => {
+    console.error('Build failed:', e);
+    process.exit(1);
+  });
+}

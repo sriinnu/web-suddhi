@@ -240,10 +240,10 @@
       return true;
     }
 
-    // User-blocked domains
+    // User-blocked domains — must outrank list exceptions (priority 100).
     for (const domain of blockedDomains) {
       if (!pushManagedRule({
-        priority: 1,
+        priority: 500,
         action: { type: 'block' },
         condition: {
           urlFilter: '||' + domain + '^',
@@ -255,7 +255,7 @@
     // Explicit allowed domains preserve previous behavior (allow matching URL domain).
     for (const domain of allowedDomains) {
       if (!pushManagedRule({
-        priority: 2,
+        priority: 600,
         action: { type: 'allow' },
         condition: {
           urlFilter: '||' + domain + '^',
@@ -267,7 +267,7 @@
     // Whitelisted + currently-paused sites: full-site exemption by initiator domain.
     for (const domain of effectiveWhitelist) {
       if (!pushManagedRule({
-        priority: 3,
+        priority: 1000,
         action: { type: 'allow' },
         condition: {
           resourceTypes: BLOCKED_RESOURCE_TYPES,
