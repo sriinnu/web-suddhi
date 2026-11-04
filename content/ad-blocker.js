@@ -990,6 +990,7 @@
 
     if (state.enabled) {
       applyBlocking();
+      scheduleLateSweep();
       removePingAttributes();
       if (shouldRunAggressiveAntiAdblock(storage)) {
         setupAntiAntiAdblock();
@@ -2078,7 +2079,6 @@
 
     blockByAttributes();
     handleShadowDOM();
-    handleDynamicContent();
 
     // Also apply social blocking if enabled
     if (state.socialBlockingEnabled) {
@@ -2448,10 +2448,17 @@
     });
   }
 
-  function handleDynamicContent() {
-    setTimeout(() => applyBlocking(), 500);
-    setTimeout(() => applyBlocking(), 1500);
-    setTimeout(() => applyBlocking(), 3000);
+  // One late pass for ads injected after load. This used to be called from
+  // applyBlocking() itself, so every sweep scheduled three more sweeps — an
+  // exponential timer tree that pinned a CPU core on every page.
+  let dynamicContentTimer = null;
+
+  function scheduleLateSweep() {
+    if (dynamicContentTimer) return;
+    dynamicContentTimer = setTimeout(() => {
+      dynamicContentTimer = null;
+      applyBlocking();
+    }, 1500);
   }
 
   // ============================================
