@@ -81,7 +81,7 @@
   },
   "settings": {
     "maxRulesPerFile": 8000,
-    "totalBudget": 30000,
+    "totalBudget": 29500,
     "resourceTypes": [
       "script",
       "image",
