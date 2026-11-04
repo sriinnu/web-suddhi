@@ -617,23 +617,33 @@
         return;
       }
 
-      try {
-        if (hasPromiseExtensionApi) {
-          area[method](value)
-            .then((data) => resolve(method === 'get' ? (data || {}) : data))
-            .catch(reject);
-          return;
-        }
-
-        area[method](value, (data) => {
-          if (storageApi.runtime.lastError) {
-            reject(storageApi.runtime.lastError);
-          } else {
-            resolve(method === 'get' ? (data || {}) : data);
-          }
-        });
-      } catch (err) {
+      // Resolve on whichever signal arrives first: the callback or the promise.
+      // Guessing the API flavour up front deadlocks on any browser (or mock) that
+      // returns a promise but ignores the trailing callback.
+      let settled = false;
+      const done = (data) => {
+        if (settled) return;
+        settled = true;
+        resolve(method === 'get' ? (data || {}) : data);
+      };
+      const fail = (err) => {
+        if (settled) return;
+        settled = true;
         reject(err);
+      };
+
+      try {
+        const returned = area[method](value, (data) => {
+          const lastError = storageApi.runtime && storageApi.runtime.lastError;
+          if (lastError) fail(lastError);
+          else done(data);
+        });
+
+        if (returned && typeof returned.then === 'function') {
+          returned.then(done).catch(fail);
+        }
+      } catch (err) {
+        fail(err);
       }
     });
   }

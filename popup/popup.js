@@ -289,16 +289,46 @@
     });
   }
 
+  // A sleeping/absent background worker must never take the popup down with it.
+  function isConnectionError(err) {
+    const text = String((err && (err.message || err)) || '');
+    return text.includes('Receiving end does not exist') ||
+      text.includes('Could not establish connection') ||
+      text.includes('message port closed');
+  }
+
   function sendToBackground(message) {
     return new Promise((resolve, reject) => {
-      const result = api.runtime.sendMessage(message);
-      if (result && typeof result.then === 'function') {
-        result.then(resolve).catch(reject);
-      } else {
-        api.runtime.sendMessage(message, (response) => {
-          if (api.runtime.lastError) reject(api.runtime.lastError);
-          else resolve(response);
+      let settled = false;
+      const done = (response) => {
+        if (settled) return;
+        settled = true;
+        resolve(response === undefined ? null : response);
+      };
+      const fail = (err) => {
+        if (settled) return;
+        settled = true;
+        if (isConnectionError(err)) resolve(null);
+        else reject(err);
+      };
+
+      try {
+        const result = api.runtime.sendMessage(message);
+        if (result && typeof result.then === 'function') {
+          result.then(done).catch(fail);
+          return;
+        }
+        // Callback-style API (Chrome MV2 and older): re-send once with the callback.
+        const retried = api.runtime.sendMessage(message, (response) => {
+          const lastError = api.runtime.lastError;
+          if (lastError) fail(lastError);
+          else done(response);
         });
+        if (retried && typeof retried.then === 'function') {
+          retried.then(done).catch(fail);
+        }
+      } catch (err) {
+        fail(err);
       }
     });
   }
@@ -1704,6 +1734,9 @@
   }
 
   async function init() {
+    wireEvents();
+    registerRuntimeMessageListener();
+
     try {
       // Apply saved theme immediately
       await loadPopupTheme();
@@ -1773,124 +1806,131 @@
         await refreshTriStateButtons();
       }
 
-      // Set up event listeners
-      // Main protection toggle
-      elements.enableToggle?.addEventListener('change', toggleEnabled);
-
-      // Feature toggles - use checkbox state after the browser updates it.
-      elements.networkBlockingToggle?.addEventListener('change', toggleNetworkBlocking);
-      elements.urlCleaningToggle?.addEventListener('change', toggleUrlCleaning);
-      elements.cookieConsentToggle?.addEventListener('change', toggleCookieConsent);
-      elements.annoyanceToggle?.addEventListener('change', toggleAnnoyanceBlocking);
-      elements.paywallToggle?.addEventListener('change', togglePaywall);
-      elements.socialBlockingToggle?.addEventListener('change', toggleSocialBlocking);
-      elements.removePaywallBtn?.addEventListener('click', removePaywall);
-      elements.pickModeBtn?.addEventListener('click', togglePickMode);
-      elements.zapModeBtn?.addEventListener('click', toggleZapMode);
-      elements.openOptionsBtn?.addEventListener('click', () => openOptions());
-      elements.reportIssue?.addEventListener('click', (e) => {
-        e.preventDefault();
-        openGitHubIssues();
-      });
-      elements.blockedClose?.addEventListener('click', hideBlockedPanel);
-      elements.viewAllBlocked?.addEventListener('click', () => openOptions('stats'));
-      elements.networkStatBtn?.addEventListener('click', showNetworkStats);
-      elements.cosmeticStatBtn?.addEventListener('click', showCosmeticStats);
-      elements.copyDomainBtn?.addEventListener('click', copyCurrentDomain);
-      elements.reportPhishingBtn?.addEventListener('click', reportCurrentSiteAsPhishing);
-      elements.securityMainBtn?.addEventListener('click', toggleCertDetails);
-      elements.themeSelect?.addEventListener('change', async () => {
-        const theme = elements.themeSelect.value || 'system';
-        applyPopupTheme(theme);
-        await setStorage({ theme });
-      });
-      // Tri-state site actions — clicking an active state clears it
-      elements.whitelistBtn?.addEventListener('click', async () => {
-        if (isWhitelisted) {
-          await toggleWhitelist(); // removes
-        } else {
-          await quickWhitelist();
-        }
-        await refreshTriStateButtons();
-      });
-      elements.blacklistBtn?.addEventListener('click', async () => {
-        const host = getActiveHostname();
-        if (!host) return;
-        if (isBlacklisted) {
-          const resp = await sendToBackground({ type: 'REMOVE_DOMAIN_BLOCK', domain: host });
-          if (resp?.success) {
-            isBlacklisted = false;
-            showToast('Unblocked ' + host);
-          }
-        } else {
-          await quickBlacklist();
-        }
-        await refreshTriStateButtons();
-      });
-      elements.whitelistToggleBtn?.addEventListener('click', toggleWhitelist);
-
-      // Pause split button — main click opens menu, menu items pause for duration
-      elements.pauseBtn?.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!elements.pauseMenu) return;
-        if (elements.pauseMenu.hidden) openPauseMenu();
-        else closePauseMenu();
-      });
-      elements.pauseMenu?.addEventListener('click', (e) => {
-        const btn = e.target.closest('button[data-duration]');
-        if (!btn) return;
-        e.stopPropagation();
-        pauseForDuration(btn.dataset.duration);
-      });
-      // Outside click (use mousedown so menu item clicks still resolve) + Escape
-      document.addEventListener('mousedown', (e) => {
-        if (!elements.pauseMenu || elements.pauseMenu.hidden) return;
-        if (e.target.closest('.pause-split')) return;
-        closePauseMenu();
-      });
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closePauseMenu();
-      });
-
-      elements.pauseResumeBtn?.addEventListener('click', async () => {
-        const host = getActiveHostname();
-        if (!host) return;
-        const resp = await sendToBackground({ type: 'UNPAUSE_SITE', hostname: host });
-        if (resp?.success) {
-          pauseExpiry = 0;
-          setPausedVisualState(false);
-          showToast('Resumed protection for ' + host);
-        } else {
-          showToast(resp?.error || 'Failed to resume');
-        }
-      });
-      elements.reportBrokenBtn?.addEventListener('click', handleReportBroken);
-
-      // Listen for messages from content script or background
-      api.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        // Handle incoming messages
-        if (message.type === 'FRAMES_DETECTED' || message.type === 'FRAME_INFO_UPDATED') {
-          updateFramesFromContent(message.frames || []);
-        }
-
-        if (message.type === 'BLOCKED_COUNT_UPDATED' && currentTab?.id && message.tabId === currentTab.id) {
-          if (elements.networkBlockedCount) {
-            animateCount(elements.networkBlockedCount, message.count || 0);
-          }
-          if (elements.dataSaved) {
-            const dataSaved = (message.count || 0) * 2.5;
-            elements.dataSaved.textContent = dataSaved >= 1024
-              ? (dataSaved / 1024).toFixed(1) + ' MB'
-              : Math.round(dataSaved) + ' KB';
-          }
-        }
-
-        // Return true to indicate async response
-        return false;
-      });
     } catch (e) {
       logError('Init error:', e);
     }
   }
+  // Interaction handlers are wired before any async state fetch so a failed or
+  // slow background response can never leave the popup unclickable.
+  function wireEvents() {
+    // Set up event listeners
+    // Main protection toggle
+    elements.enableToggle?.addEventListener('change', toggleEnabled);
+
+    // Feature toggles - use checkbox state after the browser updates it.
+    elements.networkBlockingToggle?.addEventListener('change', toggleNetworkBlocking);
+    elements.urlCleaningToggle?.addEventListener('change', toggleUrlCleaning);
+    elements.cookieConsentToggle?.addEventListener('change', toggleCookieConsent);
+    elements.annoyanceToggle?.addEventListener('change', toggleAnnoyanceBlocking);
+    elements.paywallToggle?.addEventListener('change', togglePaywall);
+    elements.socialBlockingToggle?.addEventListener('change', toggleSocialBlocking);
+    elements.removePaywallBtn?.addEventListener('click', removePaywall);
+    elements.pickModeBtn?.addEventListener('click', togglePickMode);
+    elements.zapModeBtn?.addEventListener('click', toggleZapMode);
+    elements.openOptionsBtn?.addEventListener('click', () => openOptions());
+    elements.reportIssue?.addEventListener('click', (e) => {
+      e.preventDefault();
+      openGitHubIssues();
+    });
+    elements.blockedClose?.addEventListener('click', hideBlockedPanel);
+    elements.viewAllBlocked?.addEventListener('click', () => openOptions('stats'));
+    elements.networkStatBtn?.addEventListener('click', showNetworkStats);
+    elements.cosmeticStatBtn?.addEventListener('click', showCosmeticStats);
+    elements.copyDomainBtn?.addEventListener('click', copyCurrentDomain);
+    elements.reportPhishingBtn?.addEventListener('click', reportCurrentSiteAsPhishing);
+    elements.securityMainBtn?.addEventListener('click', toggleCertDetails);
+    elements.themeSelect?.addEventListener('change', async () => {
+      const theme = elements.themeSelect.value || 'system';
+      applyPopupTheme(theme);
+      await setStorage({ theme });
+    });
+    // Tri-state site actions — clicking an active state clears it
+    elements.whitelistBtn?.addEventListener('click', async () => {
+      if (isWhitelisted) {
+        await toggleWhitelist(); // removes
+      } else {
+        await quickWhitelist();
+      }
+      await refreshTriStateButtons();
+    });
+    elements.blacklistBtn?.addEventListener('click', async () => {
+      const host = getActiveHostname();
+      if (!host) return;
+      if (isBlacklisted) {
+        const resp = await sendToBackground({ type: 'REMOVE_DOMAIN_BLOCK', domain: host });
+        if (resp?.success) {
+          isBlacklisted = false;
+          showToast('Unblocked ' + host);
+        }
+      } else {
+        await quickBlacklist();
+      }
+      await refreshTriStateButtons();
+    });
+    elements.whitelistToggleBtn?.addEventListener('click', toggleWhitelist);
+
+    // Pause split button — main click opens menu, menu items pause for duration
+    elements.pauseBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!elements.pauseMenu) return;
+      if (elements.pauseMenu.hidden) openPauseMenu();
+      else closePauseMenu();
+    });
+    elements.pauseMenu?.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-duration]');
+      if (!btn) return;
+      e.stopPropagation();
+      pauseForDuration(btn.dataset.duration);
+    });
+    // Outside click (use mousedown so menu item clicks still resolve) + Escape
+    document.addEventListener('mousedown', (e) => {
+      if (!elements.pauseMenu || elements.pauseMenu.hidden) return;
+      if (e.target.closest('.pause-split')) return;
+      closePauseMenu();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closePauseMenu();
+    });
+
+    elements.pauseResumeBtn?.addEventListener('click', async () => {
+      const host = getActiveHostname();
+      if (!host) return;
+      const resp = await sendToBackground({ type: 'UNPAUSE_SITE', hostname: host });
+      if (resp?.success) {
+        pauseExpiry = 0;
+        setPausedVisualState(false);
+        showToast('Resumed protection for ' + host);
+      } else {
+        showToast(resp?.error || 'Failed to resume');
+      }
+    });
+    elements.reportBrokenBtn?.addEventListener('click', handleReportBroken);
+  }
+
+  function registerRuntimeMessageListener() {
+    // Listen for messages from content script or background
+    api.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      // Handle incoming messages
+      if (message.type === 'FRAMES_DETECTED' || message.type === 'FRAME_INFO_UPDATED') {
+        updateFramesFromContent(message.frames || []);
+      }
+
+      if (message.type === 'BLOCKED_COUNT_UPDATED' && currentTab?.id && message.tabId === currentTab.id) {
+        if (elements.networkBlockedCount) {
+          animateCount(elements.networkBlockedCount, message.count || 0);
+        }
+        if (elements.dataSaved) {
+          const dataSaved = (message.count || 0) * 2.5;
+          elements.dataSaved.textContent = dataSaved >= 1024
+            ? (dataSaved / 1024).toFixed(1) + ' MB'
+            : Math.round(dataSaved) + ' KB';
+        }
+      }
+
+      // Return true to indicate async response
+      return false;
+    });
+  }
+
 })();

@@ -373,3 +373,23 @@ it('uses the promise-based browser API path and keeps stats deep-links working',
   expect(storageData.theme).toBe('forest');
   expect(document.documentElement.getAttribute('data-theme')).toBe('forest');
 });
+
+it('keeps the popup clickable when the background worker never answers', async () => {
+  const { api } = createExtensionApiMock();
+  // A worker that isn't awake yet rejects with a connection error. That must not
+  // abort init before the click handlers are attached.
+  api.runtime.sendMessage = vi.fn(() =>
+    Promise.reject(new Error('Could not establish connection. Receiving end does not exist.'))
+  );
+
+  await mountExtensionPage('popup/popup.html', 'popup/popup.js', api);
+
+  const pauseBtn = document.getElementById('pauseBtn');
+  const pauseMenu = document.getElementById('pauseMenu');
+
+  expect(pauseMenu.hidden).toBe(true);
+  pauseBtn.click();
+
+  expect(pauseMenu.hidden).toBe(false);
+  expect(pauseBtn.getAttribute('aria-expanded')).toBe('true');
+});
