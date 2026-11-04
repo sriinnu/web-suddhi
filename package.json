@@ -6,6 +6,7 @@
   "scripts": {
     "build": "rollup -c",
     "build:targets": "node scripts/build-browser-targets.mjs",
+    "build:safari": "node scripts/build-browser-targets.mjs && xcodebuild -project 'safari/WebSuddhi/WebSuddhi.xcodeproj' -scheme 'WebSuddhi (macOS)' -configuration Release -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO build",
     "build:watch": "rollup -c -w",
     "lint": "eslint . --ext .js",
     "lint:fix": "eslint . --ext .js --fix",

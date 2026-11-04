@@ -39,9 +39,10 @@ build/
 web-ext-artifacts/
 
 # Safari / Xcode
-*.xcodeproj/
-*.xcworkspace/
+# The Xcode project itself IS source (safari/WebSuddhi/WebSuddhi.xcodeproj).
+# Only per-user state and build products are ignored.
 xcuserdata/
+*.xcuserdata/
 DerivedData/
 *.pbxuser
 *.mode1v3
