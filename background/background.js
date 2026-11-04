@@ -1012,6 +1012,10 @@ try {
     const refreshResult = await refreshNetworkRules();
     if (!refreshResult.success) warn('Whitelist update saved, but network rules were not refreshed');
 
+    // Every open tab of this site must learn about it, not just the current one,
+    // and the cookie/annoyance blockers need the explicit message.
+    await notifyAllTabs({ type: 'WHITELIST_SITE', hostname });
+
     return { success: true, message: 'Whitelisted ' + hostname };
   }
 
@@ -1035,6 +1039,8 @@ try {
     await setStorage({ whitelistedSites: normalizedWhitelisted });
     const refreshResult = await refreshNetworkRules();
     if (!refreshResult.success) warn('Whitelist update saved, but network rules were not refreshed');
+
+    await notifyAllTabs({ type: 'UNWHITELIST_SITE', hostname: normalizedHostname });
 
     return { success: true, message: 'Unwhitelisted ' + normalizedHostname };
   }
@@ -1493,7 +1499,9 @@ try {
     const filtered = selectors.filter(s => s.selector !== selector);
 
     await setStorage({ blockedSelectors: filtered });
-    await notifyAllTabs();
+    // Tell tabs to unhide it right away. A bare SETTINGS_CHANGED broadcast only
+    // re-runs applyBlocking(), which never restores already-hidden elements.
+    await notifyAllTabs({ type: 'REMOVE_SELECTOR', selector });
 
     return { success: true, message: 'Selector removed' };
   }
@@ -1569,6 +1577,11 @@ try {
             return await self.WebSuddhi.networkBlocker.removeDomainBlock(message.domain);
           }
           return { success: false, error: 'Network blocker not available' };
+
+        case 'FRAMES_DETECTED':
+          // Content scripts broadcast this; the popup is the real consumer.
+          // Without a case it fell through to "Unknown message type".
+          return { success: true };
 
         case 'GET_BLOCKED_COUNT':
           if (self.WebSuddhi.networkBlocker) {

@@ -1,15 +1,5 @@
 [
   {
-    "id": "generated_ads_1",
-    "enabled": true,
-    "path": "rules/generated-ads-1.json"
-  },
-  {
-    "id": "generated_ads_2",
-    "enabled": true,
-    "path": "rules/generated-ads-2.json"
-  },
-  {
     "id": "generated_security_1",
     "enabled": true,
     "path": "rules/generated-security-1.json"
@@ -23,5 +13,15 @@
     "id": "generated_spam_1",
     "enabled": true,
     "path": "rules/generated-spam-1.json"
+  },
+  {
+    "id": "generated_ads_1",
+    "enabled": true,
+    "path": "rules/generated-ads-1.json"
+  },
+  {
+    "id": "generated_ads_2",
+    "enabled": true,
+    "path": "rules/generated-ads-2.json"
   }
 ]

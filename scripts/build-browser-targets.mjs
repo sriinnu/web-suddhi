@@ -72,6 +72,14 @@ export function createSafariManifest(manifest) {
     (permission) => !SAFARI_UNSUPPORTED_PERMISSIONS.has(permission)
   );
 
+  // WebKit 16.4+ requires this permission for redirect/modifyHeaders actions.
+  // Without it the tracking_params redirect rule is silently ignored, so URL
+  // cleaning appears to do nothing in Safari.
+  if (nextManifest.permissions.includes('declarativeNetRequest') &&
+      !nextManifest.permissions.includes('declarativeNetRequestWithHostAccess')) {
+    nextManifest.permissions.push('declarativeNetRequestWithHostAccess');
+  }
+
   if (Array.isArray(nextManifest.optional_permissions)) {
     const optionalPermissions = nextManifest.optional_permissions.filter(
       (permission) => !SAFARI_UNSUPPORTED_OPTIONAL_PERMISSIONS.has(permission)

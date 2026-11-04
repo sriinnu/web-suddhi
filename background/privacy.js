@@ -282,7 +282,7 @@
           priority: 2,
           action: { type: 'block' },
           condition: {
-            urlFilter: '||' + domain,
+            urlFilter: '||' + domain + '^',
             resourceTypes: [
               'script', 'image', 'xmlhttprequest', 'sub_frame',
               'ping', 'other', 'websocket'

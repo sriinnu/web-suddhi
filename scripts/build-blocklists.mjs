@@ -142,8 +142,20 @@ function buildRule(id, domain, resourceTypes) {
 }
 
 async function main() {
-  // Fetch all sources
-  const enabledSources = sources.filter(s => s.enabled);
+  // Process in category-priority order. Dedup is first-wins, so an ads source
+  // running first would claim domains that security feeds also list, and the
+  // ads trim would then throw them away entirely.
+  const priorityOrder = settings.categoryPriority || [];
+  const enabledSources = sources
+    .filter(s => s.enabled)
+    .slice()
+    .sort((a, b) => {
+      const rank = (source) => {
+        const index = priorityOrder.indexOf(source.category || 'ads');
+        return index === -1 ? priorityOrder.length : index;
+      };
+      return rank(a) - rank(b);
+    });
   const rawTexts = await Promise.all(enabledSources.map(s => fetchSource(s)));
 
   // Parse and collect domains by category
@@ -180,12 +192,25 @@ async function main() {
     totalRules += categoryDomains[cat].length;
   }
 
-  if (totalRules > settings.totalBudget) {
-    console.log(`\n  [trim] ${totalRules} rules exceeds budget of ${settings.totalBudget}`);
+  // Chrome only guarantees 30,000 static rules — and the curated rulesets count
+  // toward it too, so the generated pass has to leave room for them.
+  const CURATED_FILES = ['ad-domains.json', 'tracking-domains.json', 'tracking-params.json'];
+  const curatedRuleCount = CURATED_FILES.reduce((sum, file) => {
+    try {
+      return sum + JSON.parse(readFileSync(join(RULES_DIR, file), 'utf8')).length;
+    } catch (e) {
+      return sum;
+    }
+  }, 0);
+  const guaranteedStaticRules = 30000;
+  const budget = Math.min(settings.totalBudget, guaranteedStaticRules - curatedRuleCount);
+
+  if (totalRules > budget) {
+    console.log(`\n  [trim] ${totalRules} rules exceeds budget of ${budget}`);
     // Trim by priority, not proportionally. A proportional cut silently drops
     // malware/phishing entries at the same rate as ad entries.
     const priority = settings.categoryPriority || Object.keys(categoryDomains);
-    let remaining = settings.totalBudget;
+    let remaining = Math.max(0, budget);
 
     for (const cat of priority) {
       if (!categoryDomains[cat]) continue;
@@ -279,8 +304,44 @@ async function main() {
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
   console.log(`  [write] manifest.json — ${handCurated.length} curated + ${manifestEntries.length} generated rulesets`);
 
+  // MV2/Firefox has no declarativeNetRequest — hand it the same domains as a
+  // flat array so the webRequest listener can use the full blocklist.
+  // Rule counts per ruleset, so the UI can show real numbers without parsing
+  // ~9 MB of JSON on every service-worker start.
+  const rulesetCounts = {};
+  for (const entry of handCurated) {
+    try {
+      rulesetCounts[entry.id] = JSON.parse(readFileSync(join(ROOT, entry.path), 'utf8')).length;
+    } catch (e) {
+      rulesetCounts[entry.id] = 0;
+    }
+  }
+  for (const entry of manifestEntries) {
+    rulesetCounts[entry.id] = JSON.parse(readFileSync(join(ROOT, entry.path), 'utf8')).length;
+  }
+  writeFileSync(join(RULES_DIR, 'ruleset-counts.json'), `${JSON.stringify(rulesetCounts, null, 2)}\n`, 'utf8');
+  console.log('  [write] ruleset-counts.json');
+
+  const mv2DomainsFile = 'generated-mv2-domains.json';
+  writeFileSync(
+    join(RULES_DIR, mv2DomainsFile),
+    JSON.stringify(Object.values(categoryDomains).flat()),
+    'utf8'
+  );
+  console.log(`  [write] ${mv2DomainsFile} — ${totalRules.toLocaleString()} domains for MV2`);
+
+  const installedTotal = curatedRuleCount + totalRules;
+  if (installedTotal > guaranteedStaticRules) {
+    console.error(
+      `  [fail] ${installedTotal} installed static rules exceeds Chrome's ${guaranteedStaticRules} guarantee`
+    );
+    process.exit(1);
+  }
+  console.log(`  [check] ${installedTotal} installed static rules (limit ${guaranteedStaticRules.toLocaleString()})`);
+
   // Remove generated files from earlier runs that we no longer produce.
   const written = new Set(manifestEntries.map((entry) => entry.path.split('/').pop()));
+  written.add(mv2DomainsFile);
   for (const file of readdirSync(RULES_DIR)) {
     if (file.startsWith('generated-') && file.endsWith('.json') &&
         file !== 'generated-manifest-snippet.json' && !written.has(file)) {
