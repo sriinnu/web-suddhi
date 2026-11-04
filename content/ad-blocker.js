@@ -558,8 +558,13 @@
   const AD_SELECTORS = {
     // Generic ad containers
     common: [
-      '[class*="ad-"]', '[class*="ads-"]', '[class*="advert"]',
-      '[id*="ad-"]', '[id*="ads-"]', '[id*="advert"]',
+      // Token-boundary matches only. `[class*="ad-"]` also matches `head-`,
+      // `load-`, `download-`, `thread-` — which hides real page content.
+      '[class^="ad-"]', '[class*=" ad-"]',
+      '[class^="ads-"]', '[class*=" ads-"]',
+      '[class*="advert"]',
+      '[id^="ad-"]', '[id^="ads-"]',
+      '[id*="advert"]',
       '[data-ad]', '[data-ads]', '[data-advertisement]',
       '[data-ad-width]', '[data-ad-height]',
       '[data-google-query-id]', '[data-slot]',
@@ -2213,7 +2218,10 @@
           const attrNames = Array.from(el.attributes).map(a => a.name.toLowerCase());
           const attrValues = Array.from(el.attributes).map(a => (a.name + '=' + a.value).toLowerCase());
           const combined = attrNames.concat(attrValues).join(' ');
-          const hasAdAttr = attrs.some(adAttr => combined.includes(adAttr.toLowerCase()));
+          // Whole-token matching. A substring test made `loading="lazy"` match
+          // "ad" and hid every lazy iframe on the page.
+          const tokens = new Set(combined.split(/[^a-z0-9]+/).filter(Boolean));
+          const hasAdAttr = attrs.some(adAttr => tokens.has(adAttr.toLowerCase()));
           if (hasAdAttr && self.WebSuddhi.utils.isVisible(el)) {
             hideElement(el);
           }
@@ -2228,7 +2236,29 @@
     } catch (err) {}
   }
 
+  // Never hide what is plainly the page itself. A broad selector that matches a
+  // layout wrapper takes the whole site down with it — galleries, images, text.
+  function isProtectedContent(el) {
+    if (!el || !el.tagName) return true;
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'html' || tag === 'body' || tag === 'main' || tag === 'article') return true;
+    if (el.querySelector && el.querySelector('main, article, [role="main"]')) return true;
+
+    try {
+      const rect = el.getBoundingClientRect();
+      const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+      const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+      if (vw && vh && rect.width * rect.height >= vw * vh * 0.5) {
+        // A half-screen box holding an image or a heading is content, not an ad slot.
+        if (el.querySelector && el.querySelector('img, picture, video, h1, h2')) return true;
+      }
+    } catch (e) {}
+
+    return false;
+  }
+
   function hideElement(el, matchedSelector) {
+    if (isProtectedContent(el)) return;
     el.classList.add('websuddhi-hidden');
     el.setAttribute('data-websuddhi-blocked', 'true');
     el.style.setProperty('display', 'none', 'important');
