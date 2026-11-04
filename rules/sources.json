@@ -81,7 +81,7 @@
   },
   "settings": {
     "maxRulesPerFile": 8000,
-    "totalBudget": 40000,
+    "totalBudget": 30000,
     "resourceTypes": [
       "script",
       "image",
@@ -98,6 +98,7 @@
       "security",
       "spam",
       "ads"
-    ]
+    ],
+    "budgetNote": "Chrome only guarantees 30,000 static declarativeNetRequest rules per extension; anything above depends on other installed extensions. Safari allows far more."
   }
 }
