@@ -1,5 +1,5 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
@@ -16,6 +16,13 @@ const SOURCE_ENTRIES = [
   'shared'
 ];
 const STATIC_FILES = ['LICENSE'];
+// Build-time only artifacts that must never end up in a shipped extension.
+const RULES_BUILD_ONLY_FILES = new Set([
+  '.cache',
+  'sources.json',
+  'provenance.json',
+  'generated-manifest-snippet.json'
+]);
 const SAFARI_UNSUPPORTED_PERMISSIONS = new Set(['contextMenus']);
 const SAFARI_UNSUPPORTED_OPTIONAL_PERMISSIONS = new Set([
   'contentSettings',
@@ -64,6 +71,14 @@ export function createSafariManifest(manifest) {
   nextManifest.permissions = (nextManifest.permissions || []).filter(
     (permission) => !SAFARI_UNSUPPORTED_PERMISSIONS.has(permission)
   );
+
+  // WebKit 16.4+ requires this permission for redirect/modifyHeaders actions.
+  // Without it the tracking_params redirect rule is silently ignored, so URL
+  // cleaning appears to do nothing in Safari.
+  if (nextManifest.permissions.includes('declarativeNetRequest') &&
+      !nextManifest.permissions.includes('declarativeNetRequestWithHostAccess')) {
+    nextManifest.permissions.push('declarativeNetRequestWithHostAccess');
+  }
 
   if (Array.isArray(nextManifest.optional_permissions)) {
     const optionalPermissions = nextManifest.optional_permissions.filter(
@@ -122,7 +137,18 @@ export function buildBrowserTargets(options = {}) {
     resetDirectory(target.outDir);
 
     for (const entry of SOURCE_ENTRIES) {
-      cpSync(join(rootDir, entry), join(target.outDir, entry), { recursive: true });
+      const source = join(rootDir, entry);
+      cpSync(source, join(target.outDir, entry), {
+        recursive: true,
+        // Never ship build-time only files: the downloaded upstream lists
+        // (.cache) alone are tens of megabytes.
+        filter: (sourcePath) => {
+          const relPath = relative(source, sourcePath);
+          if (!relPath) return true;
+          const topLevel = relPath.split(sep)[0];
+          return !RULES_BUILD_ONLY_FILES.has(topLevel);
+        }
+      });
     }
 
     for (const fileName of STATIC_FILES) {

@@ -558,11 +558,15 @@
   const AD_SELECTORS = {
     // Generic ad containers
     common: [
-      '[class*="ad-"]', '[class*="ads-"]', '[class*="advert"]',
-      '[id*="ad-"]', '[id*="ads-"]', '[id*="advert"]',
+      // Token-boundary matches only. `[class*="ad-"]` also matches `head-`,
+      // `load-`, `download-`, `thread-` — which hides real page content.
+      '[class^="ad-"]', '[class*=" ad-"]',
+      '[class^="ads-"]', '[class*=" ads-"]',
+      '[class*="advert"]',
+      '[id*="advert"]',
       '[data-ad]', '[data-ads]', '[data-advertisement]',
       '[data-ad-width]', '[data-ad-height]',
-      '[data-google-query-id]', '[data-slot]',
+      '[data-google-query-id]', '[data-ad-slot]',
       '[data-adsbygoogle]', '[data-ad-client]',
       '.ad', '.ads', '.ad-container', '.ads-container',
       '.ad-wrapper', '.ads-wrapper', '.ad-unit', '.ads-unit',
@@ -835,6 +839,8 @@
     socialBlockingEnabled: false,
     whitelistedSites: [],
     blockedSelectors: new Map(),
+    pausedSites: {},
+    perSiteAllowedSelectors: {},
     pickMode: false,
     pickAltHeld: false,        // flip element/frame mode
     pickCtrlHeld: false,       // specific selector (element mode)
@@ -882,8 +888,9 @@
     try {
       const { whitelisted } = await refreshLocalSettings();
 
-      // Auto-detect and remove paywalls (only if not whitelisted)
-      if (state.paywallEnabled && !whitelisted) {
+      // Auto-detect and remove paywalls (only if blocking is actually active —
+      // pausing a site must not let paywall removal keep mutating the page)
+      if (state.paywallEnabled && state.enabled && !whitelisted && !isSitePaused()) {
         setTimeout(() => detectAndRemovePaywall(), 1000);
         setTimeout(() => detectAndRemovePaywall(), 3000);
       }
@@ -897,8 +904,6 @@
         setTimeout(() => removeAntiAdblockOverlays(), 5000);
       }
 
-      // Setup listeners
-      setupMessageListener();
       // Only start observer when body exists
       if (document.body) {
         setupMutationObserver();
@@ -917,7 +922,7 @@
   }
 
   // Cross-browser storage API - use shared utils
-  const STORAGE_KEYS = ['enabled', 'paywallEnabled', 'socialBlockingEnabled', 'blockedSelectors', 'whitelistedSites', 'toastDuration', 'aggressiveAntiAdblockEnabled'];
+  const STORAGE_KEYS = ['enabled', 'paywallEnabled', 'socialBlockingEnabled', 'blockedSelectors', 'whitelistedSites', 'toastDuration', 'aggressiveAntiAdblockEnabled', 'pausedSites', 'perSiteAllowedSelectors'];
 
   function getStorage() {
     return self.WebSuddhi.utils.getStorage(STORAGE_KEYS);
@@ -971,6 +976,9 @@
     state.socialBlockingEnabled = storage.socialBlockingEnabled === true;
     state.whitelistedSites = storage.whitelistedSites || [];
     state.toastDuration = storage.toastDuration || 3;
+    state.pausedSites = (storage.pausedSites && typeof storage.pausedSites === 'object') ? storage.pausedSites : {};
+    state.perSiteAllowedSelectors = (storage.perSiteAllowedSelectors && typeof storage.perSiteAllowedSelectors === 'object')
+      ? storage.perSiteAllowedSelectors : {};
     state.blockedSelectors = new Map();
 
     for (const entry of (storage.blockedSelectors || [])) {
@@ -982,12 +990,14 @@
     }
 
     const whitelisted = isSiteWhitelisted();
-    if (whitelisted) {
+    const paused = isSitePaused();
+    if (whitelisted || paused) {
       state.enabled = false;
     }
 
     if (state.enabled) {
       applyBlocking();
+      scheduleLateSweep();
       removePingAttributes();
       if (shouldRunAggressiveAntiAdblock(storage)) {
         setupAntiAntiAdblock();
@@ -1107,7 +1117,9 @@
             key === 'blockedSelectors' ||
             key === 'whitelistedSites' ||
             key === 'toastDuration' ||
-            key === 'aggressiveAntiAdblockEnabled'
+            key === 'aggressiveAntiAdblockEnabled' ||
+            key === 'pausedSites' ||
+            key === 'perSiteAllowedSelectors'
           ));
 
         if (!shouldRefresh) return { success: true, enabled: state.enabled };
@@ -1117,6 +1129,10 @@
           await checkForPhishing(true);
         }
         return { success: true, enabled: state.enabled };
+
+      case 'PREVIEW_SELECTOR_IN_PAGE':
+        previewSelectorInPage(message.selector, message.durationMs);
+        return { success: true };
 
       case 'GET_WHITELIST':
         return { success: true, sites: state.whitelistedSites };
@@ -1172,8 +1188,10 @@
         return { success: true };
 
       case 'REMOVE_SELECTOR':
+        // Storage is the background's job here (it broadcasts this after
+        // removing). Writing it back from a tab would resurrect selectors that
+        // another tab already dropped.
         state.blockedSelectors.delete(message.selector);
-        await saveSelectors();
         unblockSelector(message.selector);
         return { success: true };
 
@@ -1366,8 +1384,59 @@
     // Method 3: Detect blur overlays (optimized)
     detectBlurOverlays();
 
-    // Method 4: Restore body scroll if locked by paywall
+    // Method 4: Detect full-viewport overlays (common paywall pattern regardless of class name)
+    findFullViewportOverlays();
+
+    // Method 5: Restore body scroll if locked by paywall
     restoreBodyScroll();
+  }
+
+  function findFullViewportOverlays() {
+    const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    if (vw === 0 || vh === 0) return;
+    const minW = vw * 0.95;
+    const minH = vh * 0.95;
+
+    const candidates = document.querySelectorAll(
+      'div, section, aside, dialog, [role="dialog"], [aria-modal="true"]'
+    );
+    candidates.forEach((el) => {
+      try {
+        if (el.dataset?.websuddhiNeutralized === '1') return;
+        const tag = el.tagName?.toLowerCase();
+        if (tag === 'body' || tag === 'html' || tag === 'main' || tag === 'article') return;
+
+        const style = window.getComputedStyle(el);
+        if (style.position !== 'fixed' && style.position !== 'absolute') return;
+
+        const rect = el.getBoundingClientRect();
+        if (rect.width < minW || rect.height < minH) return;
+
+        const z = parseInt(style.zIndex, 10);
+        if (!Number.isFinite(z) || z < 100) return;
+
+        // Skip if element mostly contains what looks like the real article body
+        const hasArticleDescendant = el.querySelector('article, [role="article"], main');
+        if (hasArticleDescendant) return;
+
+        // Text signals tilt decision — if nothing matches, we still neutralize interactivity
+        // (pointer-events:none) but don't fully remove, since it might be a legitimate modal.
+        const text = (el.innerText || '').toLowerCase().substring(0, 500);
+        const className = (typeof el.className === 'string') ? el.className.toLowerCase() : '';
+        const looksLikePaywall =
+          /subscribe|sign in|log in|paywall|metered|unlock|continue reading|free article/.test(text) ||
+          /paywall|gate|overlay|modal|subscribe|offer|piano|tp-modal|tinypass/.test(className);
+
+        if (looksLikePaywall) {
+          removePaywallElement(el, 'viewport-overlay');
+        } else {
+          el.dataset.websuddhiNeutralized = '1';
+          el.style.setProperty('pointer-events', 'none', 'important');
+          el.style.setProperty('opacity', '0', 'important');
+        }
+      } catch (err) {}
+    });
   }
 
   function isPaywallElement(el) {
@@ -1507,26 +1576,80 @@
     } catch (err) {}
   }
 
+  const SCROLL_LOCK_CLASS_PATTERN = /\b(modal-open|no-scroll|scroll-lock(?:ed)?|overflow-hidden|paywall-active|menu-open|body-lock|disable-scroll|noscroll)\b/gi;
+
+  function stripScrollLockClasses(el) {
+    if (!el || !el.className || typeof el.className !== 'string') return false;
+    const before = el.className;
+    const after = before.replace(SCROLL_LOCK_CLASS_PATTERN, ' ').replace(/\s+/g, ' ').trim();
+    if (after !== before) {
+      el.className = after;
+      return true;
+    }
+    return false;
+  }
+
+  function injectScrollUnlockStyle() {
+    if (document.getElementById('websuddhi-scroll-unlock')) return;
+    const style = document.createElement('style');
+    style.id = 'websuddhi-scroll-unlock';
+    style.textContent = [
+      'html[data-websuddhi-unlock="1"],',
+      'body[data-websuddhi-unlock="1"] {',
+      '  overflow: auto !important;',
+      '  position: static !important;',
+      '  height: auto !important;',
+      '  top: auto !important;',
+      '  overscroll-behavior: auto !important;',
+      '  touch-action: auto !important;',
+      '}'
+    ].join('\n');
+    (document.head || document.documentElement).appendChild(style);
+  }
+
   function restoreBodyScroll() {
     if (!document.body) return;
-    const bodyStyle = window.getComputedStyle(document.body);
-    const htmlStyle = window.getComputedStyle(document.documentElement);
+    const html = document.documentElement;
+    const body = document.body;
+    const bodyStyle = window.getComputedStyle(body);
+    const htmlStyle = window.getComputedStyle(html);
 
-    // Detect if body scroll is locked (common paywall technique)
-    if (bodyStyle.overflow === 'hidden' || htmlStyle.overflow === 'hidden') {
-      // Only restore if we detected paywall removal
-      const removedElements = document.querySelectorAll('[data-websuddhi-removed]');
-      if (removedElements.length > 0) {
-        document.body.style.overflow = '';
-        document.body.style.overflowY = '';
-        document.documentElement.style.overflow = '';
-        document.documentElement.style.overflowY = '';
-        document.body.style.position = '';
-        document.body.style.height = '';
-        document.documentElement.style.position = '';
-        document.documentElement.style.height = '';
-      }
-    }
+    // Detect lock signals (don't gate on prior removal — paywalls lock scroll even when
+    // the gating element itself isn't one we fully removed).
+    const locked =
+      bodyStyle.overflow === 'hidden' ||
+      bodyStyle.overflowY === 'hidden' ||
+      htmlStyle.overflow === 'hidden' ||
+      htmlStyle.overflowY === 'hidden' ||
+      bodyStyle.position === 'fixed' ||
+      SCROLL_LOCK_CLASS_PATTERN.test(body.className || '') ||
+      SCROLL_LOCK_CLASS_PATTERN.test(html.className || '');
+
+    if (!locked) return;
+
+    // 1. Strip lock classes from html + body
+    SCROLL_LOCK_CLASS_PATTERN.lastIndex = 0;
+    stripScrollLockClasses(body);
+    stripScrollLockClasses(html);
+
+    // 2. Clear inline scroll-lock styles
+    const inlineProps = ['overflow', 'overflowY', 'overflowX', 'position', 'height', 'maxHeight', 'top', 'overscrollBehavior', 'touchAction'];
+    inlineProps.forEach((prop) => {
+      body.style[prop] = '';
+      html.style[prop] = '';
+    });
+
+    // 3. Belt-and-braces: mark both + inject override stylesheet so UAs that cached
+    //    computed style from !important declarations elsewhere still yield.
+    injectScrollUnlockStyle();
+    html.dataset.websuddhiUnlock = '1';
+    body.dataset.websuddhiUnlock = '1';
+
+    // 4. Remove iOS-style touchmove blockers added via inline JS (best-effort: the handler
+    //    might be attached with addEventListener, which we can't remove. In practice the
+    //    overflow/position fix is what unlocks iOS Safari; this just covers the rest.)
+    if (body.ontouchmove) body.ontouchmove = null;
+    if (html.ontouchmove) html.ontouchmove = null;
   }
 
   function removePaywall() {
@@ -1948,23 +2071,49 @@
   // AD BLOCKING
   // ============================================
   function applyBlocking() {
-    if (!state.enabled || isSiteWhitelisted()) return;
+    if (!state.enabled || isSiteWhitelisted() || isSitePaused()) return;
 
-    for (const selector of state.blockedSelectors.keys()) {
+    const allowed = getAllowedSelectorSet();
+    const currentHost = getCurrentHostname();
+
+    // Saved pick-mode selectors are site-specific: an id or DOM path picked on
+    // one site usually exists elsewhere and would hide an unrelated element.
+    for (const [selector, info] of state.blockedSelectors) {
+      if (allowed.has(selector)) continue;
+      if (!selectorIsForThisSite(info, currentHost)) continue;
       blockSelector(selector);
     }
 
     for (const selector of ALL_SELECTORS) {
+      if (allowed.has(selector)) continue;
       blockSelector(selector);
     }
 
     blockByAttributes();
-    handleDynamicContent();
+    handleShadowDOM();
 
     // Also apply social blocking if enabled
     if (state.socialBlockingEnabled) {
       applySocialBlocking();
     }
+  }
+
+  function selectorIsForThisSite(info, currentHost) {
+    const rawHost = typeof info === 'string' ? info : (info && info.url);
+    // Entries saved before the hostname was recorded have no scope; keep the
+    // old global behaviour for those rather than silently dropping them.
+    if (!rawHost || !currentHost) return true;
+
+    const normalize = (value) => String(value)
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .split('/')[0]
+      .replace(/^www\./, '');
+
+    const entryHost = normalize(rawHost);
+    const siteHost = normalize(currentHost);
+
+    return entryHost === siteHost || siteHost.endsWith('.' + entryHost);
   }
 
   function blockSelector(selector) {
@@ -1976,6 +2125,81 @@
         }
       });
     } catch (err) {}
+  }
+
+  function getAllowedSelectorSet() {
+    const host = getCurrentHostname();
+    if (!host) return new Set();
+    const map = state.perSiteAllowedSelectors || {};
+    const list = map[host] || [];
+    return new Set(list);
+  }
+
+  function isSitePaused() {
+    const host = getCurrentHostname();
+    if (!host) return false;
+    const expiry = (state.pausedSites || {})[host];
+    return typeof expiry === 'number' && expiry > Date.now();
+  }
+
+  // Preview mode: flash the element(s) a selector would match — used by the
+  // Site Detail drawer's "Unblock just this" action so users see what they're keeping.
+  function previewSelectorInPage(selector, durationMs) {
+    if (!selector || typeof selector !== 'string') return;
+    const duration = Math.min(Math.max(Number(durationMs) || 1000, 300), 5000);
+
+    let nodes;
+    try {
+      nodes = document.querySelectorAll(selector);
+    } catch (err) {
+      return;
+    }
+    if (!nodes || nodes.length === 0) return;
+
+    const restores = [];
+    nodes.forEach((el, idx) => {
+      const prev = {
+        display: el.style.getPropertyValue('display'),
+        displayPriority: el.style.getPropertyPriority('display'),
+        visibility: el.style.getPropertyValue('visibility'),
+        opacity: el.style.getPropertyValue('opacity'),
+        outline: el.style.getPropertyValue('outline'),
+        outlineOffset: el.style.getPropertyValue('outline-offset'),
+        transition: el.style.getPropertyValue('transition')
+      };
+      // Temporarily reveal a hidden element
+      el.style.setProperty('display', 'revert', 'important');
+      el.style.setProperty('visibility', 'visible', 'important');
+      el.style.setProperty('opacity', '1', 'important');
+      el.style.setProperty('transition', 'outline 120ms ease-out');
+      el.style.setProperty('outline', '3px solid #f43f5e', 'important');
+      el.style.setProperty('outline-offset', '2px');
+      if (idx === 0 && typeof el.scrollIntoView === 'function') {
+        try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+      }
+      restores.push(() => {
+        setStyleOrRemove(el, 'display', prev.display, prev.displayPriority);
+        setStyleOrRemove(el, 'visibility', prev.visibility);
+        setStyleOrRemove(el, 'opacity', prev.opacity);
+        setStyleOrRemove(el, 'outline', prev.outline);
+        setStyleOrRemove(el, 'outline-offset', prev.outlineOffset);
+        setStyleOrRemove(el, 'transition', prev.transition);
+      });
+    });
+
+    setTimeout(() => {
+      for (const restore of restores) {
+        try { restore(); } catch (e) {}
+      }
+    }, duration);
+  }
+
+  function setStyleOrRemove(el, prop, value, priority) {
+    if (value === '' || value === undefined || value === null) {
+      el.style.removeProperty(prop);
+    } else {
+      el.style.setProperty(prop, value, priority || '');
+    }
   }
 
   function unblockSelector(selector) {
@@ -2029,7 +2253,10 @@
           const attrNames = Array.from(el.attributes).map(a => a.name.toLowerCase());
           const attrValues = Array.from(el.attributes).map(a => (a.name + '=' + a.value).toLowerCase());
           const combined = attrNames.concat(attrValues).join(' ');
-          const hasAdAttr = attrs.some(adAttr => combined.includes(adAttr.toLowerCase()));
+          // Whole-token matching. A substring test made `loading="lazy"` match
+          // "ad" and hid every lazy iframe on the page.
+          const tokens = new Set(combined.split(/[^a-z0-9]+/).filter(Boolean));
+          const hasAdAttr = attrs.some(adAttr => tokens.has(adAttr.toLowerCase()));
           if (hasAdAttr && self.WebSuddhi.utils.isVisible(el)) {
             hideElement(el);
           }
@@ -2044,7 +2271,35 @@
     } catch (err) {}
   }
 
+  // Never hide what is plainly the page itself. A broad selector that matches a
+  // layout wrapper takes the whole site down with it — galleries, images, text.
+  function isProtectedContent(el) {
+    if (!el || !el.tagName) return true;
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'html' || tag === 'body' || tag === 'main' || tag === 'article') return true;
+    if (el.querySelector && el.querySelector('main, article, [role="main"]')) return true;
+
+    // A large box holding media is content — unless it labels itself as an ad.
+    // Without this check, full-viewport video/exit-intent ads were never hidden.
+    const descriptor = `${el.id || ''} ${typeof el.className === 'string' ? el.className : ''}`;
+    const looksLikeAd = /(^|[\s_-])(ad|ads|advert\w*|sponsor\w*|promoted|interstitial|banner|overlay)([\s_-]|$)/i
+      .test(descriptor);
+    if (looksLikeAd) return false;
+
+    try {
+      const rect = el.getBoundingClientRect();
+      const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+      const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+      if (vw && vh && rect.width * rect.height >= vw * vh * 0.5) {
+        if (el.querySelector && el.querySelector('img, picture, video, h1, h2')) return true;
+      }
+    } catch (e) {}
+
+    return false;
+  }
+
   function hideElement(el, matchedSelector) {
+    if (isProtectedContent(el)) return;
     el.classList.add('websuddhi-hidden');
     el.setAttribute('data-websuddhi-blocked', 'true');
     el.style.setProperty('display', 'none', 'important');
@@ -2219,10 +2474,17 @@
     });
   }
 
-  function handleDynamicContent() {
-    setTimeout(() => applyBlocking(), 500);
-    setTimeout(() => applyBlocking(), 1500);
-    setTimeout(() => applyBlocking(), 3000);
+  // One late pass for ads injected after load. This used to be called from
+  // applyBlocking() itself, so every sweep scheduled three more sweeps — an
+  // exponential timer tree that pinned a CPU core on every page.
+  let dynamicContentTimer = null;
+
+  function scheduleLateSweep() {
+    if (dynamicContentTimer) return;
+    dynamicContentTimer = setTimeout(() => {
+      dynamicContentTimer = null;
+      applyBlocking();
+    }, 1500);
   }
 
   // ============================================
@@ -2984,6 +3246,11 @@
   // ============================================
   // START
   // ============================================
+  // Register the message listener synchronously. It used to be installed at the
+  // end of an async init(), so a storage failure left the page permanently deaf
+  // to pick mode, toggles and whitelist messages.
+  setupMessageListener();
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {

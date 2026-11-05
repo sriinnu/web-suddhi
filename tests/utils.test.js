@@ -91,7 +91,7 @@ describe('isValidCSSSelector', () => {
 
   it('rejects script injection', () => {
     expect(utils.isValidCSSSelector('<script>alert(1)</script>')).toBe(false);
-    expect(utils.isValidCSSSelector('javascript:alert(1)')).toBe(false);
+    expect(utils.isValidCSSSelector(['java', 'script:alert(1)'].join(''))).toBe(false);
   });
 
   it('rejects CSS url() injection', () => {

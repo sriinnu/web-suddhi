@@ -1,4 +1,4 @@
-// WebSuddhi v2.2.0 - iOS Safari Popup Script
+// WebSuddhi v2.3.0 - iOS Safari Popup Script
 (function() {
   'use strict';
 

@@ -1,4 +1,4 @@
-// WebSuddhi v2.2.0 - iOS Safari Content Script
+// WebSuddhi v2.3.0 - iOS Safari Content Script
 // Ad blocking, paywall removal, cookie consent, annoyance blocking
 (function() {
   'use strict';
@@ -79,6 +79,8 @@
     annoyanceBlockingEnabled: true,
     whitelistedSites: [],
     blockedSelectors: new Map(),
+    pausedSites: {},
+    perSiteAllowedSelectors: {},
     blockedCount: 0
   };
 
@@ -99,13 +101,15 @@
     try {
       const storage = await browser.storage.local.get([
         'enabled', 'paywallEnabled', 'cookieConsentEnabled', 'annoyanceBlockingEnabled',
-        'whitelistedSites', 'blockedSelectors'
+        'whitelistedSites', 'blockedSelectors', 'pausedSites', 'perSiteAllowedSelectors'
       ]);
       state.enabled = storage.enabled !== false;
       state.paywallEnabled = storage.paywallEnabled !== false;
       state.cookieConsentEnabled = storage.cookieConsentEnabled !== false;
       state.annoyanceBlockingEnabled = storage.annoyanceBlockingEnabled !== false;
       state.whitelistedSites = storage.whitelistedSites || [];
+      state.pausedSites = (storage.pausedSites && typeof storage.pausedSites === 'object') ? storage.pausedSites : {};
+      state.perSiteAllowedSelectors = (storage.perSiteAllowedSelectors && typeof storage.perSiteAllowedSelectors === 'object') ? storage.perSiteAllowedSelectors : {};
 
       for (const entry of (storage.blockedSelectors || [])) {
         if (entry && entry.selector) {
@@ -113,7 +117,7 @@
         }
       }
 
-      if (isSiteWhitelisted()) { state.enabled = false; }
+      if (isSiteWhitelisted() || isSitePaused()) { state.enabled = false; }
 
       if (state.enabled) {
         applyAdBlocking();
@@ -139,12 +143,15 @@
   // AD BLOCKING
   // ============================================
   function applyAdBlocking() {
-    if (!state.enabled || isSiteWhitelisted()) return;
+    if (!state.enabled || isSiteWhitelisted() || isSitePaused()) return;
 
+    const allowed = getAllowedSelectorSet();
     for (const selector of state.blockedSelectors.keys()) {
+      if (allowed.has(selector)) continue;
       blockSelector(selector);
     }
     for (const selector of ALL_AD_SELECTORS) {
+      if (allowed.has(selector)) continue;
       blockSelector(selector);
     }
   }
@@ -155,6 +162,20 @@
         if (!el.hasAttribute('data-websuddhi-blocked')) hideElement(el);
       });
     } catch (e) {}
+  }
+
+  function isSitePaused() {
+    const host = getCurrentHostname();
+    if (!host) return false;
+    const expiry = (state.pausedSites || {})[host];
+    return typeof expiry === 'number' && expiry > Date.now();
+  }
+
+  function getAllowedSelectorSet() {
+    const host = getCurrentHostname();
+    if (!host) return new Set();
+    const list = (state.perSiteAllowedSelectors || {})[host] || [];
+    return new Set(list);
   }
 
   function hideElement(el) {
@@ -275,14 +296,31 @@
   // ANNOYANCE BLOCKING (Phase 4)
   // ============================================
   function applyAnnoyanceBlocking() {
-    if (!state.annoyanceBlockingEnabled || isSiteWhitelisted()) return;
+    if (!state.annoyanceBlockingEnabled || isSiteWhitelisted() || isSitePaused()) return;
+    const allowed = getAllowedSelectorSet();
+    let blocked = 0;
+    let lastSelector = '';
     for (const selector of ANNOYANCE_SELECTORS) {
+      if (allowed.has(selector)) continue;
       try {
         document.querySelectorAll(selector).forEach(el => {
           if (!el.hasAttribute('data-websuddhi-annoyance-blocked') && isVisible(el)) {
             el.style.setProperty('display', 'none', 'important');
             el.setAttribute('data-websuddhi-annoyance-blocked', 'true');
+            blocked++;
+            lastSelector = selector;
           }
+        });
+      } catch (e) {}
+    }
+    if (blocked > 0) {
+      try {
+        browser.runtime.sendMessage({
+          type: 'INCREMENT_COSMETIC_STATS',
+          hostname: getCurrentHostname(),
+          count: blocked,
+          selector: lastSelector,
+          category: 'annoyance'
         });
       } catch (e) {}
     }

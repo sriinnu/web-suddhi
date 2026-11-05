@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="../fonts/fonts.css">
   <link rel="stylesheet" href="../shared/themes.css">
   <link rel="stylesheet" href="popup.css">
+  <script src="../shared/custom-themes-loader.js"></script>
   <script src="../shared/theme-loader.js"></script>
 </head>
 <body>
@@ -30,11 +31,16 @@
 
     <main class="main-content">
       <!-- Pinned top: site + master toggle + action bar + site state -->
-      <section class="card top-card">
+      <section class="card top-card" id="siteCard">
+        <div class="pause-ribbon" id="pauseRibbon" hidden>
+          <span class="pause-ribbon-dot" aria-hidden="true"></span>
+          <span class="pause-ribbon-text" id="pauseRibbonText">Paused</span>
+          <button type="button" class="pause-ribbon-resume" id="pauseResumeBtn">Resume</button>
+        </div>
         <div class="top-row">
           <div class="site-info">
             <span class="site-label">Current site</span>
-            <span class="site-domain" id="currentSite">loading...</span>
+            <span class="site-domain loading" id="currentSite">loading...</span>
           </div>
           <label class="toggle" title="Master protection">
             <input type="checkbox" id="enableToggle" checked>
@@ -96,7 +102,7 @@
       <details class="card acc site-security-card">
         <summary class="section-title">Site Security</summary>
         <div id="siteInfoSection" class="site-security-content">
-          <div class="security-main">
+          <button type="button" class="security-main security-main-btn" id="securityMainBtn" aria-expanded="false" aria-controls="certDetailsPanel" title="Click for certificate details">
             <div id="siteIcon" class="security-icon-wrap">
               <svg class="icon icon-secure" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M17 11V7a5 5 0 0 0-10 0v4"/>
@@ -121,11 +127,18 @@
               <span class="mascot-happy">[+]</span>
               <span class="mascot-worried">[!]</span>
             </div>
-          </div>
-          <div id="certOwnerSection" class="cert-owner">
-            <span class="cert-owner-title">Certificate Owner</span>
-            <span id="certOwnerName"></span>
-            <span id="certOwnerDetails"></span>
+            <svg class="security-expand-chevron" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M1 1l4 4 4-4"/>
+            </svg>
+          </button>
+          <div id="certDetailsPanel" class="cert-details-panel" hidden>
+            <div id="certOwnerSection" class="cert-owner">
+              <span class="cert-owner-title">Certificate Owner</span>
+              <span id="certOwnerName"></span>
+              <span id="certOwnerDetails"></span>
+            </div>
+            <dl class="cert-details-grid" id="certDetailsGrid"></dl>
+            <p class="cert-details-note" id="certDetailsNote"></p>
           </div>
           <div id="phishingRiskSection" class="phishing-risk" style="display: none;">
             <div class="phishing-risk-header">
@@ -349,7 +362,7 @@
     <footer class="footer">
       <div class="footer-row">
         <div class="footer-left">
-          <span class="version">v2.2.0</span>
+          <span class="version">v2.3.0</span>
           <span class="footer-sep"></span>
           <a href="https://github.com/sriinnu/web-suddhi" target="_blank" rel="noopener noreferrer" class="footer-author">by <strong>Srinivas Pendela</strong></a>
           <a href="https://buymeacoffee.com/sriinnu" target="_blank" rel="noopener noreferrer" class="footer-coffee" title="Buy me a coffee">

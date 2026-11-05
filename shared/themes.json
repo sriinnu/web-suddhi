@@ -1,0 +1,230 @@
+[
+  {
+    "id": "aurora",
+    "name": "Aurora",
+    "description": "Modern cinematic — soft warm whites with violet and teal aurora accents. Apple-visionOS energy.",
+    "recommendedFont": "Geist",
+    "swatches": ["#F4EFE6", "#7C5CFF", "#2AA6A0", "#1A1A2E"],
+    "tokens": {
+      "--font-family": "'Geist', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', Roboto, sans-serif",
+
+      "--bg-primary": "#F4EFE6",
+      "--bg-secondary": "#FFFFFF",
+      "--bg-tertiary": "#EAE3D5",
+      "--bg-hover": "#DFD6C4",
+      "--bg-card": "#FFFFFF",
+
+      "--text-primary": "#1A1A2E",
+      "--text-secondary": "#44455E",
+      "--text-tertiary": "#7A7B92",
+
+      "--border-color": "#DED6C4",
+      "--border-focus": "#7C5CFF",
+      "--border": "rgba(26, 26, 46, 0.10)",
+
+      "--accent": "#7C5CFF",
+      "--accent-hover": "#5D3FE0",
+      "--accent-light": "#A98DFF",
+      "--accent-bg": "rgba(124, 92, 255, 0.10)",
+      "--primary": "#7C5CFF",
+      "--primary-light": "#A98DFF",
+
+      "--success": "#2AA6A0",
+      "--success-bg": "rgba(42, 166, 160, 0.12)",
+      "--danger": "#E26D8A",
+      "--danger-bg": "rgba(226, 109, 138, 0.12)",
+      "--warning": "#E6A84A",
+      "--warning-bg": "rgba(230, 168, 74, 0.12)",
+
+      "--gradient-accent": "linear-gradient(135deg, #7C5CFF 0%, #2AA6A0 100%)",
+      "--gradient-sidebar": "linear-gradient(180deg, #1A1A2E 0%, #2A2448 100%)",
+      "--gradient-blue": "linear-gradient(135deg, #5D3FE0 0%, #7C5CFF 100%)",
+      "--gradient-orange": "linear-gradient(135deg, #E6A84A 0%, #E26D8A 100%)",
+      "--gradient-green": "linear-gradient(135deg, #2AA6A0 0%, #7C5CFF 100%)",
+      "--gradient-purple": "linear-gradient(135deg, #7C5CFF 0%, #E26D8A 100%)",
+
+      "--stat-gradient-1": "linear-gradient(135deg, #7C5CFF 0%, #2AA6A0 100%)",
+      "--stat-gradient-2": "linear-gradient(135deg, #2AA6A0 0%, #5D3FE0 100%)",
+      "--stat-gradient-3": "linear-gradient(135deg, #5D3FE0 0%, #E26D8A 100%)",
+      "--stat-gradient-4": "linear-gradient(135deg, #E26D8A 0%, #E6A84A 100%)",
+
+      "--shadow-sm": "0 1px 2px rgba(26, 26, 46, 0.06)",
+      "--shadow-md": "0 6px 18px -6px rgba(124, 92, 255, 0.18), 0 2px 6px -2px rgba(26, 26, 46, 0.08)",
+      "--shadow-lg": "0 18px 32px -10px rgba(124, 92, 255, 0.22), 0 6px 12px -4px rgba(26, 26, 46, 0.10)",
+      "--shadow-glow": "0 0 28px rgba(124, 92, 255, 0.22)",
+      "--shadow": "0 4px 14px rgba(26, 26, 46, 0.08)",
+      "--shadow-lg-popup": "0 12px 28px rgba(124, 92, 255, 0.18)"
+    }
+  },
+  {
+    "id": "mocha",
+    "name": "Mocha",
+    "description": "Refined and grown-up — mocha mousse on warm ivory with deep espresso. Pantone 2024 color-of-the-year energy.",
+    "recommendedFont": "Plus Jakarta Sans",
+    "swatches": ["#F6F0E6", "#A47864", "#3E2C23", "#C9B8A2"],
+    "tokens": {
+      "--font-family": "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', Roboto, sans-serif",
+
+      "--bg-primary": "#F6F0E6",
+      "--bg-secondary": "#FBF7EF",
+      "--bg-tertiary": "#EDE3D2",
+      "--bg-hover": "#DFD2BC",
+      "--bg-card": "#FBF7EF",
+
+      "--text-primary": "#3E2C23",
+      "--text-secondary": "#6B4F3E",
+      "--text-tertiary": "#9A8170",
+
+      "--border-color": "#D8C9B4",
+      "--border-focus": "#A47864",
+      "--border": "rgba(62, 44, 35, 0.10)",
+
+      "--accent": "#A47864",
+      "--accent-hover": "#8A6350",
+      "--accent-light": "#C9B8A2",
+      "--accent-bg": "rgba(164, 120, 100, 0.12)",
+      "--primary": "#A47864",
+      "--primary-light": "#C9B8A2",
+
+      "--success": "#6B8E5E",
+      "--success-bg": "rgba(107, 142, 94, 0.12)",
+      "--danger": "#B85C4F",
+      "--danger-bg": "rgba(184, 92, 79, 0.12)",
+      "--warning": "#D4A35B",
+      "--warning-bg": "rgba(212, 163, 91, 0.12)",
+
+      "--gradient-accent": "linear-gradient(135deg, #A47864 0%, #3E2C23 100%)",
+      "--gradient-sidebar": "linear-gradient(180deg, #3E2C23 0%, #2A1E18 100%)",
+      "--gradient-blue": "linear-gradient(135deg, #A47864 0%, #6B4F3E 100%)",
+      "--gradient-orange": "linear-gradient(135deg, #D4A35B 0%, #A47864 100%)",
+      "--gradient-green": "linear-gradient(135deg, #6B8E5E 0%, #A47864 100%)",
+      "--gradient-purple": "linear-gradient(135deg, #A47864 0%, #C9B8A2 100%)",
+
+      "--stat-gradient-1": "linear-gradient(135deg, #A47864 0%, #3E2C23 100%)",
+      "--stat-gradient-2": "linear-gradient(135deg, #6B8E5E 0%, #A47864 100%)",
+      "--stat-gradient-3": "linear-gradient(135deg, #D4A35B 0%, #A47864 100%)",
+      "--stat-gradient-4": "linear-gradient(135deg, #C9B8A2 0%, #A47864 100%)",
+
+      "--shadow-sm": "0 1px 2px rgba(62, 44, 35, 0.06)",
+      "--shadow-md": "0 6px 16px -6px rgba(62, 44, 35, 0.14), 0 2px 4px -2px rgba(62, 44, 35, 0.08)",
+      "--shadow-lg": "0 16px 28px -10px rgba(62, 44, 35, 0.18), 0 6px 10px -4px rgba(62, 44, 35, 0.10)",
+      "--shadow-glow": "0 0 24px rgba(164, 120, 100, 0.22)",
+      "--shadow": "0 4px 12px rgba(62, 44, 35, 0.08)",
+      "--shadow-lg-popup": "0 10px 24px rgba(62, 44, 35, 0.14)"
+    }
+  },
+  {
+    "id": "sunset-79",
+    "name": "Sunset '79",
+    "description": "Warm 1970s den — terracotta, mustard, avocado, and burnt sienna on cream. Wes-Anderson-meets-Pixar-pastel.",
+    "recommendedFont": "Outfit",
+    "swatches": ["#F4E8D4", "#C94F2E", "#D9A441", "#5E6B3B"],
+    "tokens": {
+      "--font-family": "'Outfit', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', Roboto, sans-serif",
+
+      "--bg-primary": "#F4E8D4",
+      "--bg-secondary": "#FBF4E3",
+      "--bg-tertiary": "#E8D6B5",
+      "--bg-hover": "#D8C29A",
+      "--bg-card": "#FBF4E3",
+
+      "--text-primary": "#3B2418",
+      "--text-secondary": "#7A4B2E",
+      "--text-tertiary": "#9E8260",
+
+      "--border-color": "#D8C29A",
+      "--border-focus": "#C94F2E",
+      "--border": "rgba(59, 36, 24, 0.12)",
+
+      "--accent": "#C94F2E",
+      "--accent-hover": "#A53C1F",
+      "--accent-light": "#E07A56",
+      "--accent-bg": "rgba(201, 79, 46, 0.12)",
+      "--primary": "#C94F2E",
+      "--primary-light": "#E07A56",
+
+      "--success": "#5E6B3B",
+      "--success-bg": "rgba(94, 107, 59, 0.12)",
+      "--danger": "#B23A2C",
+      "--danger-bg": "rgba(178, 58, 44, 0.14)",
+      "--warning": "#D9A441",
+      "--warning-bg": "rgba(217, 164, 65, 0.14)",
+
+      "--gradient-accent": "linear-gradient(135deg, #C94F2E 0%, #D9A441 100%)",
+      "--gradient-sidebar": "linear-gradient(180deg, #7A4B2E 0%, #3B2418 100%)",
+      "--gradient-blue": "linear-gradient(135deg, #7A4B2E 0%, #C94F2E 100%)",
+      "--gradient-orange": "linear-gradient(135deg, #D9A441 0%, #C94F2E 100%)",
+      "--gradient-green": "linear-gradient(135deg, #5E6B3B 0%, #D9A441 100%)",
+      "--gradient-purple": "linear-gradient(135deg, #C94F2E 0%, #5E6B3B 100%)",
+
+      "--stat-gradient-1": "linear-gradient(135deg, #C94F2E 0%, #D9A441 100%)",
+      "--stat-gradient-2": "linear-gradient(135deg, #D9A441 0%, #5E6B3B 100%)",
+      "--stat-gradient-3": "linear-gradient(135deg, #5E6B3B 0%, #C94F2E 100%)",
+      "--stat-gradient-4": "linear-gradient(135deg, #7A4B2E 0%, #C94F2E 100%)",
+
+      "--shadow-sm": "0 1px 2px rgba(59, 36, 24, 0.08)",
+      "--shadow-md": "0 6px 14px -6px rgba(201, 79, 46, 0.18), 0 2px 4px -2px rgba(59, 36, 24, 0.10)",
+      "--shadow-lg": "0 16px 28px -10px rgba(201, 79, 46, 0.22), 0 6px 10px -4px rgba(59, 36, 24, 0.12)",
+      "--shadow-glow": "0 0 22px rgba(217, 164, 65, 0.28)",
+      "--shadow": "0 4px 12px rgba(59, 36, 24, 0.10)",
+      "--shadow-lg-popup": "0 10px 22px rgba(201, 79, 46, 0.18)"
+    }
+  },
+  {
+    "id": "vaporwave",
+    "name": "Vaporwave",
+    "description": "Muted 1980s synthwave — hot-pink and cyan on deep indigo. Dialed-down for legibility.",
+    "recommendedFont": "Space Grotesk",
+    "swatches": ["#1A1235", "#FF6EC7", "#4DD4E0", "#B48DFF"],
+    "tokens": {
+      "--font-family": "'Space Grotesk', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', Roboto, sans-serif",
+
+      "--bg-primary": "#1A1235",
+      "--bg-secondary": "#251847",
+      "--bg-tertiary": "#321F5E",
+      "--bg-hover": "#3E2870",
+      "--bg-card": "#251847",
+
+      "--text-primary": "#F0E7FF",
+      "--text-secondary": "#C2B3E8",
+      "--text-tertiary": "#8A7BB8",
+
+      "--border-color": "#3E2870",
+      "--border-focus": "#FF6EC7",
+      "--border": "rgba(240, 231, 255, 0.10)",
+
+      "--accent": "#FF6EC7",
+      "--accent-hover": "#E04FAE",
+      "--accent-light": "#FFA3D9",
+      "--accent-bg": "rgba(255, 110, 199, 0.14)",
+      "--primary": "#FF6EC7",
+      "--primary-light": "#FFA3D9",
+
+      "--success": "#4DD4E0",
+      "--success-bg": "rgba(77, 212, 224, 0.14)",
+      "--danger": "#FF5572",
+      "--danger-bg": "rgba(255, 85, 114, 0.16)",
+      "--warning": "#F2C94C",
+      "--warning-bg": "rgba(242, 201, 76, 0.14)",
+
+      "--gradient-accent": "linear-gradient(135deg, #FF6EC7 0%, #4DD4E0 100%)",
+      "--gradient-sidebar": "linear-gradient(180deg, #1A1235 0%, #0E0824 100%)",
+      "--gradient-blue": "linear-gradient(135deg, #B48DFF 0%, #4DD4E0 100%)",
+      "--gradient-orange": "linear-gradient(135deg, #FF6EC7 0%, #F2C94C 100%)",
+      "--gradient-green": "linear-gradient(135deg, #4DD4E0 0%, #B48DFF 100%)",
+      "--gradient-purple": "linear-gradient(135deg, #B48DFF 0%, #FF6EC7 100%)",
+
+      "--stat-gradient-1": "linear-gradient(135deg, #FF6EC7 0%, #B48DFF 100%)",
+      "--stat-gradient-2": "linear-gradient(135deg, #4DD4E0 0%, #B48DFF 100%)",
+      "--stat-gradient-3": "linear-gradient(135deg, #B48DFF 0%, #FF6EC7 100%)",
+      "--stat-gradient-4": "linear-gradient(135deg, #4DD4E0 0%, #FF6EC7 100%)",
+
+      "--shadow-sm": "0 1px 2px rgba(0, 0, 0, 0.30)",
+      "--shadow-md": "0 6px 18px -4px rgba(255, 110, 199, 0.25), 0 2px 6px -2px rgba(0, 0, 0, 0.35)",
+      "--shadow-lg": "0 18px 34px -10px rgba(255, 110, 199, 0.30), 0 6px 12px -4px rgba(0, 0, 0, 0.40)",
+      "--shadow-glow": "0 0 32px rgba(255, 110, 199, 0.35)",
+      "--shadow": "0 4px 16px rgba(0, 0, 0, 0.35)",
+      "--shadow-lg-popup": "0 14px 32px rgba(255, 110, 199, 0.22)"
+    }
+  }
+]
