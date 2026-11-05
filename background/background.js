@@ -234,12 +234,22 @@ try {
   // ============================================
   // SAFE TAB MESSAGING - Avoids "No tab with id" errors
   // ============================================
-  function safeSendToTab(tabId, message) {
+  function safeSendToTab(tabId, message, options) {
     try {
-      const result = api.tabs.sendMessage(tabId, message, () => {
+      const onDone = () => {
         // Check lastError in callback to suppress "Unchecked runtime.lastError"
         if (api.runtime.lastError) { /* tab not available */ }
-      });
+      };
+      // Promise-style APIs (Firefox `browser`) take no callback; passing one
+      // where `options` goes makes the call throw.
+      let result;
+      if (hasPromiseExtensionApi) {
+        result = options ? api.tabs.sendMessage(tabId, message, options) : api.tabs.sendMessage(tabId, message);
+      } else {
+        result = options
+          ? api.tabs.sendMessage(tabId, message, options, onDone)
+          : api.tabs.sendMessage(tabId, message, onDone);
+      }
       if (result && typeof result.then === 'function') {
         result.catch(() => {});
       }
@@ -525,9 +535,11 @@ try {
 
   function handleContextMenuClick(info, tab) {
     if (info.menuItemId === 'websuddhi-block') {
-      // Send message to content script to enter pick mode
+      // Block the element the user right-clicked, in the frame they clicked.
+      // The content script falls back to pick mode if it has no target.
       if (tab && tab.id) {
-        safeSendToTab(tab.id, { type: 'START_PICK_MODE' });
+        const frameId = typeof info.frameId === 'number' ? info.frameId : 0;
+        safeSendToTab(tab.id, { type: 'BLOCK_CONTEXT_TARGET' }, { frameId });
       }
     }
   }
@@ -2122,6 +2134,77 @@ try {
     }
   }
 
+  // Register every browser-event listener synchronously, on the worker's first
+  // turn. MV3 delivers the event that woke the worker right after top-level
+  // evaluation; a listener added after an `await` misses it. That is why
+  // right-click "Block this element", Alt+P and pause expiry used to do nothing
+  // whenever the worker had gone to sleep.
+  function registerEventListeners() {
+    api.runtime.onUpdateCheckStatus && api.runtime.onUpdateCheckStatus.addListener((status) => {
+      if (status === 'update_available') {
+        log('Update available');
+      }
+    });
+    if (api.tabs && api.tabs.onRemoved) {
+      api.tabs.onRemoved.addListener((tabId) => {
+        tabFrameMap.delete(tabId);
+        stopIconBlink(tabId);
+        if (self.WebSuddhi.frameRegistry) self.WebSuddhi.frameRegistry.removeTab(tabId);
+      });
+    }
+    // Reset the per-tab frame census on top-frame navigation (per-page counts).
+    if (api.webNavigation && api.webNavigation.onCommitted) {
+      api.webNavigation.onCommitted.addListener((details) => {
+        if (details.frameId === 0 && self.WebSuddhi.frameRegistry) {
+          self.WebSuddhi.frameRegistry.resetTab(details.tabId);
+        }
+      });
+    }
+    if (api.tabs && api.tabs.onUpdated) {
+      api.tabs.onUpdated.addListener((tabId, changeInfo) => {
+        if (changeInfo && changeInfo.status === 'loading') {
+          tabFrameMap.delete(tabId);
+        }
+      });
+    }
+
+    // Set up context menu
+    if (supportsContextMenus()) {
+      setupContextMenu();
+      api.contextMenus.onClicked.addListener(handleContextMenuClick);
+    }
+
+    // Pause-expiry alarm
+    if (api.alarms && api.alarms.onAlarm) {
+      api.alarms.onAlarm.addListener((alarm) => {
+        if (alarm && alarm.name === PAUSE_ALARM_NAME) {
+          sweepExpiredPauses().catch(err => logError('Pause sweep failed:', err));
+        }
+      });
+    }
+
+    // Set up command listener
+    setupCommandListener();
+
+    // Set up storage change listener for sync
+    if (supportsSyncStorage() && api.storage?.onChanged) {
+      api.storage.onChanged.addListener((changes, area) => {
+        if (area === 'sync' && changes) {
+          // Propagate sync changes to local
+          const localChanges = {};
+          for (const key in changes) {
+            localChanges[key] = changes[key].newValue;
+          }
+          if (Object.keys(localChanges).length > 0) {
+            setStorageArea('local', localChanges).catch((err) => {
+              logError('Failed to apply sync changes locally:', err);
+            });
+          }
+        }
+      });
+    }
+  }
+
   // ============================================
   // INITIALIZATION
   // ============================================
@@ -2132,72 +2215,10 @@ try {
       // Modules imported via importScripts auto-initialize themselves.
       // Avoid calling module init functions here to prevent duplicate listeners/timers.
 
-      api.runtime.onUpdateCheckStatus && api.runtime.onUpdateCheckStatus.addListener((status) => {
-        if (status === 'update_available') {
-          log('Update available');
-        }
-      });
-      if (api.tabs && api.tabs.onRemoved) {
-        api.tabs.onRemoved.addListener((tabId) => {
-          tabFrameMap.delete(tabId);
-          stopIconBlink(tabId);
-          if (self.WebSuddhi.frameRegistry) self.WebSuddhi.frameRegistry.removeTab(tabId);
-        });
-      }
-      // Reset the per-tab frame census on top-frame navigation (per-page counts).
-      if (api.webNavigation && api.webNavigation.onCommitted) {
-        api.webNavigation.onCommitted.addListener((details) => {
-          if (details.frameId === 0 && self.WebSuddhi.frameRegistry) {
-            self.WebSuddhi.frameRegistry.resetTab(details.tabId);
-          }
-        });
-      }
       // Warm the rule-list cache so the first FRAME_ANNOUNCE classifies correctly.
       if (self.WebSuddhi.listLoader) self.WebSuddhi.listLoader.loadLists();
-      if (api.tabs && api.tabs.onUpdated) {
-        api.tabs.onUpdated.addListener((tabId, changeInfo) => {
-          if (changeInfo && changeInfo.status === 'loading') {
-            tabFrameMap.delete(tabId);
-          }
-        });
-      }
-
-      // Set up context menu
-      if (supportsContextMenus()) {
-        setupContextMenu();
-        api.contextMenus.onClicked.addListener(handleContextMenuClick);
-      }
-
-      // Set up pause-expiry alarm + initial sweep
-      if (api.alarms && api.alarms.onAlarm) {
-        api.alarms.onAlarm.addListener((alarm) => {
-          if (alarm && alarm.name === PAUSE_ALARM_NAME) {
-            sweepExpiredPauses().catch(err => logError('Pause sweep failed:', err));
-          }
-        });
-        sweepExpiredPauses().catch(() => {});
-      }
-
-      // Set up command listener
-      setupCommandListener();
-
-      // Set up storage change listener for sync
-      if (supportsSyncStorage() && api.storage?.onChanged) {
-        api.storage.onChanged.addListener((changes, area) => {
-          if (area === 'sync' && changes) {
-            // Propagate sync changes to local
-            const localChanges = {};
-            for (const key in changes) {
-              localChanges[key] = changes[key].newValue;
-            }
-            if (Object.keys(localChanges).length > 0) {
-              setStorageArea('local', localChanges).catch((err) => {
-                logError('Failed to apply sync changes locally:', err);
-              });
-            }
-          }
-        });
-      }
+      // Clear any pauses that expired while the worker was asleep.
+      sweepExpiredPauses().catch(() => {});
 
       // Clean up old storage keys on init (run monthly)
       const oldKeys = ['adsBlocked', 'trackersBlocked', 'lastCleanUp'];
@@ -2229,6 +2250,12 @@ try {
       .catch(err => sendResponse({ success: false, error: err.message }));
     return true; // Keep port open for async response
   });
+
+  try {
+    registerEventListeners();
+  } catch (err) {
+    logError('Listener registration failed:', err);
+  }
 
   // Start initialization
   initialize();

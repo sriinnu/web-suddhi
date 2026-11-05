@@ -854,6 +854,8 @@
     pickCommitting: false,     // re-entrancy guard
     zapMode: false,            // legacy alias; true while a zap-default pick is active
     hoveredElement: null,
+    contextTarget: null,       // last right-clicked element in this frame
+    contextTargetAt: 0,
     observer: null,
     observerTimeout: null,
     blockedCount: 0,
@@ -1140,6 +1142,9 @@
       case 'START_PICK_MODE':
         startPickMode();
         return { success: true };
+
+      case 'BLOCK_CONTEXT_TARGET':
+        return blockContextTarget();
 
       case 'TOGGLE_PICK_MODE':
         if (state.pickMode) {
@@ -2081,7 +2086,7 @@
     for (const [selector, info] of state.blockedSelectors) {
       if (allowed.has(selector)) continue;
       if (!selectorIsForThisSite(info, currentHost)) continue;
-      blockSelector(selector);
+      blockSelector(selector, { userRule: true });
     }
 
     for (const selector of ALL_SELECTORS) {
@@ -2116,12 +2121,12 @@
     return entryHost === siteHost || siteHost.endsWith('.' + entryHost);
   }
 
-  function blockSelector(selector) {
+  function blockSelector(selector, opts) {
     try {
       const elements = document.querySelectorAll(selector);
       elements.forEach(el => {
         if (self.WebSuddhi.utils.isVisible(el) && !el.hasAttribute('data-websuddhi-blocked')) {
-          hideElement(el, selector);
+          hideElement(el, selector, opts);
         }
       });
     } catch (err) {}
@@ -2298,8 +2303,16 @@
     return false;
   }
 
-  function hideElement(el, matchedSelector) {
-    if (isProtectedContent(el)) return;
+  // opts.userRule: the user picked this element themselves. The content guard
+  // exists to stop broad *filter-list* selectors eating articles; it must not
+  // veto an explicit user choice (it used to, silently, while the toast said
+  // "Element blocked"). Only <html>/<body> stay off-limits.
+  function hideElement(el, matchedSelector, opts) {
+    if (opts && opts.userRule) {
+      if (!el || !el.tagName || el === document.documentElement || el === document.body) return;
+    } else if (isProtectedContent(el)) {
+      return;
+    }
     el.classList.add('websuddhi-hidden');
     el.setAttribute('data-websuddhi-blocked', 'true');
     el.style.setProperty('display', 'none', 'important');
@@ -2956,7 +2969,7 @@
 
     const selector = state.pickCtrlHeld ? getSpecificSelector(el) : getUniqueSelector(el);
     if (quick) {
-      hideElement(el, selector);
+      hideElement(el, selector, { userRule: true });
       showToast('Element removed (not saved)');
       stopPickMode();
     } else {
@@ -3149,7 +3162,10 @@
           date: Date.now()
         });
         await saveSelectors();
-        blockSelector(selector);
+        blockSelector(selector, { userRule: true });
+        if (element && !element.hasAttribute('data-websuddhi-blocked')) {
+          hideElement(element, selector, { userRule: true });
+        }
         try { await sendMessage({ type: 'ADD_SELECTOR', selector }); } catch (e) {}
         closeDialog();
         document.removeEventListener('keydown', onKeyDown);
@@ -3249,6 +3265,76 @@
   // Register the message listener synchronously. It used to be installed at the
   // end of an async init(), so a storage failure left the page permanently deaf
   // to pick mode, toggles and whitelist messages.
+  // ============================================
+  // RIGHT-CLICK "Block this element"
+  // ============================================
+  const CONTEXT_TARGET_TTL_MS = 60 * 1000;
+
+  function rememberContextTarget(e) {
+    if (state.pickMode) return; // pick mode handles its own right-clicks
+    const t = e.target;
+    state.contextTarget = t && t.nodeType === 1 ? t : (t && t.parentElement) || null;
+    state.contextTargetAt = Date.now();
+  }
+
+  // A right-click usually lands on an inner <img>/<span>. Climb to the outermost
+  // wrapper that is still essentially the same box, so the whole ad slot goes
+  // rather than leaving an empty frame behind. Never climbs into <body>.
+  function widenToWrapper(el) {
+    const area = (node) => {
+      try { const r = node.getBoundingClientRect(); return r.width * r.height; } catch (e) { return 0; }
+    };
+    let cur = el;
+    const base = area(el);
+    if (!base) return el;
+    while (cur.parentElement &&
+           cur.parentElement !== document.body &&
+           cur.parentElement !== document.documentElement) {
+      const parentArea = area(cur.parentElement);
+      if (!parentArea || parentArea > base * 1.3) break;
+      cur = cur.parentElement;
+    }
+    return cur;
+  }
+
+  async function blockContextTarget() {
+    const raw = state.contextTarget;
+    const fresh = raw && raw.isConnected && (Date.now() - state.contextTargetAt) < CONTEXT_TARGET_TTL_MS;
+    state.contextTarget = null;
+    if (!fresh) {
+      // Nothing right-clicked in this frame (e.g. older browser without frameId).
+      if (window === window.top) startPickMode();
+      return { success: true, pickMode: state.pickMode };
+    }
+
+    const el = widenToWrapper(raw);
+    if (el === document.body || el === document.documentElement) {
+      showToast('Can\'t block the whole page');
+      return { success: false, error: 'refused page root' };
+    }
+    const selector = getUniqueSelector(el);
+    hideElement(el, selector, { userRule: true });
+    if (!el.hasAttribute('data-websuddhi-blocked')) {
+      return { success: false, error: 'could not hide' };
+    }
+    if (state.blockedSelectors.size >= 500) {
+      showToast('Hidden for now. Rule limit reached (500), so it was not saved.');
+      return { success: true, saved: false, selector };
+    }
+    state.blockedSelectors.set(selector, { url: window.location.hostname, date: Date.now() });
+    try {
+      await saveSelectors();
+      sendMessage({ type: 'ADD_SELECTOR', selector }).catch(() => {});
+    } catch (err) {
+      logError('Failed to save selector:', err);
+    }
+    showToast('Element blocked on ' + (window.location.hostname || 'this page'));
+    return { success: true, saved: true, selector };
+  }
+
+  // Capture phase, registered at document_start, so the page can't swallow it.
+  document.addEventListener('contextmenu', rememberContextTarget, true);
+
   setupMessageListener();
 
   if (document.readyState === 'loading') {
