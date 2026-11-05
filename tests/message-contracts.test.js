@@ -17,6 +17,19 @@ it('keeps the keyboard shortcut pick-mode contract wired end to end', () => {
   expect(contentSource).toContain("case 'TOGGLE_PICK_MODE'");
 });
 
+it('loads the picker on demand instead of in every frame', () => {
+  const manifest = JSON.parse(readSource('manifest.json'));
+  const mv2 = JSON.parse(readSource('manifest-mv2.json'));
+  for (const m of [manifest, mv2]) {
+    for (const cs of m.content_scripts) expect(cs.js).not.toContain('content/picker.js');
+  }
+  expect(readSource('content/ad-blocker.js')).not.toContain('function startPickMode');
+  expect(readSource('content/ad-blocker.js')).toContain("type: 'LOAD_PICKER'");
+  const bg = readSource('background/background.js');
+  expect(bg).toContain("case 'LOAD_PICKER'");
+  expect(bg).toContain('content/picker.js');
+});
+
 it('wires the frame-engine message types end to end', () => {
   const backgroundSource = readSource('background/background.js');
   const agentSource = readSource('content/frame-agent.js');
@@ -50,7 +63,7 @@ it('wires the site-state model end to end (popup <-> background)', () => {
 });
 
 it('picker captures every pointer event + uses an overlay (no click leak to iframes)', () => {
-  const src = readSource('content/ad-blocker.js');
+  const src = readSource('content/picker.js');
   // All pointer events intercepted in the capture phase.
   for (const ev of ['pointerdown', 'mousedown', 'mouseup', 'click', 'auxclick', 'contextmenu']) {
     expect(src).toContain(`'${ev}'`);

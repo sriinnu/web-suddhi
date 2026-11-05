@@ -68,4 +68,19 @@ test.describe('local fixture site (offline, deterministic)', () => {
     const fp = blocked.filter((u) => [FIRST_PARTY, FIRST_PARTY_CDN].includes(new URL(u).hostname));
     expect(fp).toEqual([]);
   });
+
+  // The picker is injected on demand (LOAD_PICKER -> scripting.executeScript),
+  // so this proves the real injection path, not just the jsdom stand-in.
+  test('element picker loads on demand and starts/stops', async () => {
+    const send = (type) => ctx.sw.evaluate(async ({ type, host }) => {
+      const [tab] = await chrome.tabs.query({ url: `http://${host}/*` });
+      return chrome.tabs.sendMessage(tab.id, { type }, { frameId: 0 });
+    }, { type, host: FIRST_PARTY });
+
+    expect(await page.locator('.websuddhi-pick-overlay').count()).toBe(0);
+    expect(await send('START_PICK_MODE')).toMatchObject({ success: true });
+    await expect(page.locator('.websuddhi-pick-overlay')).toHaveCount(1);
+    expect(await send('TOGGLE_PICK_MODE')).toMatchObject({ success: true, pickMode: false });
+    await expect(page.locator('.websuddhi-pick-overlay')).toHaveCount(0);
+  });
 });

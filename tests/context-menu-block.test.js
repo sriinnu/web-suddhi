@@ -68,6 +68,7 @@ function loadContentScript(api, html) {
   if (!window.CSS.escape) window.CSS.escape = (s) => String(s).replace(/[^a-zA-Z0-9_-]/g, (ch) => "\\" + ch);
   globalThis.CSS = window.CSS;
   window.eval(read('shared/utils.js'));
+  delete window.__wsPicker; // a fresh core needs a fresh picker
   window.eval(read('content/ad-blocker.js'));
 }
 
@@ -78,7 +79,12 @@ function createContentApi() {
       id: 'test',
       lastError: null,
       onMessage: listenerSlot(),
-      sendMessage: vi.fn((msg, cb) => { if (typeof cb === 'function') cb({ success: true }); return undefined; }),
+      // LOAD_PICKER: stand in for the background injecting content/picker.js.
+      sendMessage: vi.fn((msg, cb) => {
+        if (msg && msg.type === 'LOAD_PICKER') window.eval(read('content/picker.js'));
+        if (typeof cb === 'function') cb({ success: true });
+        return undefined;
+      }),
       getURL: (p) => 'chrome-extension://test/' + p
     },
     storage: {

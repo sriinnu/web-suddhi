@@ -112,7 +112,8 @@ try {
     'GET_STATS',
     'GET_ENHANCED_STATS',
     'GET_PERIOD_STATS',
-    'GET_STATS_FOR_PERIOD'
+    'GET_STATS_FOR_PERIOD',
+    'LOAD_PICKER'
   ]);
 
   // Safe storage wrapper with defaults
@@ -1570,6 +1571,30 @@ try {
   // ============================================
   // MESSAGE HANDLER
   // ============================================
+  /**
+   * Inject content/picker.js into the frame that sent LOAD_PICKER.
+   * MV3 (Chromium, Safari) uses scripting.executeScript; the MV2 Firefox build
+   * has no scripting permission and uses tabs.executeScript.
+   */
+  async function injectPicker(sender) {
+    const tabId = sender && sender.tab && sender.tab.id;
+    if (typeof tabId !== 'number' || tabId < 0) return { success: false, error: 'No tab' };
+    const frameId = typeof sender.frameId === 'number' ? sender.frameId : 0;
+    if (api.scripting && api.scripting.executeScript) {
+      await api.scripting.executeScript({ target: { tabId, frameIds: [frameId] }, files: ['content/picker.js'] });
+    } else if (hasPromiseExtensionApi) {
+      await api.tabs.executeScript(tabId, { file: '/content/picker.js', frameId });
+    } else {
+      await new Promise((resolve, reject) => {
+        api.tabs.executeScript(tabId, { file: '/content/picker.js', frameId }, () => {
+          if (api.runtime.lastError) reject(new Error(api.runtime.lastError.message));
+          else resolve();
+        });
+      });
+    }
+    return { success: true };
+  }
+
   async function handleMessage(message, sender, sendResponse) {
     // Handle rate limiting
     if (!RATE_LIMIT_EXEMPT_TYPES.has(message.type)) {
@@ -1607,6 +1632,10 @@ try {
 
         case 'RESET_STATS':
           return await resetStats();
+
+        // Element picker: injected into the asking frame on first use.
+        case 'LOAD_PICKER':
+          return await injectPicker(sender);
 
         // Selectors
         case 'ADD_SELECTOR':
