@@ -1795,6 +1795,7 @@
       elements.forEach(el => {
         el.classList.remove('websuddhi-hidden');
         el.removeAttribute('data-websuddhi-blocked');
+        el.removeAttribute('data-websuddhi-rule');
         el.style.display = '';
         el.style.visibility = '';
         el.style.opacity = '';
@@ -1808,6 +1809,7 @@
     document.querySelectorAll('.websuddhi-hidden, [data-websuddhi-blocked], [data-websuddhi-removed]').forEach(el => {
       el.classList.remove('websuddhi-hidden', 'websuddhi-removed', 'websuddhi-social-blocked');
       el.removeAttribute('data-websuddhi-blocked');
+      el.removeAttribute('data-websuddhi-rule');
       el.removeAttribute('data-websuddhi-removed');
       el.style.display = '';
       el.style.visibility = '';
@@ -1823,6 +1825,7 @@
     document.querySelectorAll('.websuddhi-social-blocked, [data-websuddhi-blocked="social"]').forEach(el => {
       el.classList.remove('websuddhi-hidden', 'websuddhi-social-blocked');
       el.removeAttribute('data-websuddhi-blocked');
+      el.removeAttribute('data-websuddhi-rule');
       el.style.display = '';
       el.style.visibility = '';
       el.style.opacity = '';
@@ -1897,6 +1900,10 @@
     }
     el.classList.add('websuddhi-hidden');
     el.setAttribute('data-websuddhi-blocked', 'true');
+    // Which rule hid it. Lets the e2e survey (and anyone in devtools) trace a
+    // wrongly hidden element back to its selector. The page can already see
+    // data-websuddhi-blocked, so this exposes nothing new.
+    if (matchedSelector) el.setAttribute('data-websuddhi-rule', String(matchedSelector).slice(0, 200));
     el.style.setProperty('display', 'none', 'important');
     el.style.setProperty('visibility', 'hidden', 'important');
     el.style.setProperty('opacity', '0', 'important');
@@ -1919,6 +1926,7 @@
     hidden.forEach((el) => {
       el.classList.remove('websuddhi-hidden');
       el.removeAttribute('data-websuddhi-blocked');
+      el.removeAttribute('data-websuddhi-rule');
       ['display', 'visibility', 'opacity', 'position', 'pointer-events', 'z-index'].forEach((p) => el.style.removeProperty(p));
       restored += 1;
     });

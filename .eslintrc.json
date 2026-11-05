@@ -20,7 +20,7 @@
       }
     },
     {
-      "files": ["tests/**/*.js"],
+      "files": ["tests/**/*.js", "tests/**/*.mjs"],
       "env": {
         "node": true,
         "browser": true

@@ -2264,5 +2264,27 @@
         "other"
       ]
     }
+  },
+  {
+    "id": 5104,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "urlFilter": "||dotmetrics.net^",
+      "resourceTypes": [
+        "script",
+        "image",
+        "xmlhttprequest",
+        "sub_frame",
+        "stylesheet",
+        "font",
+        "media",
+        "websocket",
+        "ping",
+        "other"
+      ]
+    }
   }
 ]

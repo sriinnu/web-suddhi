@@ -40,3 +40,18 @@ export async function launchWithExtension(extraArgs = []) {
   await new Promise((r) => setTimeout(r, 1500));
   return { context, userDataDir, sw };
 }
+
+/**
+ * Same browser, no extension: the baseline for the live survey. Lets the
+ * report separate "the site hides this itself" from "WebSuddhi hid it".
+ */
+export async function launchBaseline(extraArgs = []) {
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-e2e-base-'));
+  const context = await chromium.launchPersistentContext(userDataDir, {
+    channel: 'chromium',
+    headless: process.env.E2E_HEADED !== '1',
+    ignoreHTTPSErrors: true,
+    args: ['--ignore-certificate-errors', ...extraArgs],
+  });
+  return { context, userDataDir };
+}

@@ -20,7 +20,7 @@ function slot() {
 function createApi(initial = {}) {
   const store = { ...initial };
   const pick = (keys) => {
-    if (keys == null) return { ...store };
+    if (keys === null || keys === undefined) return { ...store };
     const list = typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : Object.keys(keys);
     const out = {};
     for (const k of list) if (k in store) out[k] = structuredClone(store[k]);
