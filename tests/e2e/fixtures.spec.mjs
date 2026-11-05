@@ -4,13 +4,16 @@ import {
   startFixtureServer, FIRST_PARTY, FIRST_PARTY_CDN, AD_HOSTS, AD_SELECTORS, FP_IMAGE_COUNT,
 } from './fixture-site.mjs';
 
+// A lookalike the phishing detector flags (high risk, PayPal).
+const PHISHING_LOOKALIKE = 'paypa1.com';
+
 test.describe('local fixture site (offline, deterministic)', () => {
   let ctx, srv, page;
   const blocked = [];
 
   test.beforeAll(async () => {
     srv = await startFixtureServer();
-    const rules = [FIRST_PARTY, FIRST_PARTY_CDN, ...AD_HOSTS]
+    const rules = [FIRST_PARTY, FIRST_PARTY_CDN, PHISHING_LOOKALIKE, ...AD_HOSTS]
       .map((h) => `MAP ${h} 127.0.0.1:${srv.port}`)
       .join(', ');
     ctx = await launchWithExtension([`--host-resolver-rules=${rules}`]);
@@ -82,5 +85,19 @@ test.describe('local fixture site (offline, deterministic)', () => {
     await expect(page.locator('.websuddhi-pick-overlay')).toHaveCount(1);
     expect(await send('TOGGLE_PICK_MODE')).toMatchObject({ success: true, pickMode: false });
     await expect(page.locator('.websuddhi-pick-overlay')).toHaveCount(0);
+  });
+
+  // The overlay is injected on demand (background pre-injects it when
+  // CHECK_PHISHING flags the site), so this covers the real injection path.
+  test('phishing warning appears on a lookalike domain', async () => {
+    const p = await ctx.context.newPage();
+    await p.goto(`http://${PHISHING_LOOKALIKE}:${srv.port}/`, { waitUntil: 'domcontentloaded' });
+    await expect(p.locator('#websuddhi-phishing-overlay')).toHaveCount(1, { timeout: 10000 });
+    await expect(p.locator('.websuddhi-phishing-brand')).toHaveText('PayPal');
+    await p.close();
+  });
+
+  test('no phishing warning on an ordinary site', async () => {
+    expect(await page.locator('#websuddhi-phishing-overlay').count()).toBe(0);
   });
 });

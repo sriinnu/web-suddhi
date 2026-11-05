@@ -24,10 +24,25 @@ it('loads the picker on demand instead of in every frame', () => {
     for (const cs of m.content_scripts) expect(cs.js).not.toContain('content/picker.js');
   }
   expect(readSource('content/ad-blocker.js')).not.toContain('function startPickMode');
-  expect(readSource('content/ad-blocker.js')).toContain("type: 'LOAD_PICKER'");
+  expect(readSource('content/ad-blocker.js')).toContain("'LOAD_PICKER'");
   const bg = readSource('background/background.js');
   expect(bg).toContain("case 'LOAD_PICKER'");
   expect(bg).toContain('content/picker.js');
+});
+
+it('loads the phishing overlay on demand', () => {
+  const manifest = JSON.parse(readSource('manifest.json'));
+  const mv2 = JSON.parse(readSource('manifest-mv2.json'));
+  for (const m of [manifest, mv2]) {
+    for (const cs of m.content_scripts) expect(cs.js).not.toContain('content/phishing-warning.js');
+  }
+  const core = readSource('content/ad-blocker.js');
+  expect(core).not.toContain('function showPhishingWarning');
+  expect(core).toContain("'LOAD_PHISHING_UI'");
+  const bg = readSource('background/background.js');
+  expect(bg).toContain("case 'LOAD_PHISHING_UI'");
+  expect(bg).toContain('content/phishing-warning.js');
+  expect(readSource('content/phishing-warning.js')).toContain('__wsPhishingUI');
 });
 
 it('wires the frame-engine message types end to end', () => {

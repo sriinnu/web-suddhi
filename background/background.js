@@ -113,7 +113,8 @@ try {
     'GET_ENHANCED_STATS',
     'GET_PERIOD_STATS',
     'GET_STATS_FOR_PERIOD',
-    'LOAD_PICKER'
+    'LOAD_PICKER',
+    'LOAD_PHISHING_UI'
   ]);
 
   // Safe storage wrapper with defaults
@@ -1572,21 +1573,21 @@ try {
   // MESSAGE HANDLER
   // ============================================
   /**
-   * Inject content/picker.js into the frame that sent LOAD_PICKER.
+   * Inject an on-demand content module into the frame that asked for it.
    * MV3 (Chromium, Safari) uses scripting.executeScript; the MV2 Firefox build
    * has no scripting permission and uses tabs.executeScript.
    */
-  async function injectPicker(sender) {
+  async function injectContentFile(sender, file) {
     const tabId = sender && sender.tab && sender.tab.id;
     if (typeof tabId !== 'number' || tabId < 0) return { success: false, error: 'No tab' };
     const frameId = typeof sender.frameId === 'number' ? sender.frameId : 0;
     if (api.scripting && api.scripting.executeScript) {
-      await api.scripting.executeScript({ target: { tabId, frameIds: [frameId] }, files: ['content/picker.js'] });
+      await api.scripting.executeScript({ target: { tabId, frameIds: [frameId] }, files: [file] });
     } else if (hasPromiseExtensionApi) {
-      await api.tabs.executeScript(tabId, { file: '/content/picker.js', frameId });
+      await api.tabs.executeScript(tabId, { file: '/' + file, frameId });
     } else {
       await new Promise((resolve, reject) => {
-        api.tabs.executeScript(tabId, { file: '/content/picker.js', frameId }, () => {
+        api.tabs.executeScript(tabId, { file: '/' + file, frameId }, () => {
           if (api.runtime.lastError) reject(new Error(api.runtime.lastError.message));
           else resolve();
         });
@@ -1635,7 +1636,10 @@ try {
 
         // Element picker: injected into the asking frame on first use.
         case 'LOAD_PICKER':
-          return await injectPicker(sender);
+          return await injectContentFile(sender, 'content/picker.js');
+
+        case 'LOAD_PHISHING_UI':
+          return await injectContentFile(sender, 'content/phishing-warning.js');
 
         // Selectors
         case 'ADD_SELECTOR':
@@ -1958,6 +1962,13 @@ try {
               // Start icon blinking if we have a tab
               if (sender.tab?.id) {
                 startIconBlink(sender.tab.id);
+              }
+              // Inject the warning UI before replying so the content script can
+              // show it straight away. If this fails it asks for LOAD_PHISHING_UI.
+              try {
+                await injectContentFile(sender, 'content/phishing-warning.js');
+              } catch (err) {
+                logError('Phishing UI pre-inject failed:', err);
               }
             }
             return result;
