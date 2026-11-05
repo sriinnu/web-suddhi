@@ -46,21 +46,28 @@ describe('declarativeNetRequest rulesets', () => {
   });
 
   it('gives every rule a valid action, priority and condition', () => {
+    // One expect over a list of problems instead of ~5 expects x ~30k rules:
+    // the per-rule expects made this the slowest test (and flaky at 5s), and a
+    // failure now names every bad rule at once.
+    const ACTIONS = new Set(['block', 'allow', 'redirect', 'modifyHeaders']);
+    const problems = [];
     for (const resource of resources) {
       for (const rule of loadRules(resource.path)) {
-        expect(['block', 'allow', 'redirect', 'modifyHeaders'].includes(rule.action?.type)).toBe(true);
-        expect(Number.isInteger(rule.priority) && rule.priority >= 1).toBe(true);
+        const where = resource.path + '#' + rule.id;
+        if (!ACTIONS.has(rule.action?.type)) problems.push(where + ': action ' + rule.action?.type);
+        if (!(Number.isInteger(rule.priority) && rule.priority >= 1)) problems.push(where + ': priority ' + rule.priority);
 
         const condition = rule.condition || {};
-        expect(Boolean(condition.urlFilter || condition.regexFilter)).toBe(true);
+        if (!(condition.urlFilter || condition.regexFilter)) problems.push(where + ': no urlFilter/regexFilter');
 
         const types = condition.resourceTypes;
         if (types !== undefined) {
-          expect(Array.isArray(types) && types.length > 0).toBe(true);
-          for (const type of types) expect(VALID_RESOURCE_TYPES.has(type), `bad type ${type}`).toBe(true);
+          if (!(Array.isArray(types) && types.length > 0)) problems.push(where + ': empty resourceTypes');
+          else for (const type of types) if (!VALID_RESOURCE_TYPES.has(type)) problems.push(where + ': bad type ' + type);
         }
       }
     }
+    expect(problems.slice(0, 50)).toEqual([]);
   });
 
   it('anchors host filters so they cannot match a lookalike domain', () => {
