@@ -761,12 +761,18 @@
 
   function updateRibbonCountdown() {
     if (!isPaused || !elements.pauseRibbonText) return;
+    if (!pauseExpiry) {
+      // Indefinite pause (set from the Paused button): nothing to count down.
+      elements.pauseRibbonText.textContent = 'Paused on this site';
+      return;
+    }
     const label = formatPauseRemaining(pauseExpiry);
     if (!label) {
-      // Expired — flip state
+      // Expired: re-read the real state so the buttons follow.
       setPausedVisualState(false);
       pauseExpiry = 0;
       refreshTriStateButtons();
+      loadSiteState();
       return;
     }
     elements.pauseRibbonText.textContent = 'Paused · ' + label;
@@ -778,23 +784,21 @@
     pauseCountdownTimer = setInterval(updateRibbonCountdown, 30_000);
   }
 
+  // The ribbon and the Protected/Default/Paused buttons are two views of one
+  // background answer (GET_SITE_STATE), so they can no longer disagree.
   async function refreshPauseIndicator() {
-    const host = getActiveHostname();
-    if (!host) {
-      setPausedVisualState(false);
-      return;
-    }
-    try {
-      const resp = await sendToBackground({ type: 'IS_PAUSED', hostname: host });
-      if (resp?.success && resp.paused) {
-        pauseExpiry = resp.expiry || 0;
-        setPausedVisualState(true);
-        startCountdown();
-      } else {
-        pauseExpiry = 0;
-        setPausedVisualState(false);
-      }
-    } catch (e) {
+    return loadSiteState();
+  }
+
+  function applySiteState(resp) {
+    const stateValue = (resp && resp.state) || 'default';
+    reflectSiteState(stateValue);
+    if (stateValue === 'paused') {
+      pauseExpiry = resp.pausedUntil || 0;
+      setPausedVisualState(true);
+      startCountdown();
+    } else {
+      pauseExpiry = 0;
       setPausedVisualState(false);
     }
   }
@@ -853,9 +857,7 @@
         durationMs: Number(durationMs) || 3_600_000
       });
       if (resp?.success) {
-        pauseExpiry = resp.expiresAt || (Date.now() + Number(durationMs));
-        setPausedVisualState(true);
-        startCountdown();
+        await loadSiteState();
         showToast('Paused on ' + host);
       } else {
         showToast(resp?.error || 'Failed to pause');
@@ -1800,7 +1802,7 @@
     try {
       const hostname = new URL(currentTab.url).hostname;
       const resp = await sendToBackground({ type: 'GET_SITE_STATE', hostname });
-      reflectSiteState((resp && resp.state) || 'default');
+      applySiteState(resp);
     } catch (e) { /* non-http */ }
   }
 
@@ -1808,8 +1810,10 @@
     if (!currentTab?.url) return;
     try {
       const hostname = new URL(currentTab.url).hostname;
-      await sendToBackground({ type: 'SET_SITE_STATE', hostname, state: stateValue, tabId: currentTab.id });
-      reflectSiteState(stateValue);
+      const resp = await sendToBackground({ type: 'SET_SITE_STATE', hostname, state: stateValue, tabId: currentTab.id });
+      if (!resp?.success) throw new Error(resp?.error || 'failed');
+      applySiteState(resp);
+      refreshTriStateButtons();
       showToast(stateValue === 'paused' ? 'Blocking paused on ' + hostname
         : stateValue === 'protected' ? 'Full blocking on ' + hostname
           : 'Default blocking on ' + hostname);
@@ -2077,10 +2081,11 @@
     elements.pauseResumeBtn?.addEventListener('click', async () => {
       const host = getActiveHostname();
       if (!host) return;
-      const resp = await sendToBackground({ type: 'UNPAUSE_SITE', hostname: host });
+      // RESUME_SITE lifts either kind of pause and keeps "protected".
+      const resp = await sendToBackground({ type: 'RESUME_SITE', hostname: host, tabId: currentTab?.id });
       if (resp?.success) {
-        pauseExpiry = 0;
-        setPausedVisualState(false);
+        applySiteState(resp);
+        refreshTriStateButtons();
         showToast('Resumed protection for ' + host);
       } else {
         showToast(resp?.error || 'Failed to resume');

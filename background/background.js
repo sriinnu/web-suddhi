@@ -1189,6 +1189,72 @@ try {
     scheduleNextPauseSweep(after);
   }
 
+  // ============================================
+  // SITE STATE: one effective answer for "what is WebSuddhi doing on this site"
+  // ============================================
+  // "Paused" is backed only by the stores every layer already honours (DNR
+  // allow rules, content script, cookie/annoyance blockers):
+  //   whitelistedSites -> paused indefinitely
+  //   pausedSites      -> paused until an expiry
+  // ws_siteStates only records "protected". It must never hold "paused"; that
+  // used to switch off frame decisions alone while ads kept being blocked.
+  async function getEffectiveSiteState(hostnameOrUrl) {
+    const host = normalizeHostname(hostnameOrUrl, true);
+    if (!host) return { hostname: null, state: 'default', pausedUntil: null };
+    if (await isSiteWhitelisted(host)) return { hostname: host, state: 'paused', pausedUntil: null };
+    const active = await getActivePausedSites();
+    if (active[host]) return { hostname: host, state: 'paused', pausedUntil: active[host] };
+    const ruleModel = self.WebSuddhi.ruleModel;
+    const stored = ruleModel ? await ruleModel.getSiteState(host) : 'default';
+    return { hostname: host, state: stored === 'protected' ? 'protected' : 'default', pausedUntil: null };
+  }
+
+  // Lift any pause (indefinite or timed). "Protected" survives a pause/resume.
+  async function resumeSite(hostnameOrUrl) {
+    const host = normalizeHostname(hostnameOrUrl, true);
+    if (!host) return { success: false, error: 'Invalid hostname' };
+    if (await isSiteWhitelisted(host)) await unwhitelistSite(host);
+    await unpauseSite(host);
+    return { success: true, ...(await getEffectiveSiteState(host)) };
+  }
+
+  async function setEffectiveSiteState(hostnameOrUrl, next, durationMs) {
+    const host = normalizeHostname(hostnameOrUrl, true);
+    if (!host) return { success: false, error: 'Invalid hostname' };
+    if (next === 'paused') {
+      if (Number.isFinite(durationMs) && durationMs > 0) {
+        if (await isSiteWhitelisted(host)) await unwhitelistSite(host);
+        const r = await pauseSite(host, durationMs);
+        if (!r.success) return r;
+      } else {
+        await unpauseSite(host);
+        await whitelistSite(host);
+      }
+    } else {
+      await resumeSite(host);
+      const ruleModel = self.WebSuddhi.ruleModel;
+      if (ruleModel) await ruleModel.setSiteState(host, next === 'protected' ? 'protected' : 'default');
+    }
+    return { success: true, ...(await getEffectiveSiteState(host)) };
+  }
+
+  // Older builds stored "paused" in ws_siteStates, where only frame decisions
+  // saw it. Move those into the whitelist so the pause is real everywhere.
+  async function migrateLegacyPausedSiteStates() {
+    const ruleModel = self.WebSuddhi.ruleModel;
+    if (!ruleModel || !ruleModel.STORAGE_KEYS) return;
+    const key = ruleModel.STORAGE_KEYS.SITE_STATES;
+    const data = await getStorage([key]);
+    const map = (data && data[key]) || {};
+    const paused = Object.keys(map).filter((h) => map[h] === 'paused');
+    if (!paused.length) return;
+    for (const host of paused) {
+      delete map[host];
+      await whitelistSite(host);
+    }
+    await setStorage({ [key]: map });
+  }
+
   async function getPerSiteAllowedSelectors() {
     const storage = await getStorage(['perSiteAllowedSelectors']);
     const raw = storage.perSiteAllowedSelectors && typeof storage.perSiteAllowedSelectors === 'object'
@@ -1561,7 +1627,7 @@ try {
     const ctx = {
       lists: await loader.loadLists(),
       budget: { bytes: 500 * 1024, ms: 150 },
-      siteState: hostname ? await ruleModel.getSiteState(hostname) : 'default',
+      siteState: hostname ? (await getEffectiveSiteState(hostname)).state : 'default',
       aggressiveness: settings.aggressiveness || 'balanced',
       frameRules
     };
@@ -1791,21 +1857,18 @@ try {
           return { success: true, whitelistedSites: storage.whitelistedSites || [] };
 
         // Site state model: protected / default / paused (replaces whitelist).
-        case 'GET_SITE_STATE': {
-          const ruleModel = self.WebSuddhi.ruleModel;
-          if (!ruleModel || !message.hostname) return { success: true, state: 'default' };
-          const site = normalizeHostname(message.hostname, true);
-          return { success: true, state: await ruleModel.getSiteState(site) };
-        }
+        case 'GET_SITE_STATE':
+          return { success: true, ...(await getEffectiveSiteState(message.hostname)) };
 
-        case 'SET_SITE_STATE': {
-          const ruleModel = self.WebSuddhi.ruleModel;
-          if (!ruleModel || !message.hostname) return { success: false, error: 'Frame engine unavailable' };
-          const site = normalizeHostname(message.hostname, true);
-          await ruleModel.setSiteState(site, message.state || 'default');
+        case 'SET_SITE_STATE':
+        case 'RESUME_SITE': {
+          if (!message.hostname) return { success: false, error: 'No hostname provided' };
+          const result = message.type === 'RESUME_SITE'
+            ? await resumeSite(message.hostname)
+            : await setEffectiveSiteState(message.hostname, message.state || 'default', Number(message.durationMs));
           const stateTabId = Number.isInteger(message.tabId) ? message.tabId : sender.tab?.id;
-          if (Number.isInteger(stateTabId)) await recomputeTab(stateTabId);
-          return { success: true, state: message.state || 'default' };
+          if (result.success && Number.isInteger(stateTabId)) await recomputeTab(stateTabId);
+          return result;
         }
 
         case 'REPORT_FRAME':
@@ -2087,10 +2150,14 @@ try {
           return { success: true, pausedSites: await getActivePausedSites() };
 
         case 'IS_PAUSED': {
-          const active = await getActivePausedSites();
-          const host = normalizeHostname(message.hostname, true);
-          const expiry = host ? active[host] || 0 : 0;
-          return { success: true, paused: expiry > Date.now(), expiry };
+          // Any pause counts: indefinite (whitelist) reports expiry 0.
+          const eff = await getEffectiveSiteState(message.hostname);
+          return {
+            success: true,
+            paused: eff.state === 'paused',
+            expiry: eff.pausedUntil || 0,
+            indefinite: eff.state === 'paused' && !eff.pausedUntil
+          };
         }
 
         case 'ALLOW_SELECTOR_ON_SITE':
@@ -2259,6 +2326,7 @@ try {
       if (self.WebSuddhi.listLoader) self.WebSuddhi.listLoader.loadLists();
       // Clear any pauses that expired while the worker was asleep.
       sweepExpiredPauses().catch(() => {});
+      migrateLegacyPausedSiteStates().catch(err => logError('Site-state migration failed:', err));
 
       // Clean up old storage keys on init (run monthly)
       const oldKeys = ['adsBlocked', 'trackersBlocked', 'lastCleanUp'];

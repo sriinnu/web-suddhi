@@ -17,6 +17,7 @@ All notable changes to WebSuddhi are documented here.
 
 ### Fixes
 - **Right-click "Block this element" works.** It targets the element you right-clicked in the frame you clicked, and survives the service worker waking up. User picks are no longer overridden by the auto-filter guard.
+- **One site state.** Protected / Default / Paused, the timed pause and the whitelist are one model. Paused (indefinite or timed) now switches off every layer, network rules and cosmetic hiding included, not just frame decisions. Protected forces full blocking on that site, and survives a pause and resume. Old "paused" site states are migrated to the whitelist on startup.
 - The popup stays clickable while the background worker is asleep.
 
 ### Performance

@@ -98,6 +98,7 @@ it('handles granular site-control messages in background', () => {
   expect(backgroundSource).toContain("'GET_SITE_DETAIL'");
   expect(backgroundSource).toContain("'PAUSE_SITE'");
   expect(backgroundSource).toContain("'UNPAUSE_SITE'");
+  expect(backgroundSource).toContain("'RESUME_SITE'");
   expect(backgroundSource).toContain("'IS_PAUSED'");
   expect(backgroundSource).toContain("'ALLOW_SELECTOR_ON_SITE'");
   expect(backgroundSource).toContain("'REMOVE_ALLOWED_SELECTOR'");
@@ -117,8 +118,9 @@ it('options UI and popup wire granular control messages', () => {
   expect(optionsSource).toContain("'CLEAR_SITE_STATS'");
   expect(optionsSource).toContain("'PREVIEW_SELECTOR'");
 
-  expect(popupSource).toContain("'IS_PAUSED'");
-  expect(popupSource).toContain("'UNPAUSE_SITE'");
+  // The pause ribbon reads the unified site state, not IS_PAUSED.
+  expect(popupSource).toContain("type: 'GET_SITE_STATE'");
+  expect(popupSource).toContain("'RESUME_SITE'");
   expect(popupSource).toContain("'REPORT_BROKEN_SITE'");
 });
 

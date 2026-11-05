@@ -14,7 +14,8 @@
   rm.resolveFrameDecision = function (input) {
     const i = input || {};
     const siteState = i.siteState || 'default';
-    const aggressiveness = i.aggressiveness || 'balanced';
+    // Protected = full blocking on this site, whatever the global dial says.
+    const aggressiveness = siteState === 'protected' ? 'aggressive' : (i.aggressiveness || 'balanced');
 
     // 1. Site paused -> blocking entirely off here.
     if (siteState === 'paused') return { action: 'allow', reason: 'site-paused' };
