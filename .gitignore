@@ -102,3 +102,7 @@ rules/provenance.json
 .superpowers/
 # Session handoff (local only)
 PICKUP.md
+
+# Playwright e2e output
+test-results/
+playwright-report/

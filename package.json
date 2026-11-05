@@ -14,7 +14,10 @@
     "lint:fix": "eslint . --ext .js --fix",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "npm run build:targets && playwright test -c tests/e2e/playwright.config.mjs",
+    "test:e2e:live": "npm run build:targets && E2E_LIVE=1 playwright test -c tests/e2e/playwright.config.mjs live.spec.mjs",
+    "test:e2e:report": "playwright show-report test-results/html-report"
   },
   "keywords": [
     "ad-blocker",
@@ -26,6 +29,7 @@
   "author": "Srinivas Pendela",
   "license": "MIT",
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@rollup/plugin-node-resolve": "^15.2.3",
     "@rollup/plugin-terser": "^0.4.4",
     "@types/chrome": "^0.3.7",
