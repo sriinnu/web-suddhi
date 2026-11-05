@@ -2,7 +2,31 @@
 
 All notable changes to WebSuddhi are documented here.
 
-## v2.3.0 (Current)
+## v3.0.0 (Current)
+
+### Blocking that actually blocks
+- **Blocklists ship and apply.** The network layer now loads the generated DNR rulesets (capped under Chrome's 30,000-rule guarantee) and applies them.
+- **ABP semantics kept.** Filter conversion keeps exceptions, domain options and other ABP rules instead of stripping them.
+- **Cosmetic filtering stops eating content.** Selectors match on class and id token boundaries (`ad-` no longer matches `thread-` or `download-`), and the auto-hider has a guard for real page content.
+
+### Surgical control
+- **Frame engine.** Per-tab frame census, classification and per-site frame rules (allow or block this frame, persisted as sub_frame DNR rules).
+- **Popup redesign.** Dense dashboard with a pinned action bar, live frame census, relax ("looks broken?") and a site state of Protected, Default or Paused.
+- **Aggressiveness dial** in Options: conservative, balanced or aggressive.
+- **Picker rebuilt.** An overlay hit-shield stops clicks leaking into iframes, with element and frame modes.
+
+### Fixes
+- **Right-click "Block this element" works.** It targets the element you right-clicked in the frame you clicked, and survives the service worker waking up. User picks are no longer overridden by the auto-filter guard.
+- The popup stays clickable while the background worker is asleep.
+
+### Performance
+- The element picker and the phishing warning overlay load on demand into the frame that needs them. The always-on content script is down from 3,349 to 2,350 lines.
+
+### Development
+- Real-browser Playwright e2e suite (`npm run test:e2e`) with a deterministic local fixture site and an opt-in live-site survey.
+- Dependabot bumps folded in, and all workflow actions pinned to commit SHAs.
+
+## v2.3.0
 
 ### Granular Site Control
 - **Pause per site** — temporarily pause protection for 15 min / 1 hour / 1 day without permanent whitelisting; auto-resumes when timer expires

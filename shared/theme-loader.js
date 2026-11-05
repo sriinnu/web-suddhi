@@ -3,7 +3,7 @@
  * @description Loads saved theme, font, and border radius from storage and
  * applies them immediately to prevent FOUC. Must be loaded before any other
  * JS in both popup.html and options.html.
- * @version 2.3.0
+ * @version 3.0.0
  */
 'use strict';
 

@@ -7,7 +7,7 @@
  * Load order: after fonts.css + themes.css, before theme-loader.js applies
  * the saved theme. Keep this file synchronous-looking but fetch is async —
  * a very brief FOUC on first paint for custom themes is the accepted cost.
- * @version 2.3.0
+ * @version 3.0.0
  */
 'use strict';
 

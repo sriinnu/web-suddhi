@@ -98,7 +98,7 @@
       getLocalStorage(EXPORT_KEYS)
         .then((data) => {
           const exportData = {
-            version: '2.3.0',
+            version: '3.0.0',
             exportedAt: new Date().toISOString(),
             settings: {}
           };
