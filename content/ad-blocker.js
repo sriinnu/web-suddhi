@@ -564,6 +564,10 @@
       '[class^="ads-"]', '[class*=" ads-"]',
       '[class*="advert"]',
       '[id*="advert"]',
+      // Ids are a single token, so a prefix is the boundary-safe match.
+      '[id^="ad-"]', '[id^="ads-"]',
+      '[id^="div-gpt-ad"]', '[id^="google_ads_iframe"]', '[id^="gpt-ad"]',
+      '#ad', '#ads', '#ad-container', '#ads-container',
       '[data-ad]', '[data-ads]', '[data-advertisement]',
       '[data-ad-width]', '[data-ad-height]',
       '[data-google-query-id]', '[data-ad-slot]',
