@@ -69,7 +69,42 @@
       name: 'Vaporwave', note: 'Neon pink and cyan on dusk.',
       light: { bg: '#F6EEF8', surface: '#FFFBFF', surface2: '#EBDDF0', fg: '#251338', mute: '#5F4F72', accent: '#B0237F', accentFg: '#FFFFFF', good: '#0F6F78', warn: '#895200', bad: '#B8263F' },
       dark: { bg: '#160F2C', surface: '#20173D', surface2: '#2C2150', fg: '#F1E8FF', mute: '#AFA0D3', accent: '#FF7ACB', accentFg: '#3A0828', good: '#5FE3EE', warn: '#F5D06A', bad: '#FF8DA0' }
+    },
+
+    // The palettes below also carry a character: a typeface, a corner shape
+    // and whether lines are drawn in ink (the text colour) instead of a tint.
+    terminal: {
+      name: 'Terminal', note: 'Phosphor green on a black shell.',
+      style: { font: 'mono', shape: 'square', ink: false },
+      light: { bg: '#EEF3EA', surface: '#F9FCF6', surface2: '#DFE8DA', fg: '#0A1F0F', mute: '#3C5843', accent: '#0B6B2E', accentFg: '#FFFFFF', good: '#156B3B', warn: '#7A5000', bad: '#A3262A' },
+      dark: { bg: '#050A06', surface: '#0B130D', surface2: '#132017', fg: '#B6FFC6', mute: '#6FB283', accent: '#3DFF7E', accentFg: '#00170A', good: '#8CFFC0', warn: '#FFD34D', bad: '#FF6B6B' }
+    },
+    newsprint: {
+      name: 'Newsprint', note: 'Black ink, serif type, the morning paper.',
+      style: { font: 'serif', shape: 'square', ink: true },
+      light: { bg: '#F2EEE3', surface: '#FBF9F3', surface2: '#E6E0D1', fg: '#111111', mute: '#544F45', accent: '#1B3B6F', accentFg: '#FFFFFF', good: '#2D5E3A', warn: '#7D5200', bad: '#9B1C1C' },
+      dark: { bg: '#141311', surface: '#1C1B18', surface2: '#272521', fg: '#EEE9DC', mute: '#ACA493', accent: '#A3BDE3', accentFg: '#0F1B2E', good: '#8CC79C', warn: '#E2B65E', bad: '#F2908F' }
+    },
+    receipt: {
+      name: 'Receipt', note: 'Thermal paper, mono type, red second ink.',
+      style: { font: 'mono', shape: 'square', ink: false },
+      light: { bg: '#E9E9E4', surface: '#FFFFFD', surface2: '#E1E1DB', fg: '#161616', mute: '#55554F', accent: '#A8122A', accentFg: '#FFFFFF', good: '#2F5F2F', warn: '#784C00', bad: '#8C0F22' },
+      dark: { bg: '#101010', surface: '#191918', surface2: '#242422', fg: '#EEEEE7', mute: '#A9A9A1', accent: '#FF7C8C', accentFg: '#2A0008', good: '#9ED39E', warn: '#E8C26A', bad: '#FFA08F' }
+    },
+    'ligne-claire': {
+      name: 'Ligne claire', note: 'Clean ink outlines and flat comic-book colour.',
+      style: { font: 'sans', shape: 'round', ink: true },
+      light: { bg: '#FFF6DF', surface: '#FFFFFF', surface2: '#FBE7B5', fg: '#111111', mute: '#45455A', accent: '#1957B0', accentFg: '#FFFFFF', good: '#1C7337', warn: '#835400', bad: '#C2102C' },
+      dark: { bg: '#0D1530', surface: '#141F46', surface2: '#1D2A5C', fg: '#FFF5D6', mute: '#B8C0DD', accent: '#FFD23F', accentFg: '#1A1400', good: '#7FE0A0', warn: '#FFB86B', bad: '#FF8C8C' }
     }
+  };
+
+  // What each style option writes. Only these fixed values ever reach the
+  // CSS, so a palette's style cannot inject anything.
+  const STYLE_FONTS = { mono: 'var(--font-mono)', serif: 'var(--font-serif)', sans: 'var(--font-sans)' };
+  const STYLE_SHAPES = {
+    square: { sm: '0px', md: '0px', lg: '2px', full: '2px' },
+    round: { sm: '10px', md: '16px', lg: '22px', full: '999px' }
   };
 
   const DEFAULT_PALETTE = 'suddhi';
@@ -181,9 +216,25 @@
    * system-dark media query (unless light is forced) and under forced dark.
    * The default palette is written against bare :root so it needs no attribute.
    */
+  /** Mode-independent character declarations for a palette, or ''. */
+  function styleCss(sel, style) {
+    if (!style || typeof style !== 'object') return '';
+    const lines = [];
+    if (STYLE_FONTS[style.font]) lines.push('  --palette-font: ' + STYLE_FONTS[style.font] + ';');
+    const shape = STYLE_SHAPES[style.shape];
+    if (shape) {
+      lines.push('  --radius-sm: ' + shape.sm + ';', '  --radius-md: ' + shape.md + ';',
+        '  --radius-lg: ' + shape.lg + ';', '  --radius-full: ' + shape.full + ';');
+    }
+    if (style.ink === true) {
+      lines.push('  --line: color-mix(in srgb, var(--fg) 55%, var(--surface));', '  --line-strong: var(--fg);');
+    }
+    return lines.length ? sel + ' {\n' + lines.join('\n') + '\n}\n' : '';
+  }
+
   function paletteCss(id, p) {
     const sel = id === DEFAULT_PALETTE ? ':root' : ':root[data-palette="' + safeId(id) + '"]';
-    return [
+    return styleCss(sel, p.style) + [
       sel + ' {\n' + declarations(p.light, 'light', '  ') + '\n}',
       '@media (prefers-color-scheme: dark) {\n  ' + sel + ':not([data-theme="light"]) {\n' +
         declarations(p.dark, 'dark', '    ') + '\n  }\n}',

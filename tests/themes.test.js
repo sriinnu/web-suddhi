@@ -33,8 +33,8 @@ const PAIRS = [
   ['bad', 'bg', 4.5], ['bad', 'surface', 4.5]
 ];
 
-it('ships eight palettes, each with a complete light and dark variant', () => {
-  expect(Themes.ORDER).toEqual(['suddhi', 'forest', 'coastal', 'ocean', 'aurora', 'mocha', 'sunset', 'vaporwave']);
+it('ships twelve palettes, each with a complete light and dark variant', () => {
+  expect(Themes.ORDER).toEqual(['suddhi', 'forest', 'coastal', 'ocean', 'aurora', 'mocha', 'sunset', 'vaporwave', 'terminal', 'newsprint', 'receipt', 'ligne-claire']);
   for (const id of Themes.ORDER) {
     expect(Themes.isValidPalette(Themes.PALETTES[id]), id).toBe(true);
   }
@@ -108,4 +108,18 @@ it('rejects custom palettes with missing or non-hex colours', () => {
   expect(Themes.isValidPalette({ light: good.light })).toBe(false);
   expect(Themes.isValidPalette({ light: { ...good.light, bg: 'red;}' }, dark: good.dark })).toBe(false);
   expect(Themes.paletteCss('mine', good)).toContain(':root[data-palette="mine"][data-theme="dark"]');
+});
+
+it('writes a palette character only from fixed values', () => {
+  const css = Themes.paletteCss('terminal', Themes.PALETTES.terminal);
+  expect(css).toContain(':root[data-palette="terminal"] {\n  --palette-font: var(--font-mono);');
+  expect(css).toContain('--radius-sm: 0px;');
+  const ink = Themes.paletteCss('newsprint', Themes.PALETTES.newsprint);
+  expect(ink).toContain('--palette-font: var(--font-serif);');
+  expect(ink).toContain('--line-strong: var(--fg);');
+  // Unknown or hostile style values are dropped.
+  const hostile = Themes.paletteCss('x', { ...Themes.PALETTES.ocean, style: { font: 'x;}body{', shape: 'blob', ink: 'yes' } });
+  expect(hostile).not.toContain('--palette-font');
+  expect(hostile).not.toContain('--radius-sm');
+  expect(hostile).not.toContain('--line-strong');
 });

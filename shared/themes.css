@@ -12,7 +12,10 @@
 :root {
   --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Consolas', 'Liberation Mono', monospace;
-  --font-family: var(--font-sans);
+  --font-serif: 'Iowan Old Style', 'Charter', 'Georgia', 'Cambria', 'Times New Roman', serif;
+  /* A palette with a character sets --palette-font; the user's own font
+     choice (set inline by theme-loader.js) still wins over both. */
+  --font-family: var(--palette-font, var(--font-sans));
 
   --line: color-mix(in srgb, var(--fg) 16%, var(--surface));
   --line-strong: color-mix(in srgb, var(--fg) 30%, var(--surface));
@@ -445,6 +448,222 @@
   color-scheme: dark;
 }
 
+/* Terminal: Phosphor green on a black shell. */
+:root[data-palette="terminal"] {
+  --palette-font: var(--font-mono);
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 2px;
+  --radius-full: 2px;
+}
+:root[data-palette="terminal"] {
+  --bg: #EEF3EA;
+  --surface: #F9FCF6;
+  --surface2: #DFE8DA;
+  --fg: #0A1F0F;
+  --mute: #3C5843;
+  --accent: #0B6B2E;
+  --accent-fg: #FFFFFF;
+  --good: #156B3B;
+  --warn: #7A5000;
+  --bad: #A3262A;
+  --shadow-base: #0A1F0F;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="terminal"]:not([data-theme="light"]) {
+    --bg: #050A06;
+    --surface: #0B130D;
+    --surface2: #132017;
+    --fg: #B6FFC6;
+    --mute: #6FB283;
+    --accent: #3DFF7E;
+    --accent-fg: #00170A;
+    --good: #8CFFC0;
+    --warn: #FFD34D;
+    --bad: #FF6B6B;
+    --shadow-base: #000000;
+    color-scheme: dark;
+  }
+}
+:root[data-palette="terminal"][data-theme="dark"] {
+  --bg: #050A06;
+  --surface: #0B130D;
+  --surface2: #132017;
+  --fg: #B6FFC6;
+  --mute: #6FB283;
+  --accent: #3DFF7E;
+  --accent-fg: #00170A;
+  --good: #8CFFC0;
+  --warn: #FFD34D;
+  --bad: #FF6B6B;
+  --shadow-base: #000000;
+  color-scheme: dark;
+}
+
+/* Newsprint: Black ink, serif type, the morning paper. */
+:root[data-palette="newsprint"] {
+  --palette-font: var(--font-serif);
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 2px;
+  --radius-full: 2px;
+  --line: color-mix(in srgb, var(--fg) 55%, var(--surface));
+  --line-strong: var(--fg);
+}
+:root[data-palette="newsprint"] {
+  --bg: #F2EEE3;
+  --surface: #FBF9F3;
+  --surface2: #E6E0D1;
+  --fg: #111111;
+  --mute: #544F45;
+  --accent: #1B3B6F;
+  --accent-fg: #FFFFFF;
+  --good: #2D5E3A;
+  --warn: #7D5200;
+  --bad: #9B1C1C;
+  --shadow-base: #111111;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="newsprint"]:not([data-theme="light"]) {
+    --bg: #141311;
+    --surface: #1C1B18;
+    --surface2: #272521;
+    --fg: #EEE9DC;
+    --mute: #ACA493;
+    --accent: #A3BDE3;
+    --accent-fg: #0F1B2E;
+    --good: #8CC79C;
+    --warn: #E2B65E;
+    --bad: #F2908F;
+    --shadow-base: #000000;
+    color-scheme: dark;
+  }
+}
+:root[data-palette="newsprint"][data-theme="dark"] {
+  --bg: #141311;
+  --surface: #1C1B18;
+  --surface2: #272521;
+  --fg: #EEE9DC;
+  --mute: #ACA493;
+  --accent: #A3BDE3;
+  --accent-fg: #0F1B2E;
+  --good: #8CC79C;
+  --warn: #E2B65E;
+  --bad: #F2908F;
+  --shadow-base: #000000;
+  color-scheme: dark;
+}
+
+/* Receipt: Thermal paper, mono type, red second ink. */
+:root[data-palette="receipt"] {
+  --palette-font: var(--font-mono);
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 2px;
+  --radius-full: 2px;
+}
+:root[data-palette="receipt"] {
+  --bg: #E9E9E4;
+  --surface: #FFFFFD;
+  --surface2: #E1E1DB;
+  --fg: #161616;
+  --mute: #55554F;
+  --accent: #A8122A;
+  --accent-fg: #FFFFFF;
+  --good: #2F5F2F;
+  --warn: #784C00;
+  --bad: #8C0F22;
+  --shadow-base: #161616;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="receipt"]:not([data-theme="light"]) {
+    --bg: #101010;
+    --surface: #191918;
+    --surface2: #242422;
+    --fg: #EEEEE7;
+    --mute: #A9A9A1;
+    --accent: #FF7C8C;
+    --accent-fg: #2A0008;
+    --good: #9ED39E;
+    --warn: #E8C26A;
+    --bad: #FFA08F;
+    --shadow-base: #000000;
+    color-scheme: dark;
+  }
+}
+:root[data-palette="receipt"][data-theme="dark"] {
+  --bg: #101010;
+  --surface: #191918;
+  --surface2: #242422;
+  --fg: #EEEEE7;
+  --mute: #A9A9A1;
+  --accent: #FF7C8C;
+  --accent-fg: #2A0008;
+  --good: #9ED39E;
+  --warn: #E8C26A;
+  --bad: #FFA08F;
+  --shadow-base: #000000;
+  color-scheme: dark;
+}
+
+/* Ligne claire: Clean ink outlines and flat comic-book colour. */
+:root[data-palette="ligne-claire"] {
+  --palette-font: var(--font-sans);
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-full: 999px;
+  --line: color-mix(in srgb, var(--fg) 55%, var(--surface));
+  --line-strong: var(--fg);
+}
+:root[data-palette="ligne-claire"] {
+  --bg: #FFF6DF;
+  --surface: #FFFFFF;
+  --surface2: #FBE7B5;
+  --fg: #111111;
+  --mute: #45455A;
+  --accent: #1957B0;
+  --accent-fg: #FFFFFF;
+  --good: #1C7337;
+  --warn: #835400;
+  --bad: #C2102C;
+  --shadow-base: #111111;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="ligne-claire"]:not([data-theme="light"]) {
+    --bg: #0D1530;
+    --surface: #141F46;
+    --surface2: #1D2A5C;
+    --fg: #FFF5D6;
+    --mute: #B8C0DD;
+    --accent: #FFD23F;
+    --accent-fg: #1A1400;
+    --good: #7FE0A0;
+    --warn: #FFB86B;
+    --bad: #FF8C8C;
+    --shadow-base: #000000;
+    color-scheme: dark;
+  }
+}
+:root[data-palette="ligne-claire"][data-theme="dark"] {
+  --bg: #0D1530;
+  --surface: #141F46;
+  --surface2: #1D2A5C;
+  --fg: #FFF5D6;
+  --mute: #B8C0DD;
+  --accent: #FFD23F;
+  --accent-fg: #1A1400;
+  --good: #7FE0A0;
+  --warn: #FFB86B;
+  --bad: #FF8C8C;
+  --shadow-base: #000000;
+  color-scheme: dark;
+}
+
 /* ============================================
    Smooth theme transitions
    ============================================ */
@@ -452,6 +671,11 @@ html {
   background: var(--bg);
   color: var(--fg);
   transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Form controls do not inherit the font by default; make them follow the palette. */
+button, input, select, textarea {
+  font-family: inherit;
 }
 
 html.theme-loaded body,

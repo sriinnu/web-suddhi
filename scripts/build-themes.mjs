@@ -24,7 +24,10 @@ const DERIVED = `/* ============================================
 :root {
   --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Consolas', 'Liberation Mono', monospace;
-  --font-family: var(--font-sans);
+  --font-serif: 'Iowan Old Style', 'Charter', 'Georgia', 'Cambria', 'Times New Roman', serif;
+  /* A palette with a character sets --palette-font; the user's own font
+     choice (set inline by theme-loader.js) still wins over both. */
+  --font-family: var(--palette-font, var(--font-sans));
 
   --line: color-mix(in srgb, var(--fg) 16%, var(--surface));
   --line-strong: color-mix(in srgb, var(--fg) 30%, var(--surface));
@@ -98,6 +101,11 @@ html {
   background: var(--bg);
   color: var(--fg);
   transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Form controls do not inherit the font by default; make them follow the palette. */
+button, input, select, textarea {
+  font-family: inherit;
 }
 
 html.theme-loaded body,

@@ -233,7 +233,7 @@ it('loads the popup with the saved theme and persists quick theme changes', asyn
   expect(document.getElementById('currentSite').textContent).toBe('example.com');
   const paletteSelect = document.getElementById('paletteSelect');
   const modeSelect = document.getElementById('modeSelect');
-  expect(paletteSelect.options.length).toBe(8);
+  expect(paletteSelect.options.length).toBe(12);
   expect(paletteSelect.value).toBe('forest');
   expect(modeSelect.value).toBe('dark');
 
@@ -347,7 +347,7 @@ it('disables sync on browsers without storage.sync and keeps custom themes toggl
   expect(document.documentElement.getAttribute('data-palette')).toBe('forest');
   expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
   expect(document.querySelector('.theme-btn[data-mode="dark"]').classList.contains('active')).toBe(true);
-  expect(document.querySelectorAll('#themeGrid .theme-card').length).toBe(8);
+  expect(document.querySelectorAll('#themeGrid .theme-card').length).toBe(12);
   expect(document.querySelector('.theme-card[data-palette="forest"]').classList.contains('active')).toBe(true);
   expect(document.getElementById('enableSync').disabled).toBe(true);
   expect(document.getElementById('syncDescription').textContent).toContain('settings stay local');

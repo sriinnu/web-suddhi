@@ -148,6 +148,13 @@
   // Cross-browser API
   const api = (typeof browser !== 'undefined' && browser.runtime) ? browser : chrome;
 
+  // Show the build version from the manifest, so every reload shows which build is loaded.
+  try {
+    const manifest = api.runtime.getManifest();
+    const label = 'v' + (manifest.version_name || manifest.version);
+    document.querySelectorAll('.version').forEach((el) => { el.textContent = label; });
+  } catch (e) { /* no manifest outside the extension */ }
+
   let currentTab = null;
   let isPickMode = false;
   let isZapMode = false;

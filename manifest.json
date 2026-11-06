@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "WebSuddhi",
-  "version": "3.0.0",
+  "version": "3.0.2",
+  "version_name": "3.00.0002",
   "description": "Block ads, remove paywalls, strip trackers, and clean up any website. Privacy-first, no tracking.",
   "permissions": [
     "storage",
@@ -81,9 +82,17 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["shared/utils.js", "content/ad-blocker.js", "content/frame-agent.js"],
-      "css": ["content/ad-blocker.css"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "shared/utils.js",
+        "content/ad-blocker.js",
+        "content/frame-agent.js"
+      ],
+      "css": [
+        "content/ad-blocker.css"
+      ],
       "run_at": "document_start",
       "all_frames": true
     },
