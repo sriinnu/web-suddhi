@@ -93,6 +93,25 @@ const ABP_RESOURCE_TYPES = {
   other: 'other'
 };
 
+// Short forms used by uBO / AdGuard lists.
+const TYPE_ALIASES = { xhr: 'xmlhttprequest', frame: 'subdocument', css: 'stylesheet', doc: 'document' };
+const THIRD_PARTY_OPTIONS = new Set(['third-party', '3p', '~first-party', '~1p']);
+const FIRST_PARTY_OPTIONS = new Set(['~third-party', '~3p', 'first-party', '1p']);
+
+/**
+ * Can this ABP pattern go into a DNR urlFilter as-is? DNR takes the same
+ * '||', '|', '^' and '*' syntax, but rejects non-ASCII and a leading '||*'.
+ * Very short literals ('/ad.') match far too much to ship.
+ */
+export function isExpressibleUrlFilter(pattern) {
+  if (!/^[\x21-\x7e]+$/.test(pattern)) return false;
+  if (pattern.startsWith('||*')) return false;
+  const inner = pattern.replace(/^\|\|?/, '').replace(/\|$/, '');
+  if (inner.includes('|')) return false;
+  if (pattern.startsWith('||')) return /^[a-z0-9]/i.test(inner);
+  return inner.replace(/[*^]/g, '').length >= 4;
+}
+
 // Modifiers with no DNR equivalent. A rule carrying one is DROPPED, never
 // broadened — turning `$popup` into a global block is worse than no rule.
 const UNSUPPORTED_MODIFIERS = new Set([
@@ -102,16 +121,11 @@ const UNSUPPORTED_MODIFIERS = new Set([
 ]);
 
 function splitRuleOptions(line) {
-  // The options block starts at the last '$' that is outside a /regex/ literal.
-  let inRegex = false;
-  let splitAt = -1;
-  for (let i = 0; i < line.length; i += 1) {
-    const char = line[i];
-    if (char === '/' && line[i - 1] !== '\\') inRegex = !inRegex;
-    if (char === '$' && !inRegex) splitAt = i;
-  }
-  if (splitAt === -1) return { pattern: line, options: [] };
-
+  // Options follow the last '$'. Whole-line /regex/ rules never get here, and
+  // a '$' inside an option value (removeparam=/x$/) leaves junk options that
+  // the caller rejects, so the rule is dropped rather than misread.
+  const splitAt = line.lastIndexOf('$');
+  if (splitAt <= 0) return { pattern: line, options: [] };
   return {
     pattern: line.slice(0, splitAt),
     options: line.slice(splitAt + 1).split(',').map((option) => option.trim()).filter(Boolean)
@@ -122,17 +136,19 @@ function splitRuleOptions(line) {
  * Parse ABP text into rule objects that keep their semantics.
  * Returns { rules, badfilters, stats }.
  */
-export function parseABP(text) {
+export function parseABP(text, { urlRules = false } = {}) {
   const rules = [];
   const badfilters = new Set();
   const stats = { lines: 0, kept: 0, cosmetic: 0, regex: 0, unsupported: 0, malformed: 0 };
+  // Hosts where a list turns element hiding off (@@||host^$elemhide).
+  const cosmeticDisabledHosts = new Set();
 
   for (const raw of text.split('\n')) {
     const line = raw.trim();
     if (!line || line.startsWith('!') || line.startsWith('[')) continue;
     stats.lines += 1;
 
-    if (line.includes('##') || line.includes('#@#') || line.includes('#?#')) {
+    if (/#[@?$%]?#|#@[?$%]#/.test(line)) {
       stats.cosmetic += 1;
       continue;
     }
@@ -145,9 +161,16 @@ export function parseABP(text) {
     const exception = line.startsWith('@@');
     const body = exception ? line.slice(2) : line;
     const { pattern, options } = splitRuleOptions(body);
+    if (pattern.length > 1 && pattern.startsWith('/') && pattern.endsWith('/')) {
+      stats.regex += 1; // /regex/$options
+      continue;
+    }
 
-    // Only `||host` / `||host^` / `||host/path` shapes are accepted.
-    if (!/^\|\|[a-z0-9]/i.test(pattern)) {
+    // DNS-style sources: only `||host` / `||host^` / `||host/path` shapes.
+    // Adblock-syntax sources (urlRules): any pattern DNR can express, which is
+    // what reaches ads served from a site's own domain (/ads/, ?ad_unit=).
+    const shapeOk = urlRules ? isExpressibleUrlFilter(pattern) : /^\|\|[a-z0-9]/i.test(pattern);
+    if (!shapeOk) {
       stats.malformed += 1;
       continue;
     }
@@ -158,56 +181,162 @@ export function parseABP(text) {
       important: false,
       domainType: null,
       resourceTypes: [],
+      excludedResourceTypes: [],
       initiatorDomains: [],
       excludedInitiatorDomains: [],
       caseSensitive: false
     };
 
     let unsupported = false;
+    let hideOff = false;
 
     for (const option of options) {
-      const lower = option.toLowerCase();
+      let lower = option.toLowerCase();
+      const negated = lower.startsWith('~');
+      const bare = negated ? lower.slice(1) : lower;
+      if (TYPE_ALIASES[bare]) lower = (negated ? '~' : '') + TYPE_ALIASES[bare];
 
       if (lower === 'badfilter') {
         badfilters.add(rule.urlFilter);
         unsupported = true;
         break;
       }
-      if (lower === 'third-party') { rule.domainType = 'thirdParty'; continue; }
-      if (lower === '~third-party') { rule.domainType = 'firstParty'; continue; }
-      if (lower === 'first-party') { rule.domainType = 'firstParty'; continue; }
+      if (THIRD_PARTY_OPTIONS.has(lower)) { rule.domainType = 'thirdParty'; continue; }
+      if (FIRST_PARTY_OPTIONS.has(lower)) { rule.domainType = 'firstParty'; continue; }
+      if (exception && (lower === 'elemhide' || lower === 'specifichide' || lower === 'ehide' || lower === 'shide')) {
+        hideOff = true;
+        continue;
+      }
       if (lower === 'important') { rule.important = true; continue; }
       if (lower === 'match-case') { rule.caseSensitive = true; continue; }
 
-      if (lower.startsWith('domain=')) {
-        for (const entry of lower.slice('domain='.length).split('|')) {
+      if (lower.startsWith('domain=') || lower.startsWith('from=')) {
+        for (const entry of lower.slice(lower.indexOf('=') + 1).split('|')) {
           if (!entry) continue;
+          // Entity domains (google.*) have no DNR form; dropping the entry
+          // would broaden the rule, so drop the rule.
+          if (entry.includes('*')) { unsupported = true; break; }
           if (entry.startsWith('~')) rule.excludedInitiatorDomains.push(entry.slice(1));
           else rule.initiatorDomains.push(entry);
         }
         continue;
       }
 
-      if (lower.startsWith('~')) { unsupported = true; break; } // negated type — cannot express
+      if (unsupported) break;
+      if (negated && ABP_RESOURCE_TYPES[lower.slice(1)]) {
+        rule.excludedResourceTypes.push(ABP_RESOURCE_TYPES[lower.slice(1)]);
+        continue;
+      }
+      if (negated) { unsupported = true; break; }
       if (ABP_RESOURCE_TYPES[lower]) { rule.resourceTypes.push(ABP_RESOURCE_TYPES[lower]); continue; }
       if (UNSUPPORTED_MODIFIERS.has(lower)) { unsupported = true; break; }
 
-      // Unknown modifier: keep the rule only if it is a bare host block.
+      // Unknown modifier: its meaning is lost in translation, so drop the rule.
       unsupported = true;
       break;
     }
 
+    if (!unsupported && hideOff) {
+      // $elemhide exceptions only switch element hiding off. Record the host;
+      // do not let it become a network allow rule.
+      const host = rule.urlFilter.match(/^\|\|([a-z0-9.-]+)\^?$/);
+      if (host) cosmeticDisabledHosts.add(host[1]);
+      stats.cosmetic += 1;
+      continue;
+    }
     if (unsupported) {
       stats.unsupported += 1;
       continue;
     }
 
     rule.resourceTypes = [...new Set(rule.resourceTypes)];
+    // A positive type list already restricts the rule; negations are moot.
+    rule.excludedResourceTypes = rule.resourceTypes.length ? [] : [...new Set(rule.excludedResourceTypes)];
     rules.push(rule);
     stats.kept += 1;
   }
 
-  return { rules, badfilters, stats };
+  return { rules, badfilters, cosmeticDisabledHosts, stats };
+}
+
+// ============================================
+// Stage 3b: Site-specific element hiding (example.com##.promo)
+// ============================================
+// Procedural / extended syntax has no plain-CSS form. Native :has() and :is()
+// are fine in every browser we ship to.
+const EXTENDED_SELECTOR = /:-abp-|:has-text|:contains\(|:xpath|:upward|:remove\(|:style\(|:matches-|:min-text-length|:watch-attr|:others|:if\(|:if-not|:nth-ancestor|:remove-attr|:remove-class|:matches-path/;
+
+export function isSafeSelector(selector) {
+  if (!selector || selector.length > 500) return false;
+  // Braces or comments would let a list entry break out of its CSS rule.
+  if (/[{}]|\/\*/.test(selector)) return false;
+  if (selector.startsWith('+js(') || selector.startsWith('^')) return false;
+  return !EXTENDED_SELECTOR.test(selector);
+}
+
+/**
+ * Collect site-specific hiding rules. Generic '##sel' rules (no domain) are
+ * left out on purpose: applied on every site, they are what hides first-party
+ * content; WebSuddhi's own generic selectors cover that tier.
+ * Returns { hide: Map<host, Set>, unhide: Map<host, Set>, stats }.
+ */
+export function parseCosmetic(text) {
+  const hide = new Map();
+  const unhide = new Map();
+  const stats = { specific: 0, exceptions: 0, generic: 0, unsupported: 0 };
+  const add = (map, host, selector) => {
+    if (!map.has(host)) map.set(host, new Set());
+    map.get(host).add(selector);
+  };
+
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('!')) continue;
+    const match = line.match(/^([^#]*)(##|#@#)(.+)$/);
+    if (!match) {
+      if (/#[?$%@]#|#@[?$%]#/.test(line)) stats.unsupported += 1;
+      continue;
+    }
+    const [, domainPart, separator, selector] = match;
+    if (!isSafeSelector(selector)) { stats.unsupported += 1; continue; }
+    const domains = domainPart.split(',').map((d) => d.trim().toLowerCase()).filter(Boolean);
+    if (domains.some((d) => d.includes('*') || d.includes('/'))) { stats.unsupported += 1; continue; }
+    const included = domains.filter((d) => !d.startsWith('~'));
+    const excluded = domains.filter((d) => d.startsWith('~')).map((d) => d.slice(1));
+
+    if (separator === '#@#') {
+      // A domain-less exception only cancels generic hiding, which we don't ship.
+      for (const host of included) add(unhide, host, selector);
+      if (included.length) stats.exceptions += 1;
+      continue;
+    }
+    if (!included.length) { stats.generic += 1; continue; }
+    for (const host of included) add(hide, host, selector);
+    for (const host of excluded) add(unhide, host, selector);
+    stats.specific += 1;
+  }
+  return { hide, unhide, stats };
+}
+
+/**
+ * One compact table: selectors stored once, hosts point at them by index.
+ * Read by the background (GET_COSMETIC_FILTERS) and by tests.
+ */
+export function buildCosmeticTable(parsedList, disabledHosts = new Set()) {
+  const selectors = [];
+  const index = new Map();
+  const ref = (selector) => {
+    if (!index.has(selector)) { index.set(selector, selectors.length); selectors.push(selector); }
+    return index.get(selector);
+  };
+  const hide = {};
+  const unhide = {};
+  for (const parsed of parsedList) {
+    for (const [host, set] of parsed.hide) for (const sel of set) (hide[host] ||= []).push(ref(sel));
+    for (const [host, set] of parsed.unhide) for (const sel of set) (unhide[host] ||= []).push(ref(sel));
+  }
+  for (const map of [hide, unhide]) for (const host of Object.keys(map)) map[host] = [...new Set(map[host])];
+  return { version: 1, selectors, hide, unhide, disabled: [...disabledHosts].sort() };
 }
 
 // ============================================
@@ -250,10 +379,16 @@ const PRIORITY = {
 };
 
 export function buildRule(id, rule, defaultResourceTypes) {
-  const condition = {
-    urlFilter: rule.urlFilter,
-    resourceTypes: rule.resourceTypes.length ? rule.resourceTypes : defaultResourceTypes
-  };
+  const condition = { urlFilter: rule.urlFilter };
+  if (rule.resourceTypes.length) {
+    condition.resourceTypes = rule.resourceTypes;
+  } else if (rule.excludedResourceTypes && rule.excludedResourceTypes.length) {
+    // Without resourceTypes DNR matches every type but main_frame; once
+    // excludedResourceTypes is set, main_frame has to be excluded explicitly.
+    condition.excludedResourceTypes = [...new Set([...rule.excludedResourceTypes, 'main_frame'])];
+  } else {
+    condition.resourceTypes = defaultResourceTypes;
+  }
 
   if (rule.domainType) condition.domainType = rule.domainType;
   if (rule.initiatorDomains.length) condition.initiatorDomains = rule.initiatorDomains;
@@ -294,8 +429,10 @@ async function main() {
   const rawTexts = await Promise.all(enabledSources.map(s => fetchSource(s)));
 
   // Parse every source first so `$badfilter` can cancel rules from any feed.
-  const parsedSources = rawTexts.map((text) => (
-    text ? parseABP(text) : { rules: [], badfilters: new Set(), stats: {} }
+  const parsedSources = rawTexts.map((text, i) => (
+    text
+      ? parseABP(text, { urlRules: enabledSources[i].syntax === 'adblock' })
+      : { rules: [], badfilters: new Set(), cosmeticDisabledHosts: new Set(), stats: {} }
   ));
   const allBadfilters = new Set();
   for (const parsed of parsedSources) {
@@ -311,6 +448,7 @@ async function main() {
     rule.urlFilter,
     rule.domainType || '',
     rule.resourceTypes.slice().sort().join(','),
+    (rule.excludedResourceTypes || []).slice().sort().join(','),
     rule.initiatorDomains.join(','),
     rule.excludedInitiatorDomains.join(','),
     rule.exception ? 'allow' : 'block'
@@ -328,13 +466,23 @@ async function main() {
 
     for (const rule of rules) {
       if (allBadfilters.has(rule.urlFilter)) continue;
+      // Ad and spam lists must never cancel a top-level navigation; only
+      // security feeds may block a whole page.
+      if (!rule.exception && cat !== 'security' && rule.resourceTypes.includes('main_frame')) continue;
 
       const key = ruleKey(rule);
       if (globalRuleKeys.has(key)) continue;
 
       // A bare block is redundant if the hand-curated lists already cover it.
       const isBareBlock = !rule.exception && !rule.domainType &&
-        rule.resourceTypes.length === 0 && rule.initiatorDomains.length === 0;
+        rule.resourceTypes.length === 0 && rule.excludedResourceTypes.length === 0 &&
+        rule.initiatorDomains.length === 0 && /^\|\|[a-z0-9.-]+\^?$/.test(rule.urlFilter);
+      // Adblock lists are here for what DNS lists cannot say (paths, site
+      // scoping, exceptions). A host block that is only narrowed by party or
+      // type is still "block this host" and mostly duplicates HaGeZi.
+      const isHostOnlyBlock = !rule.exception && rule.initiatorDomains.length === 0 &&
+        /^\|\|[a-z0-9.-]+\^?$/.test(rule.urlFilter);
+      if (isHostOnlyBlock && source.skipBareHosts) continue;
       if (isBareBlock) {
         const bare = rule.urlFilter.replace(/^\|\|/, '').replace(/\^$/, '');
         if (globalSeen.has(bare)) continue;
@@ -443,6 +591,21 @@ async function main() {
     }
   }
 
+  // Site-specific element hiding from the sources that opt in (cosmetic: true).
+  const cosmeticParsed = enabledSources
+    .map((source, i) => (source.cosmetic && rawTexts[i] ? parseCosmetic(rawTexts[i]) : null))
+    .filter(Boolean);
+  const disabledHosts = new Set();
+  parsedSources.forEach((parsed, i) => {
+    if (enabledSources[i].cosmetic) for (const host of parsed.cosmeticDisabledHosts || []) disabledHosts.add(host);
+  });
+  const cosmeticTable = buildCosmeticTable(cosmeticParsed, disabledHosts);
+  writeFileSync(join(RULES_DIR, 'cosmetic-filters.json'), JSON.stringify(cosmeticTable), 'utf8');
+  console.log(
+    `  [write] cosmetic-filters.json — ${cosmeticTable.selectors.length} selectors for ` +
+    `${Object.keys(cosmeticTable.hide).length} sites`
+  );
+
   // Write manifest snippet
   const snippetPath = join(RULES_DIR, 'generated-manifest-snippet.json');
   writeFileSync(snippetPath, JSON.stringify(manifestEntries, null, 2), 'utf8');
@@ -495,12 +658,14 @@ async function main() {
     JSON.stringify([...new Set(
       Object.values(categoryDomains)
         .flat()
-        .filter((rule) => !rule.exception)
+        // Firefox MV2 matches hostnames only; a path rule is not a domain.
+        .filter((rule) => !rule.exception && /^\|\|[a-z0-9.-]+\^?$/.test(rule.urlFilter) &&
+          !rule.domainType && !rule.resourceTypes.length && !rule.initiatorDomains.length)
         .map((rule) => rule.urlFilter.replace(/^\|\|/, '').replace(/\^$/, ''))
     )]),
     'utf8'
   );
-  console.log(`  [write] ${mv2DomainsFile} — ${totalRules.toLocaleString()} domains for MV2`);
+  console.log(`  [write] ${mv2DomainsFile} — host-only rules for MV2`);
 
   const installedTotal = curatedRuleCount + totalRules;
   if (installedTotal > guaranteedStaticRules) {

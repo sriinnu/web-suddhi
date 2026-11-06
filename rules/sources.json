@@ -3,6 +3,29 @@
   "description": "Upstream sources for WebSuddhi curated blocklists. Run: node scripts/build-blocklists.mjs",
   "sources": [
     {
+      "id": "easylist",
+      "name": "EasyList",
+      "url": "https://easylist.to/easylist/easylist.txt",
+      "category": "ads",
+      "syntax": "adblock",
+      "skipBareHosts": true,
+      "cosmetic": true,
+      "enabled": true,
+      "note": "Path, scoped and exception rules (first-party ads) plus site-specific element hiding. Plain host blocks are left to the DNS lists."
+    },
+    {
+      "id": "easyprivacy",
+      "name": "EasyPrivacy",
+      "url": "https://easylist.to/easylist/easyprivacy.txt",
+      "category": "ads",
+      "syntax": "adblock",
+      "skipBareHosts": true,
+      "cosmetic": true,
+      "maxDomains": 4000,
+      "enabled": true,
+      "note": "Tracking pixels and beacons served from a site's own paths."
+    },
+    {
       "id": "hagezi-pro",
       "name": "HaGeZi Pro DNS Blocklist",
       "url": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/pro.txt",

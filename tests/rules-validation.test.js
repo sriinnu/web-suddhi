@@ -77,7 +77,8 @@ describe('declarativeNetRequest rulesets', () => {
       for (const rule of loadRules(resource.path)) {
         const filter = rule.condition?.urlFilter || '';
         if (!filter.startsWith('||')) continue;
-        const hasSeparator = filter.includes('^') || filter.includes('/');
+        // `||host*path=` is a list author's deliberate wildcard, not a bare host.
+        const hasSeparator = filter.includes('^') || filter.includes('/') || filter.includes('*');
         expect(hasSeparator, `${resource.id}: ${filter} has no '^' anchor`).toBe(true);
       }
     }
