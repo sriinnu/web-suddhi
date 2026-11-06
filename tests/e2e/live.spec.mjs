@@ -78,6 +78,15 @@ async function surveyOne(context, entry) {
         + (typeof el.className === 'string' && el.className.trim()
           ? '.' + el.className.trim().split(/\s+/).filter((c) => !c.startsWith('websuddhi')).slice(0, 3).join('.') : '');
       const out = { total: 0, failed: 0, hidden: 0, hiddenByUs: [] };
+      // EasyList site rules hide with a stylesheet, not a marker attribute.
+      const listSheet = document.getElementById('websuddhi-list-cosmetics')?.sheet;
+      const listSelectors = listSheet ? [...listSheet.cssRules].map((r) => r.selectorText).filter(Boolean) : [];
+      const listMatch = (img) => {
+        for (const sel of listSelectors) {
+          try { const el = img.closest(sel); if (el) return { el, sel }; } catch { /* unsupported here */ }
+        }
+        return null;
+      };
       for (const i of document.images) {
         const src = i.currentSrc || i.src;
         if (!src || src.startsWith('data:')) continue;
@@ -98,6 +107,9 @@ async function surveyOne(context, entry) {
             rule: marker.getAttribute('data-websuddhi-rule') || marker.getAttribute('data-websuddhi-blocked') || '(no rule recorded)',
             element: describe(marker),
           });
+        } else {
+          const hit = listMatch(i);
+          if (hit) out.hiddenByUs.push({ src: src.slice(0, 160), rule: 'list##' + hit.sel, element: describe(hit.el) });
         }
       }
       return out;

@@ -114,7 +114,8 @@ try {
     'GET_PERIOD_STATS',
     'GET_STATS_FOR_PERIOD',
     'LOAD_PICKER',
-    'LOAD_PHISHING_UI'
+    'LOAD_PHISHING_UI',
+    'GET_COSMETIC_FILTERS'
   ]);
 
   // Safe storage wrapper with defaults
@@ -1662,6 +1663,53 @@ try {
     return { success: true };
   }
 
+  // ============================================
+  // List element hiding (EasyList site-specific ##rules)
+  // ============================================
+  // rules/cosmetic-filters.json is built by scripts/build-blocklists.mjs:
+  // selectors stored once, hosts point at them by index. Loaded on first use
+  // and kept for the life of the worker.
+  let cosmeticTablePromise = null;
+  const EMPTY_COSMETIC_TABLE = { selectors: [], hide: {}, unhide: {}, disabled: [] };
+
+  function loadCosmeticTable() {
+    if (!cosmeticTablePromise) {
+      cosmeticTablePromise = fetch(api.runtime.getURL('rules/cosmetic-filters.json'))
+        .then((response) => (response.ok ? response.json() : null))
+        .catch(() => null)
+        .then((table) => {
+          if (!table || !Array.isArray(table.selectors)) return EMPTY_COSMETIC_TABLE;
+          table.disabledSet = new Set(table.disabled || []);
+          return table;
+        });
+    }
+    return cosmeticTablePromise;
+  }
+
+  /**
+   * Selectors to hide on a host: rules for the host and each parent domain,
+   * minus their exceptions. Pause and whitelist are the content script's call.
+   */
+  async function getListCosmetics(hostnameOrUrl) {
+    const host = normalizeHostname(hostnameOrUrl);
+    if (!host) return [];
+    const table = await loadCosmeticTable();
+    const labels = host.split('.');
+    const hide = new Set();
+    const unhide = new Set();
+    for (let i = 0; i < labels.length; i++) {
+      const suffix = labels.slice(i).join('.');
+      if (table.disabledSet && table.disabledSet.has(suffix)) return [];
+      for (const index of table.hide[suffix] || []) hide.add(index);
+      for (const index of table.unhide[suffix] || []) unhide.add(index);
+    }
+    const selectors = [];
+    for (const index of hide) {
+      if (!unhide.has(index) && table.selectors[index]) selectors.push(table.selectors[index]);
+    }
+    return selectors;
+  }
+
   async function handleMessage(message, sender, sendResponse) {
     // Handle rate limiting
     if (!RATE_LIMIT_EXEMPT_TYPES.has(message.type)) {
@@ -2148,6 +2196,12 @@ try {
 
         case 'GET_PAUSED_SITES':
           return { success: true, pausedSites: await getActivePausedSites() };
+
+        case 'GET_COSMETIC_FILTERS': {
+          // The frame's own URL first: an iframe gets its own site's rules.
+          const frameUrl = sender && /^https?:/.test(sender.url || '') ? sender.url : message.hostname;
+          return { success: true, selectors: await getListCosmetics(frameUrl) };
+        }
 
         case 'IS_PAUSED': {
           // Any pause counts: indefinite (whitelist) reports expiry 0.

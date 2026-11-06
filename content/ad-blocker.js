@@ -553,6 +553,50 @@
     });
   }
 
+  // ============================================
+  // LIST ELEMENT HIDING (EasyList site-specific ##rules)
+  // ============================================
+  // One display:none rule per selector in a single <style>. CSS error recovery
+  // drops only a rule whose selector this browser rejects, never the rest.
+  const LIST_COSMETICS_STYLE_ID = 'websuddhi-list-cosmetics';
+  let listCosmeticsCss = null;
+  let listCosmeticsRequest = null;
+
+  function attachListCosmetics() {
+    if (!listCosmeticsCss) return;
+    let style = document.getElementById(LIST_COSMETICS_STYLE_ID);
+    if (!style) {
+      style = document.createElement('style');
+      style.id = LIST_COSMETICS_STYLE_ID;
+      (document.head || document.documentElement).appendChild(style);
+    }
+    if (style.textContent !== listCosmeticsCss) style.textContent = listCosmeticsCss;
+  }
+
+  function applyListCosmetics() {
+    if (listCosmeticsCss !== null) {
+      attachListCosmetics();
+      return;
+    }
+    if (listCosmeticsRequest) return;
+    listCosmeticsRequest = sendMessageEarly({ type: 'GET_COSMETIC_FILTERS', hostname: window.location.hostname })
+      .then((response) => {
+        const allowed = getAllowedSelectorSet();
+        const selectors = ((response && response.selectors) || []).filter((sel) => !allowed.has(sel));
+        listCosmeticsCss = selectors.map((sel) => sel + '{display:none!important}').join('\n');
+        if (state.enabled) attachListCosmetics();
+      })
+      .catch(() => {})
+      .finally(() => { listCosmeticsRequest = null; });
+  }
+
+  function removeListCosmetics() {
+    const style = document.getElementById(LIST_COSMETICS_STYLE_ID);
+    if (style) style.remove();
+    // Re-ask next time: the per-site allowed selectors may have changed.
+    listCosmeticsCss = null;
+  }
+
   async function refreshLocalSettings() {
     const storage = await getStorage();
     state.enabled = storage.enabled !== false;
@@ -580,6 +624,8 @@
     }
 
     if (state.enabled) {
+      listCosmeticsCss = null; // settings changed: re-ask, allowed selectors may differ
+      applyListCosmetics();
       applyBlocking();
       scheduleLateSweep();
       removePingAttributes();
@@ -594,6 +640,7 @@
         detectAndRemovePaywall();
       }
     } else {
+      removeListCosmetics();
       unblockAll();
       hidePhishingWarning({ persistDismissal: false });
       if (!whitelisted) {
@@ -2087,6 +2134,8 @@
     dynamicContentTimer = setTimeout(() => {
       dynamicContentTimer = null;
       applyBlocking();
+      // Pages that rebuild <head> (document.open, SPA shells) drop our style.
+      if (state.enabled) attachListCosmetics();
     }, 1500);
   }
 
