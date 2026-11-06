@@ -81,8 +81,6 @@
     zapModeBtn: document.getElementById('zapModeBtn'),
     openOptionsBtn: document.getElementById('openOptionsBtn'),
     reportIssue: document.getElementById('reportIssue'),
-    trackerSummary: document.getElementById('trackerSummary'),
-    trackerCategories: document.getElementById('trackerCategories'),
     // Security info elements
     siteInfoSection: document.getElementById('siteInfoSection'),
     siteIcon: document.getElementById('siteIcon'),
@@ -134,15 +132,31 @@
     blacklistBtn: document.getElementById('blacklistBtn'),
     statusBadge: document.getElementById('statusBadge'),
     whitelistToggleBtn: document.getElementById('whitelistToggleBtn'),
-    paletteSelect: document.getElementById('paletteSelect'),
-    modeSelect: document.getElementById('modeSelect'),
     // Pause ribbon + split-button + broken-site
     pauseRibbon: document.getElementById('pauseRibbon'),
     pauseRibbonText: document.getElementById('pauseRibbonText'),
     pauseResumeBtn: document.getElementById('pauseResumeBtn'),
     pauseBtn: document.getElementById('pauseBtn'),
     pauseMenu: document.getElementById('pauseMenu'),
-    reportBrokenBtn: document.getElementById('reportBrokenBtn')
+    reportBrokenBtn: document.getElementById('reportBrokenBtn'),
+    // v2 layout
+    ringSegs: document.getElementById('ringSegs'),
+    ringCount: document.getElementById('ringCount'),
+    ringLegend: document.getElementById('ringLegend'),
+    verdict: document.getElementById('verdict'),
+    siteStateWhy: document.getElementById('siteStateWhy'),
+    brokenBtn: document.getElementById('brokenBtn'),
+    fixLadder: document.getElementById('fixLadder'),
+    activityFeed: document.getElementById('activityFeed'),
+    activityEmpty: document.getElementById('activityEmpty'),
+    activityCount: document.getElementById('activityCount'),
+    framesTabCount: document.getElementById('framesTabCount'),
+    framesEmpty: document.getElementById('framesEmpty'),
+    safetyMeta: document.getElementById('safetyMeta'),
+    featMeta: document.getElementById('featMeta'),
+    paletteDots: document.getElementById('paletteDots'),
+    paletteName: document.getElementById('paletteName'),
+    modeSeg: document.getElementById('modeSeg')
   };
 
   // Cross-browser API
@@ -184,28 +198,59 @@
     return list;
   }
 
-  function fillPaletteSelect() {
-    const select = elements.paletteSelect;
-    if (!select) return;
-    const have = new Set(Array.from(select.options).map((o) => o.value));
+  // The swatch for a palette: its accent in the mode the popup is showing.
+  function paletteSwatch(id) {
+    const pal = Themes && Themes.PALETTES[id];
+    if (!pal) return null;
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark' ||
+      (!document.documentElement.hasAttribute('data-theme') && window.matchMedia?.('(prefers-color-scheme: dark)').matches);
+    const v = dark ? pal.dark : pal.light;
+    return { accent: v.accent, bg: v.bg };
+  }
+
+  // One round button per palette. Custom palettes get a neutral swatch.
+  function fillPaletteDots() {
+    const box = elements.paletteDots;
+    if (!box) return;
+    while (box.firstChild) box.removeChild(box.firstChild);
     for (const p of availablePalettes()) {
-      if (have.has(p.id)) continue;
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = p.name;
-      select.appendChild(opt);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'dot';
+      btn.dataset.palette = p.id;
+      btn.title = p.name;
+      btn.setAttribute('aria-label', p.name);
+      btn.setAttribute('aria-pressed', 'false');
+      const swatch = document.createElement('i');
+      const colours = paletteSwatch(p.id);
+      if (colours) swatch.style.background = 'linear-gradient(135deg, ' + colours.bg + ' 0 50%, ' + colours.accent + ' 50% 100%)';
+      else swatch.style.background = 'var(--c4)';
+      btn.appendChild(swatch);
+      box.appendChild(btn);
     }
   }
 
   function syncThemeControls() {
-    if (elements.paletteSelect) elements.paletteSelect.value = themeState.palette;
-    if (elements.modeSelect) elements.modeSelect.value = themeState.colorMode;
+    if (elements.paletteDots) {
+      for (const btn of elements.paletteDots.querySelectorAll('.dot')) {
+        btn.setAttribute('aria-pressed', String(btn.dataset.palette === themeState.palette));
+      }
+    }
+    if (elements.paletteName) {
+      const match = availablePalettes().find((p) => p.id === themeState.palette);
+      elements.paletteName.textContent = match ? match.name : '';
+    }
+    if (elements.modeSeg) {
+      for (const btn of elements.modeSeg.querySelectorAll('button[data-mode]')) {
+        btn.setAttribute('aria-pressed', String(btn.dataset.mode === themeState.colorMode));
+      }
+    }
   }
 
   async function loadPopupTheme() {
-    fillPaletteSelect();
+    fillPaletteDots();
     window.addEventListener('websuddhi:custom-themes-loaded', () => {
-      fillPaletteSelect();
+      fillPaletteDots();
       syncThemeControls();
     });
     if (!Themes) return;
@@ -222,13 +267,16 @@
     syncThemeControls();
   }
 
-  async function onThemeControlChange() {
+  async function setTheme(change) {
     if (!Themes) return;
     themeState = {
-      palette: elements.paletteSelect?.value || Themes.DEFAULT_PALETTE,
-      colorMode: elements.modeSelect?.value || 'system'
+      palette: change.palette || themeState.palette || Themes.DEFAULT_PALETTE,
+      colorMode: change.colorMode || themeState.colorMode || 'system'
     };
     Themes.apply(document, themeState.palette, themeState.colorMode);
+    // Swatches follow the mode, so redraw them when it changes.
+    if (change.colorMode) fillPaletteDots();
+    syncThemeControls();
     await setStorage({ palette: themeState.palette, colorMode: themeState.colorMode });
   }
 
@@ -355,9 +403,8 @@
     dot.className = 'status-dot';
     const text = enabled ? 'Active' : 'Disabled';
 
-    elements.statusBadge.className = enabled ? 'status-badge' : 'status-badge disabled';
-    elements.statusBadge.style.background = enabled ? 'rgba(52, 199, 89, 0.15)' : 'rgba(255, 59, 48, 0.15)';
-    elements.statusBadge.style.color = enabled ? '#34C759' : '#FF3B30';
+    // Colours come from the palette (status-badge / .is-off), never inline.
+    elements.statusBadge.className = enabled ? 'status-badge' : 'status-badge disabled is-off';
     elements.statusBadge.textContent = '';
     elements.statusBadge.appendChild(dot);
     elements.statusBadge.appendChild(document.createTextNode(' ' + text));
@@ -510,19 +557,18 @@
     if (elements.paywallToggle) elements.paywallToggle.checked = settings.paywallEnabled !== false;
     if (elements.socialBlockingToggle) elements.socialBlockingToggle.checked = settings.socialBlockingEnabled === true;
 
-    // Update blocked count
-    if (elements.networkBlockedCount) {
-      if (tabId) {
-        try {
-          const blockedCount = await sendToBackground({ type: 'GET_BLOCKED_COUNT', tabId });
-          animateCount(elements.networkBlockedCount, blockedCount.count || 0);
-        } catch (e) {
-          animateCount(elements.networkBlockedCount, 0);
-        }
-      } else {
-        animateCount(elements.networkBlockedCount, 0);
-      }
+    // Blocked on this tab: one request for the ring and the totals.
+    let counts = { count: 0, network: 0, cosmetic: 0 };
+    if (tabId) {
+      try {
+        const resp = await sendToBackground({ type: 'GET_BLOCKED_COUNT', tabId });
+        const total = Number(resp?.count) || 0;
+        const network = Number.isFinite(resp?.network) ? resp.network : total;
+        const cosmetic = Number.isFinite(resp?.cosmetic) ? resp.cosmetic : Math.max(0, total - network);
+        counts = { count: total, network, cosmetic };
+      } catch (e) { /* keep zeros */ }
     }
+    renderCounts(counts);
 
     // Update rules count
     if (elements.rulesCount) {
@@ -530,23 +576,125 @@
       animateCount(elements.rulesCount, rulesCount);
     }
 
-    // Update data saved estimate
-    if (elements.dataSaved && tabId) {
-      try {
-        const blockedCount = await sendToBackground({ type: 'GET_BLOCKED_COUNT', tabId });
-        const dataSaved = (blockedCount.count || 0) * 2.5; // Rough estimate: 2.5 KB per request
-        if (dataSaved >= 1024) {
-          elements.dataSaved.textContent = (dataSaved / 1024).toFixed(1) + ' MB';
-        } else {
-          elements.dataSaved.textContent = Math.round(dataSaved) + ' KB';
-        }
-      } catch (e) {
-        elements.dataSaved.textContent = '0 KB';
+    updateFeatureMeta();
+    setStatusBadgeState(settings.enabled !== false);
+    updateVerdict();
+  }
+
+  let tabCounts = { count: 0, network: 0, cosmetic: 0 };
+
+  function renderCounts(counts) {
+    tabCounts = counts;
+    animateCount(elements.ringCount, counts.count);
+    animateCount(elements.networkBlockedCount, counts.network);
+    animateCount(elements.cosmeticBlockedCount, counts.cosmetic);
+    if (elements.dataSaved) {
+      // Rough estimate: 2.5 KB per blocked request.
+      const kb = counts.network * 2.5;
+      elements.dataSaved.textContent = kb >= 1024 ? (kb / 1024).toFixed(1) + ' MB' : Math.round(kb) + ' KB';
+    }
+    updateVerdict();
+  }
+
+  // "4 of 6 on" next to Features and look.
+  function updateFeatureMeta() {
+    if (!elements.featMeta) return;
+    const toggles = [elements.networkBlockingToggle, elements.urlCleaningToggle, elements.cookieConsentToggle,
+      elements.annoyanceToggle, elements.socialBlockingToggle, elements.paywallToggle].filter(Boolean);
+    const on = toggles.filter((t) => t.checked).length;
+    elements.featMeta.textContent = on + ' of ' + toggles.length + ' on';
+  }
+
+  // ============================================
+  // HERO: verdict, ring and the per-site explanation
+  // ============================================
+  let siteStateValue = 'default';
+
+  const STATE_WHY = {
+    protected: 'Strict: heavy frames are blocked as well. Use it on sites you do not trust.',
+    default: 'Standard: ads, trackers and annoyances are blocked. The page itself is left alone.',
+    paused: 'Off here: nothing is blocked on this site until you turn it back on.'
+  };
+
+  function updateVerdict() {
+    const el = elements.verdict;
+    if (!el) return;
+    let text;
+    let off = false;
+    if (elements.enableToggle && !elements.enableToggle.checked) {
+      text = 'WebSuddhi is off on every site';
+      off = true;
+    } else if (siteStateValue === 'paused') {
+      text = 'Blocking is off on this site';
+      off = true;
+    } else if (!currentTab?.url || !/^https?:/.test(currentTab.url)) {
+      text = 'Nothing to block on this page';
+    } else if (siteStateValue === 'protected') {
+      text = 'Strict blocking on this page';
+    } else if (tabCounts.count > 0) {
+      text = 'This page is protected';
+    } else {
+      text = 'Watching this page';
+    }
+    el.textContent = text;
+    el.classList.toggle('is-off', off);
+  }
+
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const RING_R = 54;
+  const RING_C = 2 * Math.PI * RING_R;
+
+  // Draws up to four category arcs plus "other". Shares come from the recent
+  // log for this site; the number in the middle is the live tab count.
+  function renderRing(categories) {
+    const segs = elements.ringSegs;
+    const legend = elements.ringLegend;
+    if (segs) while (segs.firstChild) segs.removeChild(segs.firstChild);
+    if (legend) while (legend.firstChild) legend.removeChild(legend.firstChild);
+
+    const total = categories.reduce((sum, c) => sum + c.count, 0);
+    if (!total) {
+      if (legend) {
+        const quiet = document.createElement('div');
+        quiet.className = 'quiet';
+        quiet.textContent = 'Nothing logged here yet';
+        legend.appendChild(quiet);
       }
+      return;
     }
 
-    // Update status badge
-    setStatusBadgeState(settings.enabled !== false);
+    const top = categories.slice(0, 3);
+    const rest = categories.slice(3).reduce((sum, c) => sum + c.count, 0);
+    if (rest) top.push({ name: 'Other', count: rest });
+
+    const gap = top.length > 1 ? 3 : 0;
+    let offset = 0;
+    top.forEach((cat, i) => {
+      const len = (cat.count / total) * RING_C;
+      if (segs) {
+        const arc = document.createElementNS(SVG_NS, 'circle');
+        arc.setAttribute('class', 'seg-arc');
+        arc.setAttribute('cx', '64');
+        arc.setAttribute('cy', '64');
+        arc.setAttribute('r', String(RING_R));
+        arc.style.stroke = 'var(--c' + (i + 1) + ')';
+        arc.setAttribute('stroke-dasharray', Math.max(0, len - gap) + ' ' + (RING_C - Math.max(0, len - gap)));
+        arc.setAttribute('stroke-dashoffset', String(-offset));
+        segs.appendChild(arc);
+      }
+      offset += len;
+      if (legend) {
+        const row = document.createElement('div');
+        const swatch = document.createElement('i');
+        swatch.style.background = 'var(--c' + (i + 1) + ')';
+        const name = document.createElement('span');
+        name.textContent = cat.name;
+        const count = document.createElement('b');
+        count.textContent = String(cat.count);
+        row.append(swatch, name, count);
+        legend.appendChild(row);
+      }
+    });
   }
 
   // ============================================
@@ -900,7 +1048,7 @@
       showToast('Pick mode: Click an element or frame to block');
       await sendToContentScript({ type: 'START_PICK_MODE' });
     } else {
-      setButtonContent(elements.pickModeBtn, SVG_PATHS.pick, 'Pick');
+      setButtonContent(elements.pickModeBtn, SVG_PATHS.pick, 'Pick element');
       elements.pickModeBtn.classList.remove('active');
       await sendToContentScript({ type: 'STOP_PICK_MODE' });
     }
@@ -1355,66 +1503,129 @@
       if (elements.certProtocol) elements.certProtocol.textContent = 'HTTP';
       if (elements.certType) elements.certType.textContent = 'Unencrypted';
     }
+    const insecure = elements.siteInfoSection.classList.contains('insecure');
+    setSafetyMeta(insecure ? 'Not secure' : 'Secure', insecure ? 'bad' : 'good');
   }
 
-  // Load tracker category breakdown from request log
-  async function loadTrackerSummary() {
-    if (!elements.trackerSummary || !elements.trackerCategories) return;
+  // The chip on the closed "Site safety" row.
+  function setSafetyMeta(label, kind) {
+    const meta = elements.safetyMeta;
+    if (!meta) return;
+    while (meta.firstChild) meta.removeChild(meta.firstChild);
+    const chip = document.createElement('span');
+    chip.className = 'chip ' + kind;
+    chip.textContent = label;
+    meta.appendChild(chip);
+  }
 
+  // ============================================
+  // ACTIVITY: this site's part of the request log drives the ring, the
+  // legend and the Activity tab. The log is global, so filter by site.
+  // ============================================
+  const bareHost = (value) => String(value || '').toLowerCase().replace(/^www\./, '');
+
+  function shortTime(ts) {
+    const diff = Date.now() - (Number(ts) || 0);
+    if (!ts || diff < 0) return '';
+    if (diff < 60_000) return 'now';
+    if (diff < 3_600_000) return Math.round(diff / 60_000) + ' min ago';
+    if (diff < 86_400_000) return Math.round(diff / 3_600_000) + ' hr ago';
+    return new Date(ts).toLocaleDateString();
+  }
+
+  // Counts arrive in bursts while a page loads; refresh the log at most once a second.
+  let activityTimer = null;
+  function scheduleActivityRefresh() {
+    if (activityTimer) return;
+    activityTimer = setTimeout(() => { activityTimer = null; loadActivity(); }, 1000);
+  }
+
+  async function loadActivity() {
+    const host = getActiveHostname();
+    let entries = [];
     try {
       const response = await sendToBackgroundWithFallback(['GET_REQUEST_LOG', 'REQUEST_LOG']);
-      const requestLog = extractRequestLog(response);
-      if (requestLog.length === 0) {
-        elements.trackerSummary.style.display = 'none';
-        return;
-      }
+      entries = extractRequestLog(response).filter((e) => host && bareHost(e?.site) === host);
+    } catch (e) {
+      entries = [];
+    }
 
-      // Count by category and severity
-      const categoryCounts = {};
-      const categorySeverity = {};
+    // Ring: counts per category.
+    const byCategory = new Map();
+    for (const e of entries) {
+      const name = e.category && e.category !== 'Unknown' ? e.category : (e.type === 'cosmetic' ? 'Hidden' : 'Other');
+      byCategory.set(name, (byCategory.get(name) || 0) + 1);
+    }
+    const categories = Array.from(byCategory, ([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+    renderRing(categories);
+    renderFeed(entries.slice().sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 30));
+  }
 
-      for (const entry of requestLog) {
-        if (entry.type === 'network' && entry.category && entry.category !== 'Unknown') {
-          categoryCounts[entry.category] = (categoryCounts[entry.category] || 0) + 1;
-          categorySeverity[entry.category] = entry.severity || 'low';
+  function renderFeed(entries) {
+    const feed = elements.activityFeed;
+    if (!feed) return;
+    while (feed.firstChild) feed.removeChild(feed.firstChild);
+    if (elements.activityCount) elements.activityCount.textContent = String(entries.length);
+    if (elements.activityEmpty) elements.activityEmpty.hidden = entries.length > 0;
+
+    for (const entry of entries) {
+      const cosmetic = entry.type === 'cosmetic';
+      const row = document.createElement('div');
+      row.className = 'ev';
+
+      const icon = document.createElement('span');
+      icon.className = 'ic' + (cosmetic ? ' hid' : '');
+      icon.textContent = cosmetic ? 'CSS' : 'NET';
+      icon.setAttribute('aria-hidden', 'true');
+
+      const text = document.createElement('div');
+      text.className = 't';
+      const title = document.createElement('span');
+      const target = cosmetic ? entry.selector : extractDomain(entry.url) || entry.url;
+      title.textContent = (cosmetic ? 'Hid ' : 'Blocked ') + (target || 'unknown');
+      title.title = cosmetic ? (entry.selector || '') : (entry.url || '');
+      const meta = document.createElement('small');
+      meta.textContent = [entry.category, shortTime(entry.timestamp)].filter(Boolean).join(' · ');
+      text.append(title, meta);
+
+      const undo = document.createElement('button');
+      undo.type = 'button';
+      undo.className = 'link';
+      undo.textContent = 'Allow';
+      undo.title = cosmetic ? 'Stop hiding this on this site' : 'Allow this host on every site';
+      undo.addEventListener('click', async () => {
+        undo.disabled = true;
+        const ok = await allowActivityEntry(entry);
+        if (ok) {
+          row.classList.add('undone');
+          undo.textContent = 'Allowed';
+          showToast('Allowed. Reload the page to see it.');
+        } else {
+          undo.disabled = false;
         }
-      }
+      });
 
-      // If no tracker data, hide the section
-      const entries = Object.entries(categoryCounts);
-      if (entries.length === 0) {
-        elements.trackerSummary.style.display = 'none';
-        return;
-      }
-
-      // Sort by count descending
-      entries.sort((a, b) => b[1] - a[1]);
-
-      // Clear and populate tracker categories
-      while (elements.trackerCategories.firstChild) {
-        elements.trackerCategories.removeChild(elements.trackerCategories.firstChild);
-      }
-
-      // Show top 5 categories
-      const topEntries = entries.slice(0, 5);
-      for (const [category, count] of topEntries) {
-        const badge = document.createElement('span');
-        badge.className = 'tracker-badge ' + (categorySeverity[category] || 'low');
-
-        const countSpan = document.createElement('span');
-        countSpan.className = 'tracker-count';
-        countSpan.textContent = count;
-        badge.appendChild(countSpan);
-        badge.appendChild(document.createTextNode(' ' + category));
-
-        elements.trackerCategories.appendChild(badge);
-      }
-
-      elements.trackerSummary.style.display = 'block';
-    } catch (err) {
-      elements.trackerSummary.style.display = 'none';
+      row.append(icon, text, undo);
+      feed.appendChild(row);
     }
   }
+
+  async function allowActivityEntry(entry) {
+    try {
+      let resp;
+      if (entry.type === 'cosmetic') {
+        resp = await sendToBackground({ type: 'ALLOW_SELECTOR_ON_SITE', hostname: getActiveHostname(), selector: entry.selector });
+      } else {
+        resp = await sendToBackground({ type: 'UNBLOCK_REQUEST', url: entry.url });
+      }
+      if (resp && resp.success === false) throw new Error(resp.error || 'failed');
+      return true;
+    } catch (e) {
+      showToast('Could not allow it');
+      return false;
+    }
+  }
+
 
   // Load certificate owner info and third-party frames
   async function loadSecurityDetails() {
@@ -1570,6 +1781,8 @@
     } catch (e) { census = null; }
 
     const frames = (census && Array.isArray(census.frames)) ? census.frames : [];
+    if (elements.framesTabCount) elements.framesTabCount.textContent = String(frames.length);
+    if (elements.framesEmpty) elements.framesEmpty.hidden = frames.length > 0;
     if (frames.length === 0) {
       elements.framesSection.style.display = 'none';
       return;
@@ -1768,11 +1981,19 @@
       paused: elements.siteStatePaused
     };
     for (const key of Object.keys(map)) {
-      if (map[key]) map[key].classList.toggle('is-active', key === stateValue);
+      if (!map[key]) continue;
+      map[key].classList.toggle('is-active', key === stateValue);
+      map[key].setAttribute('aria-pressed', String(key === stateValue));
     }
-    // Mirror onto the pinned action bar (Allow = paused, Block = protected).
-    if (elements.actAllowBtn) elements.actAllowBtn.classList.toggle('is-active', stateValue === 'paused');
+    // The ladder's "Turn off" step reads as done while the site is off.
+    if (elements.actAllowBtn) {
+      elements.actAllowBtn.classList.toggle('is-active', stateValue === 'paused');
+      elements.actAllowBtn.closest('.step')?.classList.toggle('done', stateValue === 'paused');
+    }
     if (elements.actBlockBtn) elements.actBlockBtn.classList.toggle('is-active', stateValue === 'protected');
+    siteStateValue = STATE_WHY[stateValue] ? stateValue : 'default';
+    if (elements.siteStateWhy) elements.siteStateWhy.textContent = STATE_WHY[siteStateValue];
+    updateVerdict();
   }
 
   async function loadSiteState() {
@@ -1831,60 +2052,6 @@
     init();
   }
 
-  let listenersWired = false;
-  function setupEventListeners() {
-    if (listenersWired) return;
-    listenersWired = true;
-
-    // Main protection toggle
-    elements.enableToggle?.addEventListener('change', toggleEnabled);
-
-    // Feature toggles - use checkbox state after the browser updates it.
-    elements.networkBlockingToggle?.addEventListener('change', toggleNetworkBlocking);
-    elements.urlCleaningToggle?.addEventListener('change', toggleUrlCleaning);
-    elements.cookieConsentToggle?.addEventListener('change', toggleCookieConsent);
-    elements.annoyanceToggle?.addEventListener('change', toggleAnnoyanceBlocking);
-    elements.paywallToggle?.addEventListener('change', togglePaywall);
-    elements.socialBlockingToggle?.addEventListener('change', toggleSocialBlocking);
-    elements.removePaywallBtn?.addEventListener('click', removePaywall);
-    elements.pickModeBtn?.addEventListener('click', togglePickMode);
-    elements.zapModeBtn?.addEventListener('click', toggleZapMode);
-    elements.openOptionsBtn?.addEventListener('click', () => openOptions());
-    elements.reportIssue?.addEventListener('click', (e) => {
-      e.preventDefault();
-      openGitHubIssues();
-    });
-    elements.blockedClose?.addEventListener('click', hideBlockedPanel);
-    elements.viewAllBlocked?.addEventListener('click', () => openOptions('stats'));
-    elements.networkStatBtn?.addEventListener('click', showNetworkStats);
-    elements.cosmeticStatBtn?.addEventListener('click', showCosmeticStats);
-    elements.copyDomainBtn?.addEventListener('click', copyCurrentDomain);
-    elements.reportPhishingBtn?.addEventListener('click', reportCurrentSiteAsPhishing);
-    elements.paletteSelect?.addEventListener('change', onThemeControlChange);
-    elements.modeSelect?.addEventListener('change', onThemeControlChange);
-    // Header action buttons
-    elements.whitelistBtn?.addEventListener('click', quickWhitelist);
-    elements.blacklistBtn?.addEventListener('click', quickBlacklist);
-    elements.whitelistToggleBtn?.addEventListener('click', toggleWhitelist);
-
-    // Pinned action bar: Allow (pause) / Block (protect) / Pick / Looks-broken
-    elements.actAllowBtn?.addEventListener('click', () => setSiteState('paused'));
-    elements.actBlockBtn?.addEventListener('click', () => setSiteState('protected'));
-    elements.relaxBtn?.addEventListener('click', relaxCosmetic);
-    elements.killAllHogsBtn?.addEventListener('click', killAllHogs);
-    elements.siteStateProtected?.addEventListener('click', () => setSiteState('protected'));
-    elements.siteStateDefault?.addEventListener('click', () => setSiteState('default'));
-    elements.siteStatePaused?.addEventListener('click', () => setSiteState('paused'));
-
-    // Listen for live frame updates from the background census.
-    api.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      if (message.type === 'FRAMES_DETECTED' || message.type === 'FRAME_INFO_UPDATED' || message.type === 'CENSUS_UPDATED') {
-        loadFrameCensus();
-      }
-      return false;
-    });
-  }
-
   async function init() {
     wireEvents();
     registerRuntimeMessageListener();
@@ -1898,11 +2065,6 @@
         api.tabs.query({ active: true, currentWindow: true }, resolve);
       });
       currentTab = tabs[0];
-
-      // Wire up listeners as soon as the tab is known, BEFORE the slow data
-      // loads below — otherwise the first click during init is lost (the
-      // "Allow needs two clicks" bug).
-      setupEventListeners();
 
       // Update site display
       if (currentTab?.url) {
@@ -1920,7 +2082,7 @@
           await loadSecurityDetails();
 
           // Load tracker summary
-          await loadTrackerSummary();
+          await loadActivity();
 
           // Load this-site blocking state (protected / default / paused)
           await loadSiteState();
@@ -1999,8 +2161,6 @@
     elements.copyDomainBtn?.addEventListener('click', copyCurrentDomain);
     elements.reportPhishingBtn?.addEventListener('click', reportCurrentSiteAsPhishing);
     elements.securityMainBtn?.addEventListener('click', toggleCertDetails);
-    elements.paletteSelect?.addEventListener('change', onThemeControlChange);
-    elements.modeSelect?.addEventListener('change', onThemeControlChange);
     // Tri-state site actions — clicking an active state clears it
     elements.whitelistBtn?.addEventListener('click', async () => {
       if (isWhitelisted) {
@@ -2064,6 +2224,63 @@
       }
     });
     elements.reportBrokenBtn?.addEventListener('click', handleReportBroken);
+
+    // Protection level and the ladder (these used to be wired a second time
+    // in setupEventListeners, so every click ran twice).
+    elements.siteStateProtected?.addEventListener('click', () => setSiteState('protected'));
+    elements.siteStateDefault?.addEventListener('click', () => setSiteState('default'));
+    elements.siteStatePaused?.addEventListener('click', () => setSiteState('paused'));
+    elements.actAllowBtn?.addEventListener('click', () => setSiteState('paused'));
+    elements.actBlockBtn?.addEventListener('click', () => setSiteState('protected'));
+    elements.relaxBtn?.addEventListener('click', async () => {
+      await relaxCosmetic();
+      elements.relaxBtn.closest('.step')?.classList.add('done');
+    });
+    elements.killAllHogsBtn?.addEventListener('click', killAllHogs);
+    elements.brokenBtn?.addEventListener('click', () => {
+      if (!elements.fixLadder) return;
+      const open = elements.fixLadder.hidden;
+      elements.fixLadder.hidden = !open;
+      elements.brokenBtn.setAttribute('aria-expanded', String(open));
+    });
+
+    // Detail tabs, with arrow keys between them.
+    const tabs = Array.from(document.querySelectorAll('.tabs [role="tab"]'));
+    const selectTab = (tab) => {
+      for (const t of tabs) {
+        const on = t === tab;
+        t.setAttribute('aria-selected', String(on));
+        t.tabIndex = on ? 0 : -1;
+        const panel = document.getElementById(t.getAttribute('aria-controls'));
+        if (panel) panel.hidden = !on;
+      }
+    };
+    for (const tab of tabs) {
+      tab.addEventListener('click', () => selectTab(tab));
+      tab.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+        const next = tabs[(tabs.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+        selectTab(next);
+        next.focus();
+      });
+    }
+
+    // Theme: palette dots and the mode segment.
+    elements.paletteDots?.addEventListener('click', (e) => {
+      const dot = e.target.closest('.dot');
+      if (dot) setTheme({ palette: dot.dataset.palette });
+    });
+    elements.modeSeg?.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-mode]');
+      if (btn) setTheme({ colorMode: btn.dataset.mode });
+    });
+
+    // Feature count follows the toggles.
+    for (const t of [elements.networkBlockingToggle, elements.urlCleaningToggle, elements.cookieConsentToggle,
+      elements.annoyanceToggle, elements.socialBlockingToggle, elements.paywallToggle]) {
+      t?.addEventListener('change', updateFeatureMeta);
+    }
+    elements.enableToggle?.addEventListener('change', updateVerdict);
   }
 
   function registerRuntimeMessageListener() {
@@ -2076,15 +2293,11 @@
       }
 
       if (message.type === 'BLOCKED_COUNT_UPDATED' && currentTab?.id && message.tabId === currentTab.id) {
-        if (elements.networkBlockedCount) {
-          animateCount(elements.networkBlockedCount, message.count || 0);
-        }
-        if (elements.dataSaved) {
-          const dataSaved = (message.count || 0) * 2.5;
-          elements.dataSaved.textContent = dataSaved >= 1024
-            ? (dataSaved / 1024).toFixed(1) + ' MB'
-            : Math.round(dataSaved) + ' KB';
-        }
+        const total = Number(message.count) || 0;
+        const network = Number.isFinite(message.network) ? message.network : total;
+        const cosmetic = Number.isFinite(message.cosmetic) ? message.cosmetic : Math.max(0, total - network);
+        renderCounts({ count: total, network, cosmetic });
+        scheduleActivityRefresh();
       }
 
       // Return true to indicate async response

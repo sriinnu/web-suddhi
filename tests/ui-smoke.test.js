@@ -231,16 +231,14 @@ it('loads the popup with the saved theme and persists quick theme changes', asyn
   expect(storageData.palette).toBe('forest');
   expect(storageData.colorMode).toBe('dark');
   expect(document.getElementById('currentSite').textContent).toBe('example.com');
-  const paletteSelect = document.getElementById('paletteSelect');
-  const modeSelect = document.getElementById('modeSelect');
-  expect(paletteSelect.options.length).toBe(12);
-  expect(paletteSelect.value).toBe('forest');
-  expect(modeSelect.value).toBe('dark');
+  const dots = document.querySelectorAll('#paletteDots .dot');
+  expect(dots.length).toBe(12);
+  expect(document.querySelector('#paletteDots .dot[aria-pressed="true"]').dataset.palette).toBe('forest');
+  expect(document.querySelector('#modeSeg button[aria-pressed="true"]').dataset.mode).toBe('dark');
 
-  paletteSelect.value = 'coastal';
-  paletteSelect.dispatchEvent(new Event('change', { bubbles: true }));
-  modeSelect.value = 'system';
-  modeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+  document.querySelector('#paletteDots .dot[data-palette="coastal"]').click();
+  await flushAsyncWork();
+  document.querySelector('#modeSeg button[data-mode="system"]').click();
   await flushAsyncWork();
 
   expect(storageData.palette).toBe('coastal');
@@ -440,9 +438,7 @@ it('uses the promise-based browser API path and keeps stats deep-links working',
     url: 'chrome-extension://test/options/options.html#stats'
   });
 
-  const paletteSelect = document.getElementById('paletteSelect');
-  paletteSelect.value = 'suddhi';
-  paletteSelect.dispatchEvent(new Event('change', { bubbles: true }));
+  document.querySelector('#paletteDots .dot[data-palette="suddhi"]').click();
   await flushAsyncWork();
 
   // The default palette needs no attribute; the mode stays.
@@ -469,4 +465,53 @@ it('keeps the popup clickable when the background worker never answers', async (
 
   expect(certPanel.hidden).toBe(false);
   expect(securityBtn.getAttribute('aria-expanded')).toBe('true');
+});
+
+it('fills the ring and activity from this site only, and runs each click once', async () => {
+  const now = Date.now();
+  const setStateCalls = [];
+  const { api } = createExtensionApiMock({
+    storageData: { enabled: true },
+    runtimeHandlers: {
+      GET_ALL_SETTINGS: () => ({ success: true, settings: { enabled: true } }),
+      IS_WHITELISTED: () => ({ success: true, whitelisted: false }),
+      GET_SITE_STATE: () => ({ success: true, state: 'default' }),
+      GET_BLOCKED_COUNT: () => ({ success: true, count: 5, network: 3, cosmetic: 2 }),
+      GET_REQUEST_LOG: () => ({
+        success: true,
+        log: [
+          { type: 'network', url: 'ads.example.net', site: 'example.com', category: 'Advertising', timestamp: now },
+          { type: 'network', url: 'stats.example.org', site: 'www.example.com', category: 'Analytics', timestamp: now - 1000 },
+          { type: 'cosmetic', selector: '.promo', site: 'example.com', category: 'Annoyance', timestamp: now - 2000 },
+          { type: 'network', url: 'elsewhere.net', site: 'other.com', category: 'Advertising', timestamp: now }
+        ]
+      }),
+      SET_SITE_STATE: (message) => { setStateCalls.push(message); return { success: true, state: message.state }; }
+    }
+  });
+
+  await mountExtensionPage('popup/popup.html', 'popup/popup.js', api);
+
+  // Three entries belong to example.com; the other.com one is left out.
+  expect(document.getElementById('activityCount').textContent).toBe('3');
+  expect(document.querySelectorAll('#activityFeed .ev').length).toBe(3);
+  expect(document.querySelectorAll('#ringSegs circle').length).toBe(3);
+  expect(document.getElementById('ringLegend').textContent).toContain('Advertising');
+
+  document.getElementById('siteStateProtected').click();
+  await flushAsyncWork();
+  expect(setStateCalls.length).toBe(1);
+  expect(document.getElementById('siteStateProtected').getAttribute('aria-pressed')).toBe('true');
+  expect(document.getElementById('siteStateWhy').textContent).toMatch(/^Strict/);
+
+  // The repair ladder opens in place.
+  const broken = document.getElementById('brokenBtn');
+  broken.click();
+  expect(document.getElementById('fixLadder').hidden).toBe(false);
+  expect(broken.getAttribute('aria-expanded')).toBe('true');
+
+  // Tabs switch panels.
+  document.getElementById('tabFrames').click();
+  expect(document.getElementById('panelFrames').hidden).toBe(false);
+  expect(document.getElementById('panelActivity').hidden).toBe(true);
 });
