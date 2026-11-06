@@ -9,6 +9,11 @@ function readFixture(relativePath) {
   return readFileSync(resolve(ROOT_DIR, relativePath), 'utf8');
 }
 
+// The popup's own scripts, in popup.html order. They share one global scope in
+// the browser, so the harness runs them as one script.
+const POPUP_SCRIPTS = Array.from(readFixture('popup/popup.html').matchAll(/<script src="(modules\/[^"]+)"/g),
+  (m) => 'popup/' + m[1]);
+
 function pickStorageValues(source, keys) {
   if (keys === null || keys === undefined) return { ...source };
   if (Array.isArray(keys)) {
@@ -151,7 +156,8 @@ async function mountExtensionPage(htmlPath, scriptPath, api, options = {}) {
   for (const extraScript of extraScripts) {
     window.eval(readFixture(extraScript));
   }
-  window.eval(readFixture(scriptPath));
+  const scripts = Array.isArray(scriptPath) ? scriptPath : [scriptPath];
+  window.eval(scripts.map(readFixture).join('\n')); // omit-allow: test harness runs the extension's own popup scripts in jsdom
   await flushAsyncWork();
 }
 
@@ -223,7 +229,7 @@ it('loads the popup with the saved theme and persists quick theme changes', asyn
     }
   });
 
-  await mountExtensionPage('popup/popup.html', 'popup/popup.js', api);
+  await mountExtensionPage('popup/popup.html', POPUP_SCRIPTS, api);
 
   // The old single theme setting migrates to palette + mode.
   expect(document.documentElement.getAttribute('data-palette')).toBe('forest');
@@ -268,7 +274,7 @@ it('renders the frame census panel and blocks a frame via SET_FRAME_RULE', async
     }
   });
 
-  await mountExtensionPage('popup/popup.html', 'popup/popup.js', api);
+  await mountExtensionPage('popup/popup.html', POPUP_SCRIPTS, api);
 
   const framesSection = document.getElementById('framesSection');
   expect(framesSection.style.display).toBe('block');
@@ -426,7 +432,7 @@ it('uses the promise-based browser API path and keeps stats deep-links working',
     }
   });
 
-  await mountExtensionPage('popup/popup.html', 'popup/popup.js', api, { mode: 'browser' });
+  await mountExtensionPage('popup/popup.html', POPUP_SCRIPTS, api, { mode: 'browser' });
 
   expect(document.documentElement.getAttribute('data-palette')).toBe('coastal');
   expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
@@ -455,7 +461,7 @@ it('keeps the popup clickable when the background worker never answers', async (
     Promise.reject(new Error('Could not establish connection. Receiving end does not exist.'))
   );
 
-  await mountExtensionPage('popup/popup.html', 'popup/popup.js', api);
+  await mountExtensionPage('popup/popup.html', POPUP_SCRIPTS, api);
 
   const securityBtn = document.getElementById('securityMainBtn');
   const certPanel = document.getElementById('certDetailsPanel');
@@ -490,7 +496,7 @@ it('fills the ring and activity from this site only, and runs each click once', 
     }
   });
 
-  await mountExtensionPage('popup/popup.html', 'popup/popup.js', api);
+  await mountExtensionPage('popup/popup.html', POPUP_SCRIPTS, api);
 
   // Three entries belong to example.com; the other.com one is left out.
   expect(document.getElementById('activityCount').textContent).toBe('3');
@@ -539,7 +545,7 @@ it('fills Site safety from the connection log and saves firewall cells', async (
     }
   });
 
-  await mountExtensionPage('popup/popup.html', 'popup/popup.js', api);
+  await mountExtensionPage('popup/popup.html', POPUP_SCRIPTS, api);
   await flushAsyncWork();
 
   expect(document.getElementById('kvIp').textContent).toBe('93.184.216.34');
@@ -587,7 +593,7 @@ it('lists frames the lists stopped before they loaded, and unblocks them with a 
     }
   });
 
-  await mountExtensionPage('popup/popup.html', 'popup/popup.js', api);
+  await mountExtensionPage('popup/popup.html', POPUP_SCRIPTS, api);
   await flushAsyncWork();
 
   expect(document.getElementById('framesTabCount').textContent).toBe('1');
@@ -626,7 +632,7 @@ it('shows everywhere rules with a dot and saves to every site when that scope is
     }
   });
 
-  await mountExtensionPage('popup/popup.html', 'popup/popup.js', api);
+  await mountExtensionPage('popup/popup.html', POPUP_SCRIPTS, api);
   await flushAsyncWork();
 
   const rows = document.querySelectorAll('#firewallBody tr:not(.grp)');
@@ -653,7 +659,7 @@ it('turns video ad fixes off from Features and stores scriptletsEnabled', async 
     }
   });
 
-  await mountExtensionPage('popup/popup.html', 'popup/popup.js', api);
+  await mountExtensionPage('popup/popup.html', POPUP_SCRIPTS, api);
   await flushAsyncWork();
 
   const toggle = document.getElementById('scriptletsToggle');

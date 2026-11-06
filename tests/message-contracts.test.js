@@ -9,6 +9,14 @@ function readSource(relativePath) {
   return readFileSync(resolve(ROOT_DIR, relativePath), 'utf8');
 }
 
+// The popup is split into parts listed in popup.html; read them as one source.
+function readPopupSource() {
+  const html = readSource('popup/popup.html');
+  const parts = Array.from(html.matchAll(/<script src="(modules\/[^"]+)"/g), (m) => 'popup/' + m[1]);
+  expect(parts.length).toBeGreaterThan(0);
+  return parts.map(readSource).join('\n');
+}
+
 it('keeps the keyboard shortcut pick-mode contract wired end to end', () => {
   const backgroundSource = readSource('background/background.js');
   const contentSource = readSource('content/ad-blocker.js');
@@ -67,7 +75,7 @@ it('wires the SET_FRAME_RULE blocking contract', () => {
 
 it('wires the site-state model end to end (popup <-> background)', () => {
   const backgroundSource = readSource('background/background.js');
-  const popupSource = readSource('popup/popup.js');
+  const popupSource = readPopupSource();
   expect(backgroundSource).toContain("case 'GET_SITE_STATE'");
   expect(backgroundSource).toContain("case 'SET_SITE_STATE'");
   expect(popupSource).toContain("type: 'GET_SITE_STATE'");
@@ -109,7 +117,7 @@ it('handles granular site-control messages in background', () => {
 
 it('options UI and popup wire granular control messages', () => {
   const optionsSource = readSource('options/options.js');
-  const popupSource = readSource('popup/popup.js');
+  const popupSource = readPopupSource();
 
   expect(optionsSource).toContain("'GET_SITE_DETAIL'");
   expect(optionsSource).toContain("'PAUSE_SITE'");

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "WebSuddhi",
-  "version": "3.0.8",
-  "version_name": "3.00.0008",
+  "version": "3.0.9",
+  "version_name": "3.00.0009",
   "description": "Block ads, remove paywalls, strip trackers, and clean up any website. Privacy-first, no tracking.",
   "permissions": [
     "storage",
