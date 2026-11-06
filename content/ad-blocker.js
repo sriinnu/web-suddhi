@@ -1023,6 +1023,9 @@
 
     // Method 5: Restore body scroll if locked by paywall
     restoreBodyScroll();
+
+    // Method 6: Show the story a soft paywall hid with CSS
+    revealGatedContent();
   }
 
   function findFullViewportOverlays() {
@@ -1057,7 +1060,7 @@
         // Text signals tilt decision — if nothing matches, we still neutralize interactivity
         // (pointer-events:none) but don't fully remove, since it might be a legitimate modal.
         const text = (el.innerText || '').toLowerCase().substring(0, 500);
-        const className = (typeof el.className === 'string') ? el.className.toLowerCase() : '';
+        const className = ownClassNames(el);
         const looksLikePaywall =
           /subscribe|sign in|log in|paywall|metered|unlock|continue reading|free article/.test(text) ||
           /paywall|gate|overlay|modal|subscribe|offer|piano|tp-modal|tinypass/.test(className);
@@ -1073,11 +1076,53 @@
     });
   }
 
+  // The element's own class names and id, lowercased. Utility-CSS tokens such
+  // as Tailwind's `[&_#paywall-fallback-container]:relative` style the element's
+  // children; they are not names for the element, so they are left out.
+  // (Matching the raw class string hid axios.com's whole article body.)
+  function ownClassNames(el) {
+    const tokens = el.classList ? Array.from(el.classList) : [];
+    const names = tokens.filter((token) => !/[[\]:&()]/.test(token));
+    return (names.join(' ') + ' ' + (el.id || '')).toLowerCase();
+  }
+
+  // True when the element carries the story itself: paragraphs of prose, or a
+  // main/article region. A paywall pass may hide what covers the story, never
+  // the story.
+  const ARTICLE_PARAGRAPH_CHARS = 80;
+  const ARTICLE_MIN_PARAGRAPHS = 3;
+  function holdsArticle(el) {
+    if (el.matches?.('main, article, [role="article"], [role="main"]')) return true;
+    if (el.querySelector?.('main, article, [role="article"], [role="main"]')) return true;
+    let prose = 0;
+    for (const p of el.querySelectorAll?.('p') || []) {
+      if ((p.textContent || '').trim().length >= ARTICLE_PARAGRAPH_CHARS && ++prose >= ARTICLE_MIN_PARAGRAPHS) return true;
+    }
+    return false;
+  }
+
+  // Soft paywalls keep the full story in the page and hide it with CSS while
+  // the wall is up (axios: `#piano-wall:has(...) ~ .gated-content { display: none }`).
+  // Hiding the wall does not undo that rule, so show the story directly.
+  const GATED_CONTENT_SELECTOR = '[class*="gated"], [class*="locked"], [class*="premium-content"], [class*="subscriber-content"]';
+  const GATED_NAME = /(^|[\s_-])(gated|locked|premium-content|subscriber-content)/;
+  function revealGatedContent() {
+    let revealed = 0;
+    try {
+      document.querySelectorAll(GATED_CONTENT_SELECTOR).forEach((el) => {
+        if (el.hasAttribute('data-websuddhi-revealed')) return;
+        if (!GATED_NAME.test(ownClassNames(el)) || !holdsArticle(el)) return;
+        if (window.getComputedStyle(el).display !== 'none') return;
+        el.style.setProperty('display', 'block', 'important');
+        el.setAttribute('data-websuddhi-revealed', 'gated-content');
+        revealed++;
+      });
+    } catch (err) {}
+    return revealed;
+  }
+
   function isPaywallElement(el) {
     const text = (el.innerText || '').substring(0, 500);
-    const className = (typeof el.className === 'string') ? el.className : '';
-    const id = el.id || '';
-
     // Check class/id for strong paywall indicators
     const strongClassPatterns = [
       'paywall', 'subscribe-wall', 'subscription-wall',
@@ -1086,7 +1131,7 @@
       'piano-offer', 'tp-modal', 'tinypass'
     ];
 
-    const classAndId = (className + ' ' + id).toLowerCase();
+    const classAndId = ownClassNames(el);
     if (strongClassPatterns.some(p => classAndId.includes(p))) {
       return true;
     }
@@ -1132,7 +1177,7 @@
 
           if (isFixed && coversContent && hasHighZIndex) {
             const text = (el.innerText || '').toLowerCase().substring(0, 500);
-            const className = (typeof el.className === 'string') ? el.className.toLowerCase() : '';
+            const className = ownClassNames(el);
 
             if (text.includes('subscribe') ||
                 text.includes('sign in') ||
@@ -1305,6 +1350,7 @@
     detectContentBlockers();
     detectBlurOverlays();
     restoreBodyScroll();
+    removedCount += revealGatedContent();
 
     return removedCount;
   }
@@ -1314,6 +1360,7 @@
     const tag = el.tagName?.toLowerCase();
     if (tag === 'body' || tag === 'html' || tag === 'main' || tag === 'article') return;
     if (el.id === 'content' || el.id === 'main-content' || el.id === 'article-body') return;
+    if (holdsArticle(el)) return;
 
     // Already removed
     if (el.hasAttribute('data-websuddhi-removed')) return;
@@ -1918,10 +1965,13 @@
 
     // A large box holding media is content — unless it labels itself as an ad.
     // Without this check, full-viewport video/exit-intent ads were never hidden.
-    const descriptor = `${el.id || ''} ${typeof el.className === 'string' ? el.className : ''}`;
     const looksLikeAd = /(^|[\s_-])(ad|ads|advert\w*|sponsor\w*|promoted|interstitial|banner|overlay)([\s_-]|$)/i
-      .test(descriptor);
+      .test(ownClassNames(el));
     if (looksLikeAd) return false;
+
+    // Paragraphs of prose are the story. A broad list selector can reach an
+    // article wrapper through utility classes that style an ad slot inside it.
+    if (holdsArticle(el)) return true;
 
     try {
       const rect = el.getBoundingClientRect();
