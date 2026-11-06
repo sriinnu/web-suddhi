@@ -1871,7 +1871,8 @@ body.is-paused .v2 .ring { opacity: .45; }
 .v2 .cell::after { content: ""; position: absolute; width: 8px; height: 8px; }
 .v2 .cell[data-e="block"]::after { background: var(--bad); clip-path: polygon(15% 0, 50% 35%, 85% 0, 100% 15%, 65% 50%, 100% 85%, 85% 100%, 50% 65%, 15% 100%, 0 85%, 35% 50%, 0 15%); }
 .v2 .cell[data-e="allow"]::after { background: var(--good); clip-path: polygon(0 55%, 15% 40%, 38% 62%, 85% 10%, 100% 25%, 38% 90%); }
-.v2 .cell[data-dirty="1"] { background: var(--warn-soft); }
+.v2 .cell[data-dirty="1"] { background-color: var(--warn-soft); }
+.v2 .cell[data-g="1"] { background-image: radial-gradient(circle at calc(50% + 12px) calc(50% - 11px), var(--accent) 2.5px, transparent 3px); }
 .v2 .cell:disabled { cursor: not-allowed; opacity: .5; }
 .v2 .cell:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .v2 .mxkey { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--mute); margin-top: 8px; }
@@ -1905,3 +1906,7 @@ body.is-paused .v2 .ring { opacity: .45; }
   --font-family: var(--font-sans);
 }
 .v2 .hd-title b, .v2 .verdict, .v2 .ring strong, .v2 details.acc > summary { font-family: var(--palette-font, inherit); }
+
+/* Firewall scope picker in the commit bar */
+.v2 .commit select { font: inherit; font-size: 12px; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm, 6px); padding: 3px 6px; }
+.v2 .commit select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

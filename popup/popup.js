@@ -67,6 +67,7 @@
     enableToggle: document.getElementById('enableToggle'),
     currentSite: document.getElementById('currentSite'),
     paywallToggle: document.getElementById('paywallToggle'),
+    scriptletsToggle: document.getElementById('scriptletsToggle'),
     socialBlockingToggle: document.getElementById('socialBlockingToggle'),
     networkBlockedCount: document.getElementById('networkBlockedCount'),
     cosmeticBlockedCount: document.getElementById('cosmeticBlockedCount'),
@@ -555,6 +556,7 @@
     if (elements.cookieConsentToggle) elements.cookieConsentToggle.checked = settings.cookieConsentEnabled !== false;
     if (elements.annoyanceToggle) elements.annoyanceToggle.checked = settings.annoyanceBlockingEnabled !== false;
     if (elements.paywallToggle) elements.paywallToggle.checked = settings.paywallEnabled !== false;
+    if (elements.scriptletsToggle) elements.scriptletsToggle.checked = settings.scriptletsEnabled !== false;
     if (elements.socialBlockingToggle) elements.socialBlockingToggle.checked = settings.socialBlockingEnabled === true;
 
     // Blocked on this tab: one request for the ring and the totals.
@@ -596,11 +598,16 @@
     updateVerdict();
   }
 
-  // "4 of 6 on" next to Features and look.
+  function featureToggles() {
+    return [elements.networkBlockingToggle, elements.urlCleaningToggle, elements.cookieConsentToggle,
+      elements.annoyanceToggle, elements.socialBlockingToggle, elements.paywallToggle,
+      elements.scriptletsToggle].filter(Boolean);
+  }
+
+  // "4 of 7 on" next to Features and look.
   function updateFeatureMeta() {
     if (!elements.featMeta) return;
-    const toggles = [elements.networkBlockingToggle, elements.urlCleaningToggle, elements.cookieConsentToggle,
-      elements.annoyanceToggle, elements.socialBlockingToggle, elements.paywallToggle].filter(Boolean);
+    const toggles = featureToggles();
     const on = toggles.filter((t) => t.checked).length;
     elements.featMeta.textContent = on + ' of ' + toggles.length + ' on';
   }
@@ -779,6 +786,18 @@
     const enabled = elements.paywallToggle.checked;
     await sendToBackground({ type: 'TOGGLE_PAYWALL', enabled });
     await sendToContentScript({ type: 'TOGGLE_PAYWALL', enabled });
+  }
+
+  // The background re-registers the in-page scriptlets when this key changes.
+  async function toggleScriptlets() {
+    const enabled = elements.scriptletsToggle.checked;
+    try {
+      await setStorage({ scriptletsEnabled: enabled });
+      showToast(`Video ad fixes ${enabled ? 'on' : 'off'}. Reload the video page.`);
+    } catch (e) {
+      elements.scriptletsToggle.checked = !enabled;
+      showToast('Could not change video ad fixes');
+    }
   }
 
   async function toggleSocialBlocking() {
@@ -1870,23 +1889,34 @@
     }
 
     await loadFirewall();
+    // The census ran before the log arrived; redo it so stopped frames show.
+    await loadFrameCensus();
   }
 
   // ---- Firewall matrix: hosts on this page × request types ----
   const FW_COLS = [['script', 'Script'], ['frame', 'Frame'], ['xhr', 'XHR'], ['image', 'Image']];
   let fwRules = {};
+  // Rules saved for every site (stored under the '*' site key).
+  let fwGlobal = {};
+  // Where staged changes go: 'site' or 'all'.
+  let fwScope = 'site';
   const fwPending = new Map();
   const fwKey = (host, type) => host + '\n' + type;
+
+  async function fetchFirewallRules(site) {
+    try {
+      const resp = await sendToBackground({ type: 'GET_FIREWALL_RULES', site });
+      return resp && resp.success && resp.rules ? resp.rules : {};
+    } catch (e) {
+      return {};
+    }
+  }
 
   async function loadFirewall() {
     const site = getActiveHostname();
     if (!site) return;
-    try {
-      const resp = await sendToBackground({ type: 'GET_FIREWALL_RULES', site });
-      fwRules = resp && resp.success && resp.rules ? resp.rules : {};
-    } catch (e) {
-      fwRules = {};
-    }
+    fwRules = await fetchFirewallRules(site);
+    fwGlobal = await fetchFirewallRules('*');
     renderFirewall();
   }
 
@@ -1894,9 +1924,26 @@
     return (fwRules[host] && fwRules[host][type]) || null;
   }
 
-  function fwOwn(host, type) {
+  function fwGlobalSaved(host, type) {
+    return (fwGlobal[host] && fwGlobal[host][type]) || null;
+  }
+
+  // Saved value in the scope that staged changes write to.
+  function fwScopeSaved(host, type) {
+    return fwScope === 'all' ? fwGlobalSaved(host, type) : fwSaved(host, type);
+  }
+
+  // The user's own value for a cell, site over everywhere, with staged edits.
+  // Returns { value, global } where global marks an everywhere rule.
+  function fwLayer(host, type, firstParty) {
     const k = fwKey(host, type);
-    return fwPending.has(k) ? fwPending.get(k) : fwSaved(host, type);
+    const staged = fwPending.has(k);
+    const site = staged && fwScope === 'site' ? fwPending.get(k) : fwSaved(host, type);
+    if (site) return { value: site, global: false };
+    // Everywhere rules never apply on the host's own site.
+    if (firstParty) return { value: null, global: false };
+    const all = staged && fwScope === 'all' ? fwPending.get(k) : fwGlobalSaved(host, type);
+    return { value: all || null, global: !!all };
   }
 
   // What the filter lists did to this host, as far as we saw.
@@ -1906,22 +1953,27 @@
     return h.blocked >= h.count ? 'block' : null;
   }
 
-  function fwCell(host, type, label, eff, mine, dirty) {
+  function fwCell(host, type, label, eff, mine, dirty, global) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'cell';
     if (eff) b.dataset.e = eff;
     b.dataset.mine = mine ? '1' : '0';
+    if (global) b.dataset.g = '1';
     if (dirty) b.dataset.dirty = '1';
-    b.setAttribute('aria-label', host + ' ' + label + ': ' + (eff || 'mixed') + (mine ? ', your rule' : ', from filter lists'));
+    const whose = mine ? (global ? ', your rule on every site' : ', your rule') : ', from filter lists';
+    b.setAttribute('aria-label', host + ' ' + label + ': ' + (eff || 'mixed') + whose);
     return b;
   }
 
+  // Flip a cell in the current scope: a rule there is removed, otherwise the
+  // opposite of what the cell shows is staged.
   function fwToggle(host, type, eff) {
     const k = fwKey(host, type);
-    const own = fwOwn(host, type);
-    const next = own ? null : (eff === 'block' ? 'allow' : 'block');
-    if (next === fwSaved(host, type)) fwPending.delete(k);
+    const saved = fwScopeSaved(host, type);
+    const current = fwPending.has(k) ? fwPending.get(k) : saved;
+    const next = current ? null : (eff === 'block' ? 'allow' : 'block');
+    if (next === saved) fwPending.delete(k);
     else fwPending.set(k, next);
     renderFirewall();
   }
@@ -1931,7 +1983,7 @@
     if (!body) return;
     body.textContent = '';
     const hosts = (tabConnections && tabConnections.hosts ? tabConnections.hosts : []).slice();
-    // Hosts with a rule stay listed even when this load did not contact them.
+    // Hosts with a site rule stay listed even when this load did not contact them.
     for (const host of Object.keys(fwRules)) {
       if (host !== '*' && !hosts.some((h) => h.host === host)) hosts.push({ host, firstParty: false, count: 0, blocked: 0, types: {} });
     }
@@ -1968,9 +2020,9 @@
         tr.appendChild(head);
 
         const list = fwListDecision(h);
-        const allOwn = fwOwn(h.host, '*');
-        const allEff = allOwn || list;
-        const all = fwCell(h.host, '*', 'all types', allEff, !!allOwn, fwPending.has(fwKey(h.host, '*')));
+        const allOwn = fwLayer(h.host, '*', h.firstParty);
+        const allEff = allOwn.value || list;
+        const all = fwCell(h.host, '*', 'all types', allEff, !!allOwn.value, fwPending.has(fwKey(h.host, '*')), allOwn.global);
         if (h.firstParty) {
           all.disabled = true;
           all.title = 'The page itself cannot be blocked here. Use Strict.';
@@ -1982,9 +2034,11 @@
         tr.appendChild(allTd);
 
         for (const [type, colLabel] of FW_COLS) {
-          const own = fwOwn(h.host, type);
-          const eff = own || allOwn || list;
-          const c = fwCell(h.host, type, colLabel, eff, !!(own || allOwn), fwPending.has(fwKey(h.host, type)));
+          // Same order as the background: site cells, then everywhere cells, then lists.
+          const own = fwLayer(h.host, type, h.firstParty);
+          const src = own.value ? own : allOwn;
+          const eff = src.value || list;
+          const c = fwCell(h.host, type, colLabel, eff, !!src.value, fwPending.has(fwKey(h.host, type)), src.global);
           c.addEventListener('click', () => fwToggle(h.host, type, eff));
           const td = document.createElement('td');
           td.appendChild(c);
@@ -2010,19 +2064,32 @@
     const commit = document.getElementById('firewallCommit');
     if (commit) commit.hidden = n === 0;
     setText('firewallChanges', n + (n === 1 ? ' change' : ' changes'));
-    setText('firewallScope', 'on ' + getActiveHostname());
+    const scope = document.getElementById('firewallScope');
+    if (scope) {
+      scope.value = fwScope;
+      if (scope.options[0]) scope.options[0].textContent = 'on ' + (getActiveHostname() || 'this site');
+    }
+  }
+
+  function setFirewallScope(value) {
+    fwScope = value === 'all' ? 'all' : 'site';
+    renderFirewall();
   }
 
   async function saveFirewall() {
-    const site = getActiveHostname();
-    if (!site || fwPending.size === 0) return;
+    const host0 = getActiveHostname();
+    if (!host0 || fwPending.size === 0) return;
+    const global = fwScope === 'all';
+    const site = global ? '*' : host0;
     let failed = 0;
     for (const [k, action] of fwPending) {
       const [host, type] = k.split('\n');
       try {
         const resp = await sendToBackground({ type: 'SET_FIREWALL_RULE', site, host, requestType: type, action });
-        if (resp && resp.success) fwRules = resp.rules || fwRules;
-        else failed++;
+        if (resp && resp.success) {
+          if (global) fwGlobal = resp.rules || fwGlobal;
+          else fwRules = resp.rules || fwRules;
+        } else failed++;
       } catch (e) {
         failed++;
       }
@@ -2050,6 +2117,26 @@
     fwRules = {};
     renderFirewall();
     showToast('Your rules for ' + site + ' are cleared. Reload to apply.');
+  }
+
+  // Save one firewall cell right away (used by the Frames tab).
+  async function setFirewallCell(host, type, action) {
+    const site = getActiveHostname();
+    if (!site) return false;
+    try {
+      const resp = await sendToBackground({ type: 'SET_FIREWALL_RULE', site, host, requestType: type, action });
+      if (!resp || !resp.success) return false;
+      fwRules = resp.rules || fwRules;
+      renderFirewall();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function blockFrame(frame) {
+    if (frame.source === 'network') return setFirewallCell(frame.domain, 'frame', 'block');
+    return applyFrameRule(frame.domain, 'blocked');
   }
 
   // Get organization from hostname
@@ -2111,7 +2198,7 @@
       census = resp && resp.census;
     } catch (e) { census = null; }
 
-    const frames = (census && Array.isArray(census.frames)) ? census.frames : [];
+    const frames = ((census && Array.isArray(census.frames)) ? census.frames : []).concat(networkOnlyFrames(census));
     if (elements.framesTabCount) elements.framesTabCount.textContent = String(frames.length);
     if (elements.framesEmpty) elements.framesEmpty.hidden = frames.length > 0;
     if (frames.length === 0) {
@@ -2119,7 +2206,33 @@
       return;
     }
     elements.framesSection.style.display = 'block';
-    renderCensus(census);
+    const counts = Object.assign({}, (census && census.counts) || {});
+    counts.blocked = frames.filter((f) => f.action === 'block').length;
+    renderCensus({ frames, counts });
+  }
+
+  // Frames the filter lists stopped never load, so they never report to the
+  // census. The connection log still saw their requests; list those too.
+  function networkOnlyFrames(census) {
+    const known = new Set(((census && census.frames) || []).map((f) => f.domain));
+    const hosts = (tabConnections && tabConnections.hosts) || [];
+    const out = [];
+    for (const h of hosts) {
+      const n = (h.types && h.types.frame) || 0;
+      if (!n || h.firstParty || known.has(h.host)) continue;
+      const own = fwLayer(h.host, 'frame', false).value || fwLayer(h.host, '*', false).value;
+      const listBlocked = h.blocked > 0 && h.blocked >= h.count;
+      out.push({
+        domain: h.host,
+        url: h.host,
+        category: (hostCategory.get(h.host) || 'other').toLowerCase(),
+        action: own ? own : (listBlocked ? 'block' : 'allow'),
+        bytes: 0,
+        source: 'network',
+        note: own ? 'Your firewall rule' : (listBlocked ? 'Stopped before it loaded' : n + (n === 1 ? ' frame request' : ' frame requests'))
+      });
+    }
+    return out;
   }
 
   function renderCensus(census) {
@@ -2186,7 +2299,7 @@
         blockAll.className = 'frame-group-blockall';
         blockAll.textContent = 'Block all';
         blockAll.addEventListener('click', async () => {
-          for (const f of blockable) await applyFrameRule(f.domain, 'blocked');
+          for (const f of blockable) await blockFrame(f);
           await loadFrameCensus();
         });
         head.appendChild(blockAll);
@@ -2244,6 +2357,13 @@
       meta.appendChild(prot);
     }
 
+    if (frame.note) {
+      const note = document.createElement('span');
+      note.className = 'frame-size';
+      note.textContent = frame.note;
+      meta.appendChild(note);
+    }
+
     if (frame.isHeavy) {
       const heavy = document.createElement('span');
       heavy.className = 'frame-heat';
@@ -2265,7 +2385,13 @@
     btn.textContent = blocked ? 'Allow' : 'Block';
     btn.addEventListener('click', async () => {
       btn.disabled = true;
-      await applyFrameRule(frame.domain, blocked ? 'allowed' : 'blocked');
+      if (frame.source === 'network') {
+        // Never loaded, so a frame rule cannot reach it; a firewall cell can.
+        await setFirewallCell(frame.domain, 'frame', blocked ? 'allow' : 'block');
+        showToast((blocked ? 'Allowed' : 'Blocked') + ' frames from ' + frame.domain + '. Reload to apply.');
+      } else {
+        await applyFrameRule(frame.domain, blocked ? 'allowed' : 'blocked');
+      }
       await loadFrameCensus();
     });
     item.appendChild(btn);
@@ -2360,6 +2486,7 @@
     const cosmeticToggles = [
       { el: elements.annoyanceToggle, fn: toggleAnnoyanceBlocking },
       { el: elements.paywallToggle, fn: togglePaywall },
+      { el: elements.scriptletsToggle, fn: toggleScriptlets },
       { el: elements.socialBlockingToggle, fn: toggleSocialBlocking },
       { el: elements.cookieConsentToggle, fn: toggleCookieConsent }
     ];
@@ -2476,6 +2603,7 @@
     elements.cookieConsentToggle?.addEventListener('change', toggleCookieConsent);
     elements.annoyanceToggle?.addEventListener('change', toggleAnnoyanceBlocking);
     elements.paywallToggle?.addEventListener('change', togglePaywall);
+    elements.scriptletsToggle?.addEventListener('change', toggleScriptlets);
     elements.socialBlockingToggle?.addEventListener('change', toggleSocialBlocking);
     elements.removePaywallBtn?.addEventListener('click', removePaywall);
     elements.pickModeBtn?.addEventListener('click', togglePickMode);
@@ -2571,6 +2699,7 @@
     document.getElementById('firewallSave')?.addEventListener('click', saveFirewall);
     document.getElementById('firewallRevert')?.addEventListener('click', () => { fwPending.clear(); renderFirewall(); });
     document.getElementById('firewallReset')?.addEventListener('click', resetFirewall);
+    document.getElementById('firewallScope')?.addEventListener('change', (e) => setFirewallScope(e.target.value));
     elements.brokenBtn?.addEventListener('click', () => {
       if (!elements.fixLadder) return;
       const open = elements.fixLadder.hidden;
@@ -2610,9 +2739,8 @@
     });
 
     // Feature count follows the toggles.
-    for (const t of [elements.networkBlockingToggle, elements.urlCleaningToggle, elements.cookieConsentToggle,
-      elements.annoyanceToggle, elements.socialBlockingToggle, elements.paywallToggle]) {
-      t?.addEventListener('change', updateFeatureMeta);
+    for (const t of featureToggles()) {
+      t.addEventListener('change', updateFeatureMeta);
     }
     elements.enableToggle?.addEventListener('change', updateVerdict);
   }

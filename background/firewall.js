@@ -12,6 +12,9 @@
   const STORAGE_KEY = 'firewallRules';
   const ID_START = 80001;
   const ID_END = 89999;
+  // Site key for "everywhere" rules. They rank below every per-site rule.
+  const GLOBAL = '*';
+  const PRIORITY_GLOBAL = 790;
   const PRIORITY_STAR = 800;
   const PRIORITY_HOST = 810;
   const MAX_RULES = 2000;
@@ -46,15 +49,19 @@
     if (!h || h.length > 253 || h.indexOf('..') !== -1 || !HOST_RE.test(h)) return null;
     return h;
   }
-  fw.normalizeSite = normalizeHost;
+  function normalizeSite(value) { return value === GLOBAL ? GLOBAL : normalizeHost(value); }
+  fw.normalizeSite = normalizeSite;
+  fw.GLOBAL = GLOBAL;
 
   fw.mapWebRequestType = function (type) { return WR_TYPE_MAP[type] || null; };
 
   fw.validateRule = function (site, host, type, action) {
-    const s = normalizeHost(site);
+    const s = normalizeSite(site);
     if (!s) return { ok: false, error: 'Invalid site' };
     const h = host === '*' ? '*' : normalizeHost(host);
     if (!h) return { ok: false, error: 'Invalid host' };
+    // "Every third party on every site" would break the web; it needs a host.
+    if (s === GLOBAL && h === '*') return { ok: false, error: 'An everywhere rule needs a host' };
     if (TYPES.indexOf(type) === -1) return { ok: false, error: 'Invalid type' };
     if (action !== null && ACTIONS.indexOf(action) === -1) return { ok: false, error: 'Invalid action' };
     return { ok: true, site: s, host: h, type: type, action: action };
@@ -74,12 +81,13 @@
     if (!all || typeof all !== 'object') return out;
     let count = 0;
     for (const site of Object.keys(all)) {
-      const s = normalizeHost(site);
+      const s = normalizeSite(site);
       if (!s || !all[site] || typeof all[site] !== 'object') continue;
       for (const host of Object.keys(all[site])) {
         const h = host === '*' ? '*' : normalizeHost(host);
         const cells = all[site][host];
         if (!h || !cells || typeof cells !== 'object') continue;
+        if (s === GLOBAL && h === '*') continue;
         for (const type of Object.keys(cells)) {
           if (TYPES.indexOf(type) === -1 || ACTIONS.indexOf(cells[type]) === -1) continue;
           if (count >= MAX_RULES) return out;
@@ -123,13 +131,23 @@
       for (const host of Object.keys(clean[site]).sort()) {
         for (const type of Object.keys(clean[site][host]).sort()) {
           if (id > ID_END) return rules;
-          const condition = { initiatorDomains: [site], resourceTypes: DNR_TYPES[type].slice() };
-          if (host === '*') condition.excludedRequestDomains = [site];
-          else condition.requestDomains = [host];
+          const condition = { resourceTypes: DNR_TYPES[type].slice() };
+          let base;
+          if (site === GLOBAL) {
+            // Every site except the host's own, so the host's site keeps working.
+            condition.requestDomains = [host];
+            condition.excludedInitiatorDomains = [host];
+            base = PRIORITY_GLOBAL;
+          } else {
+            condition.initiatorDomains = [site];
+            if (host === '*') condition.excludedRequestDomains = [site];
+            else condition.requestDomains = [host];
+            base = host === '*' ? PRIORITY_STAR : PRIORITY_HOST;
+          }
           rules.push({
             id: id++,
             // A single type outranks the same host's "all types" cell, as the popup shows it.
-            priority: (host === '*' ? PRIORITY_STAR : PRIORITY_HOST) + (type === '*' ? 0 : 1),
+            priority: base + (type === '*' ? 0 : 1),
             action: { type: clean[site][host][type] === 'allow' ? 'allow' : 'block' },
             condition: condition
           });
@@ -147,21 +165,37 @@
     return cells[type] || cells['*'] || null;
   }
 
-  // MV2 decision. Returns 'block' | 'allow' | null. Host rules beat '*'.
-  fw.decide = function (all, site, reqHost, mappedType) {
-    const rules = all && all[site];
-    if (!rules || !reqHost || !mappedType) return null;
-    const host = String(reqHost).toLowerCase();
+  // Host cells for reqHost and its parent domains; an allow anywhere wins.
+  function hostTiers(rules, host, type, skip) {
     const labels = host.split('.');
-    let hostDecision = null;
+    let decision = null;
     for (let i = 0; i < labels.length; i++) {
-      const d = tierDecision(rules[labels.slice(i).join('.')], mappedType);
-      if (d === 'allow') { hostDecision = 'allow'; break; }
-      if (d) hostDecision = d;
+      const cand = labels.slice(i).join('.');
+      if (skip && skip(cand)) continue;
+      const d = tierDecision(rules[cand], type);
+      if (d === 'allow') return 'allow';
+      if (d) decision = d;
     }
-    if (hostDecision) return hostDecision;
-    if (domainMatches(host, site)) return null; // '*' is third-party only
-    return tierDecision(rules['*'], mappedType);
+    return decision;
+  }
+
+  // MV2 decision. Returns 'block' | 'allow' | null.
+  // Order matches the DNR priorities: site host cells, site '*', then everywhere rules.
+  fw.decide = function (all, site, reqHost, mappedType) {
+    if (!all || !site || !reqHost || !mappedType) return null;
+    const host = String(reqHost).toLowerCase();
+    const rules = site !== GLOBAL ? all[site] : null;
+    if (rules) {
+      const own = hostTiers(rules, host, mappedType);
+      if (own) return own;
+      // '*' is third-party only
+      const star = domainMatches(host, site) ? null : tierDecision(rules['*'], mappedType);
+      if (star) return star;
+    }
+    const global = all[GLOBAL];
+    if (!global) return null;
+    // An everywhere rule never applies on the host's own site.
+    return hostTiers(global, host, mappedType, (cand) => domainMatches(site, cand));
   };
 
   function siteOf(details) {
@@ -220,7 +254,7 @@
   };
 
   fw.getSiteRules = async function (site) {
-    const s = normalizeHost(site);
+    const s = normalizeSite(site);
     if (!s) return {};
     const all = fw.sanitize(await readAll());
     return all[s] || {};
@@ -236,7 +270,7 @@
   };
 
   fw.resetSite = async function (site, apiOverride) {
-    const s = normalizeHost(site);
+    const s = normalizeSite(site);
     if (!s) return { success: false, error: 'Invalid site' };
     const next = fw.sanitize(await readAll());
     delete next[s];

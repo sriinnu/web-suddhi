@@ -562,3 +562,105 @@ it('fills Site safety from the connection log and saves firewall cells', async (
   expect(setRuleCalls.length).toBe(1);
   expect(setRuleCalls[0]).toMatchObject({ site: 'example.com', host: 'tracker.net', requestType: 'script', action: 'allow' });
 });
+
+it('lists frames the lists stopped before they loaded, and unblocks them with a firewall cell', async () => {
+  const setRuleCalls = [];
+  const { api } = createExtensionApiMock({
+    storageData: { enabled: true },
+    runtimeHandlers: {
+      GET_ALL_SETTINGS: () => ({ success: true, settings: { enabled: true } }),
+      IS_WHITELISTED: () => ({ success: true, whitelisted: false }),
+      GET_SITE_STATE: () => ({ success: true, state: 'default' }),
+      GET_TAB_CENSUS: () => ({ success: true, census: { frames: [], counts: {} } }),
+      GET_TAB_CONNECTIONS: () => ({
+        success: true,
+        connections: {
+          mainHost: 'example.com', mainIp: null, server: null, hsts: false, cert: null,
+          hosts: [
+            { host: 'example.com', firstParty: true, count: 2, blocked: 0, types: { frame: 1 }, ips: [] },
+            { host: 'ads.frame.net', firstParty: false, count: 2, blocked: 2, types: { frame: 2 }, ips: [] }
+          ]
+        }
+      }),
+      GET_FIREWALL_RULES: () => ({ success: true, rules: {} }),
+      SET_FIREWALL_RULE: (message) => { setRuleCalls.push(message); return { success: true, rules: { 'ads.frame.net': { frame: 'allow' } } }; }
+    }
+  });
+
+  await mountExtensionPage('popup/popup.html', 'popup/popup.js', api);
+  await flushAsyncWork();
+
+  expect(document.getElementById('framesTabCount').textContent).toBe('1');
+  expect(document.getElementById('framesEmpty').hidden).toBe(true);
+  const row = document.querySelector('#framesList .frame-item');
+  expect(row.classList.contains('blocked')).toBe(true);
+  expect(row.textContent).toContain('ads.frame.net');
+  expect(row.textContent).toContain('Stopped before it loaded');
+
+  row.querySelector('button').click();
+  await flushAsyncWork();
+  expect(setRuleCalls[0]).toMatchObject({ site: 'example.com', host: 'ads.frame.net', requestType: 'frame', action: 'allow' });
+});
+
+it('shows everywhere rules with a dot and saves to every site when that scope is picked', async () => {
+  const setRuleCalls = [];
+  const { api } = createExtensionApiMock({
+    storageData: { enabled: true },
+    runtimeHandlers: {
+      GET_ALL_SETTINGS: () => ({ success: true, settings: { enabled: true } }),
+      IS_WHITELISTED: () => ({ success: true, whitelisted: false }),
+      GET_SITE_STATE: () => ({ success: true, state: 'default' }),
+      GET_TAB_CONNECTIONS: () => ({
+        success: true,
+        connections: {
+          mainHost: 'example.com', mainIp: null, server: null, hsts: false, cert: null,
+          hosts: [
+            { host: 'example.com', firstParty: true, count: 1, blocked: 0, types: {}, ips: [] },
+            { host: 'cdn.net', firstParty: false, count: 2, blocked: 0, types: { script: 2 }, ips: [] },
+            { host: 'pixel.io', firstParty: false, count: 1, blocked: 0, types: { image: 1 }, ips: [] }
+          ]
+        }
+      }),
+      GET_FIREWALL_RULES: (message) => ({ success: true, rules: message.site === '*' ? { 'pixel.io': { image: 'block' } } : {} }),
+      SET_FIREWALL_RULE: (message) => { setRuleCalls.push(message); return { success: true, rules: {} }; }
+    }
+  });
+
+  await mountExtensionPage('popup/popup.html', 'popup/popup.js', api);
+  await flushAsyncWork();
+
+  const rows = document.querySelectorAll('#firewallBody tr:not(.grp)');
+  const pixelImage = rows[2].querySelectorAll('.cell')[4];
+  expect(pixelImage.dataset.e).toBe('block');
+  expect(pixelImage.dataset.g).toBe('1');
+
+  rows[1].querySelectorAll('.cell')[1].click();
+  const scope = document.getElementById('firewallScope');
+  scope.value = 'all';
+  scope.dispatchEvent(new Event('change'));
+  document.getElementById('firewallSave').click();
+  await flushAsyncWork();
+  expect(setRuleCalls[0]).toMatchObject({ site: '*', host: 'cdn.net', requestType: 'script', action: 'block' });
+});
+
+it('turns video ad fixes off from Features and stores scriptletsEnabled', async () => {
+  const { api, storageData } = createExtensionApiMock({
+    storageData: { enabled: true },
+    runtimeHandlers: {
+      GET_ALL_SETTINGS: () => ({ success: true, settings: { enabled: true, scriptletsEnabled: true } }),
+      IS_WHITELISTED: () => ({ success: true, whitelisted: false }),
+      GET_SITE_STATE: () => ({ success: true, state: 'default' })
+    }
+  });
+
+  await mountExtensionPage('popup/popup.html', 'popup/popup.js', api);
+  await flushAsyncWork();
+
+  const toggle = document.getElementById('scriptletsToggle');
+  expect(toggle.checked).toBe(true);
+  toggle.checked = false;
+  toggle.dispatchEvent(new Event('change'));
+  await flushAsyncWork();
+  expect(storageData.scriptletsEnabled).toBe(false);
+  expect(document.getElementById('featMeta').textContent).toMatch(/of 7 on/);
+});

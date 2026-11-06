@@ -76,6 +76,7 @@ try {
   const DEFAULT_SETTINGS = {
     enabled: true,
     paywallEnabled: true,
+    scriptletsEnabled: true,
     socialBlockingEnabled: false,
     networkBlockingEnabled: true,
     urlCleaningEnabled: true,

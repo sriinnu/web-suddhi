@@ -83,6 +83,47 @@ describe('DNR compilation', () => {
   });
 });
 
+describe('everywhere rules', () => {
+  it('validate under the * site, but never with a * host', () => {
+    expect(fw.validateRule('*', 'x.com', 'script', 'block')).toMatchObject({ ok: true, site: '*' });
+    expect(fw.validateRule('*', '*', 'script', 'block').ok).toBe(false);
+    expect(fw.sanitize({ '*': { '*': { script: 'block' }, 'x.com': { frame: 'block' } } }))
+      .toEqual({ '*': { 'x.com': { frame: 'block' } } });
+  });
+  it('compile without an initiator, skip the host\'s own site, and rank below site rules', () => {
+    const rules = fw.compileDnrRules({ '*': { 'x.com': { frame: 'block', '*': 'block' } }, 'a.com': { '*': { '*': 'allow' } } });
+    const global = rules.filter((r) => r.condition.requestDomains && r.condition.requestDomains[0] === 'x.com');
+    expect(global).toHaveLength(2);
+    for (const r of global) {
+      expect(r.condition.initiatorDomains).toBeUndefined();
+      expect(r.condition.excludedInitiatorDomains).toEqual(['x.com']);
+    }
+    expect(global.map((r) => r.priority).sort()).toEqual([790, 791]);
+    const site = rules.find((r) => r.condition.initiatorDomains);
+    expect(site.priority).toBeGreaterThan(Math.max(...global.map((r) => r.priority)));
+  });
+  it('apply on every site in MV2, lose to the site\'s own rules, and spare the host\'s site', () => {
+    const all = {
+      '*': { 'x.com': { script: 'block' } },
+      'b.com': { 'x.com': { script: 'allow' } },
+      'c.com': { '*': { script: 'allow' } }
+    };
+    expect(fw.decide(all, 'a.com', 'cdn.x.com', 'script')).toBe('block');
+    expect(fw.decide(all, 'b.com', 'x.com', 'script')).toBe('allow');
+    expect(fw.decide(all, 'c.com', 'x.com', 'script')).toBe('allow');
+    expect(fw.decide(all, 'x.com', 'x.com', 'script')).toBe(null);
+    expect(fw.decide(all, 'shop.x.com', 'x.com', 'script')).toBe(null);
+    expect(fw.decide(all, 'a.com', 'x.com', 'image')).toBe(null);
+  });
+  it('store, read and reset through the * site', async () => {
+    const res = await fw.setRule('*', 'x.com', 'frame', 'block');
+    expect(res).toEqual({ success: true, rules: { 'x.com': { frame: 'block' } } });
+    expect(await fw.getSiteRules('*')).toEqual({ 'x.com': { frame: 'block' } });
+    expect((await fw.resetSite('*')).success).toBe(true);
+    expect(stored).toEqual({});
+  });
+});
+
 describe('set / remove / reset', () => {
   it('sets a cell, returns the site rules and recompiles only the firewall range', async () => {
     const api = fakeApi();

@@ -36,6 +36,7 @@
     // Settings toggles
     enableProtection: document.getElementById('enableProtection'),
     enablePaywall: document.getElementById('enablePaywall'),
+    enableScriptlets: document.getElementById('enableScriptlets'),
     enableNetworkBlocking: document.getElementById('enableNetworkBlocking'),
     enableUrlCleaning: document.getElementById('enableUrlCleaning'),
     enableCookieConsent: document.getElementById('enableCookieConsent'),
@@ -362,7 +363,7 @@
   // ============================================
   async function loadSettings() {
     const storage = await getStorage([
-      'enabled', 'paywallEnabled', 'networkBlockingEnabled', 'urlCleaningEnabled',
+      'enabled', 'paywallEnabled', 'scriptletsEnabled', 'networkBlockingEnabled', 'urlCleaningEnabled',
       'cookieConsentEnabled', 'annoyanceBlockingEnabled', 'socialBlockingEnabled',
       'pingProtectionEnabled', 'referrerStrippingEnabled', 'webrtcProtectionEnabled',
       'phishingProtectionEnabled', 'telemetryBlockingEnabled', 'thirdPartyCookieBlockingEnabled',
@@ -376,6 +377,7 @@
     }
     elements.enableProtection.checked = storage.enabled !== false;
     elements.enablePaywall.checked = storage.paywallEnabled !== false;
+    if (elements.enableScriptlets) elements.enableScriptlets.checked = storage.scriptletsEnabled !== false;
     elements.enableNetworkBlocking.checked = storage.networkBlockingEnabled !== false;
     elements.enableUrlCleaning.checked = storage.urlCleaningEnabled !== false;
     elements.enableCookieConsent.checked = storage.cookieConsentEnabled !== false;
@@ -1557,6 +1559,11 @@
       try {
         await sendMessage({ type: 'TOGGLE_PAYWALL', enabled });
       } catch (e) {}
+    });
+
+    // Toggle in-page scriptlets; the background re-registers them on this key.
+    elements.enableScriptlets?.addEventListener('change', async () => {
+      await setStorage({ scriptletsEnabled: elements.enableScriptlets.checked });
     });
 
     // Toggle network blocking

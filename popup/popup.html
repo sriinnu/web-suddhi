@@ -92,15 +92,15 @@
           <thead><tr><th scope="col">Host</th><th scope="col">All</th><th scope="col">Script</th><th scope="col">Frame</th><th scope="col">XHR</th><th scope="col">Image</th></tr></thead>
           <tbody id="firewallBody"></tbody>
         </table>
-        <div class="mxkey" id="firewallKey" hidden><span>Dashed: from filter lists</span><span>Solid: your rule</span><span>Click a cell to flip it</span></div>
+        <div class="mxkey" id="firewallKey" hidden><span>Dashed: from filter lists</span><span>Solid: your rule</span><span>Dot: applies on every site</span><span>Click a cell to flip it</span></div>
         <div class="commit" id="firewallCommit" hidden>
-          <b id="firewallChanges">0 changes</b><span id="firewallScope">on this site</span>
+          <b id="firewallChanges">0 changes</b><select id="firewallScope" aria-label="Where the changes apply"><option value="site">on this site</option><option value="all">on every site</option></select>
           <span class="sp"><button type="button" class="btn" id="firewallRevert">Revert</button><button type="button" class="btn pri" id="firewallSave">Save and reload</button></span>
         </div>
         <div class="panel-foot" id="firewallFoot" hidden><button type="button" class="link" id="firewallReset">Clear my rules for this site</button></div>
       </section>
       <section class="panel" id="panelFrames" role="tabpanel" aria-labelledby="tabFrames" hidden>
-        <p class="empty" id="framesEmpty">No third-party frames on this page.</p>
+        <p class="empty" id="framesEmpty">No frames from other sites on this page. Frames the lists stop before they load show up here after a reload.</p>
         <div class="frame-section" id="framesSection" style="display: none;">
           <div class="frame-panel-head">
             <span class="frame-summary"><span id="framesCount" class="section-count">0</span> frames <span id="framesSummary"></span></span>
@@ -169,6 +169,7 @@
             <label for="annoyanceToggle"><input type="checkbox" id="annoyanceToggle" checked><span>Annoyances<small>Popups, nags</small></span></label>
             <label for="socialBlockingToggle"><input type="checkbox" id="socialBlockingToggle"><span>Social widgets<small>Share buttons</small></span></label>
             <label for="paywallToggle"><input type="checkbox" id="paywallToggle" checked><span>Paywalls<small>Keeps the article</small></span></label>
+            <label for="scriptletsToggle"><input type="checkbox" id="scriptletsToggle" checked><span>Video ads<small>In-page fixes, YouTube</small></span></label>
           </div>
           <div class="sub">Palette <span class="sub-name" id="paletteName"></span></div>
           <div class="dots" id="paletteDots" role="group" aria-label="Colour palette"></div>

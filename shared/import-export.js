@@ -17,6 +17,7 @@
   const EXPORT_KEYS = [
     'enabled',
     'paywallEnabled',
+    'scriptletsEnabled',
     'socialBlockingEnabled',
     'networkBlockingEnabled',
     'urlCleaningEnabled',
@@ -176,6 +177,7 @@
                 break;
               case 'enabled':
               case 'paywallEnabled':
+              case 'scriptletsEnabled':
               case 'socialBlockingEnabled':
               case 'networkBlockingEnabled':
               case 'urlCleaningEnabled':
