@@ -8,7 +8,10 @@ import { buildBrowserTargets, getBrowserTargets } from '../scripts/build-browser
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = resolve(TEST_DIR, '..');
 
-it('generates Chromium, Firefox, and Safari bundles from the shared source tree', () => {
+// Copies the whole source tree (~30k rules) three times: ~1.5s alone, but it
+// intermittently overran the 5s default when the suite runs in parallel on a
+// slow filesystem.
+it('generates Chromium, Firefox, and Safari bundles from the shared source tree', { timeout: 30000 }, () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'websuddhi-targets-'));
   const targets = getBrowserTargets(ROOT_DIR);
 

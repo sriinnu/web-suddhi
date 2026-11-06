@@ -1,0 +1,23 @@
+{
+  "doubleclick.net": "ad",
+  "googlesyndication.com": "ad",
+  "googleadservices.com": "ad",
+  "amazon-adsystem.com": "ad",
+  "adnxs.com": "ad",
+  "criteo.com": "ad",
+  "taboola.com": "ad",
+  "outbrain.com": "ad",
+  "pubmatic.com": "ad",
+  "rubiconproject.com": "ad",
+  "google-analytics.com": "analytics",
+  "googletagmanager.com": "analytics",
+  "scorecardresearch.com": "session-replay",
+  "hotjar.com": "session-replay",
+  "fullstory.com": "session-replay",
+  "clarity.ms": "session-replay",
+  "mouseflow.com": "session-replay",
+  "platform.twitter.com": "social",
+  "connect.facebook.net": "social",
+  "platform.instagram.com": "social",
+  "disqus.com": "social"
+}

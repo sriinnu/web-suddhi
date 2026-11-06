@@ -25,10 +25,18 @@
   // Cross-browser API
   const api = (typeof browser !== 'undefined' && browser.runtime) ? browser : chrome;
 
+  // Show the build version from the manifest, so every reload shows which build is loaded.
+  try {
+    const manifest = api.runtime.getManifest();
+    const label = 'v' + (manifest.version_name || manifest.version);
+    document.querySelectorAll('.version').forEach((el) => { el.textContent = label; });
+  } catch (e) { /* no manifest outside the extension */ }
+
   const elements = {
     // Settings toggles
     enableProtection: document.getElementById('enableProtection'),
     enablePaywall: document.getElementById('enablePaywall'),
+    enableScriptlets: document.getElementById('enableScriptlets'),
     enableNetworkBlocking: document.getElementById('enableNetworkBlocking'),
     enableUrlCleaning: document.getElementById('enableUrlCleaning'),
     enableCookieConsent: document.getElementById('enableCookieConsent'),
@@ -89,15 +97,6 @@
     toastDurationValue: document.getElementById('toastDurationValue'),
     // Toast container
     toastContainer: document.getElementById('toastContainer')
-  };
-
-  const QUICK_THEME_TOGGLE = {
-    light: 'dark',
-    dark: 'light',
-    forest: 'forest-dark',
-    'forest-dark': 'forest',
-    coastal: 'coastal-dark',
-    'coastal-dark': 'coastal'
   };
 
   const RECOMMENDED_LISTS = [
@@ -225,27 +224,96 @@
     );
   }
 
-  function getEffectiveSystemTheme() {
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-      ? 'dark'
-      : 'light';
+  // ============================================
+  // THEME: palette (colour family) x mode (system, light, dark).
+  // Lists and CSS come from shared/palettes.js; custom palettes from
+  // shared/themes.json arrive via custom-themes-loader.js.
+  // ============================================
+  const Themes = window.WebSuddhiThemes;
+  let themeState = { palette: 'suddhi', colorMode: 'system' };
+
+  function isPaletteId(id) {
+    return typeof id === 'string' && id !== '' && Themes.safeId(id) === id;
   }
 
-  function getActiveTheme() {
-    const activeThemeButton = document.querySelector('.theme-btn.active');
-    if (activeThemeButton?.dataset.theme) {
-      return activeThemeButton.dataset.theme;
+  function allPalettes() {
+    const list = Themes.ORDER.map((id) => ({ id, ...Themes.PALETTES[id] }));
+    const custom = Array.isArray(window.__websuddhiCustomThemes) ? window.__websuddhiCustomThemes : [];
+    for (const t of custom) {
+      if (t && t.id && !list.some((p) => p.id === t.id)) list.push(t);
     }
-
-    return document.documentElement.getAttribute('data-theme') || 'system';
+    return list;
   }
 
-  function getQuickToggleTheme(currentTheme) {
-    if (currentTheme === 'system') {
-      return getEffectiveSystemTheme() === 'dark' ? 'light' : 'dark';
+  // Cards show each palette in the mode that is on screen now.
+  function renderPaletteCards() {
+    const grid = document.getElementById('themeGrid');
+    if (!grid || !Themes) return;
+    const mode = Themes.effectiveMode(themeState.colorMode);
+    grid.replaceChildren();
+    for (const p of allPalettes()) {
+      const v = p[mode];
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'theme-card';
+      btn.dataset.palette = p.id;
+      btn.title = p.note ? p.name + ': ' + p.note : p.name;
+      const active = p.id === themeState.palette;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', String(active));
+      const preview = document.createElement('div');
+      preview.className = 'theme-preview';
+      for (const key of ['bg', 'surface2', 'accent', 'fg', 'good']) {
+        const sw = document.createElement('span');
+        sw.className = 'swatch';
+        sw.style.background = v[key];
+        preview.appendChild(sw);
+      }
+      const name = document.createElement('span');
+      name.className = 'theme-card-name';
+      name.textContent = p.name;
+      btn.append(preview, name);
+      grid.appendChild(btn);
     }
+  }
 
-    return QUICK_THEME_TOGGLE[currentTheme] || 'dark';
+  function syncThemeUi() {
+    document.querySelectorAll('.theme-btn[data-mode]').forEach((btn) => {
+      const active = btn.dataset.mode === themeState.colorMode;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', String(active));
+    });
+    renderPaletteCards();
+  }
+
+  async function setTheme(next) {
+    themeState = { palette: next.palette || themeState.palette, colorMode: next.colorMode || themeState.colorMode };
+    Themes.apply(document, themeState.palette, themeState.colorMode);
+    document.documentElement.classList.add('theme-loaded');
+    syncThemeUi();
+    await setStorage({ palette: themeState.palette, colorMode: themeState.colorMode });
+  }
+
+  // The header button flips whatever is showing now, so from "system" it
+  // always visibly changes.
+  function quickToggleMode() {
+    return Themes.effectiveMode(themeState.colorMode) === 'dark' ? 'light' : 'dark';
+  }
+
+  function bindThemeControls() {
+    if (!Themes) return;
+    document.querySelectorAll('.theme-btn[data-mode]').forEach((btn) => {
+      btn.addEventListener('click', () => setTheme({ colorMode: btn.dataset.mode }));
+    });
+    document.getElementById('themeGrid')?.addEventListener('click', (event) => {
+      const card = event.target.closest('.theme-card[data-palette]');
+      if (card) setTheme({ palette: card.dataset.palette });
+    });
+    window.addEventListener('websuddhi:custom-themes-loaded', renderPaletteCards);
+    const media = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+    media?.addEventListener?.('change', () => {
+      if (themeState.colorMode === 'system') renderPaletteCards();
+    });
   }
 
   function getHistoryTotal(entry) {
@@ -295,11 +363,11 @@
   // ============================================
   async function loadSettings() {
     const storage = await getStorage([
-      'enabled', 'paywallEnabled', 'networkBlockingEnabled', 'urlCleaningEnabled',
+      'enabled', 'paywallEnabled', 'scriptletsEnabled', 'networkBlockingEnabled', 'urlCleaningEnabled',
       'cookieConsentEnabled', 'annoyanceBlockingEnabled', 'socialBlockingEnabled',
       'pingProtectionEnabled', 'referrerStrippingEnabled', 'webrtcProtectionEnabled',
       'phishingProtectionEnabled', 'telemetryBlockingEnabled', 'thirdPartyCookieBlockingEnabled',
-      'syncEnabled', 'enabledLanguageFilters', 'loggingEnabled', 'toastDuration'
+      'syncEnabled', 'enabledLanguageFilters', 'loggingEnabled', 'toastDuration', 'aggressiveness'
     ]);
 
     // Load logging setting (default true if not set)
@@ -309,6 +377,7 @@
     }
     elements.enableProtection.checked = storage.enabled !== false;
     elements.enablePaywall.checked = storage.paywallEnabled !== false;
+    if (elements.enableScriptlets) elements.enableScriptlets.checked = storage.scriptletsEnabled !== false;
     elements.enableNetworkBlocking.checked = storage.networkBlockingEnabled !== false;
     elements.enableUrlCleaning.checked = storage.urlCleaningEnabled !== false;
     elements.enableCookieConsent.checked = storage.cookieConsentEnabled !== false;
@@ -341,8 +410,21 @@
       }
     }
 
+    // Blocking aggressiveness dial
+    reflectAggressiveness(storage.aggressiveness || 'balanced');
+
     // Load language filter states based on actual subscriptions
     await loadLanguageFilterStates();
+  }
+
+  function reflectAggressiveness(value) {
+    const dial = document.getElementById('aggressivenessDial');
+    if (!dial) return;
+    dial.querySelectorAll('.aggr-option').forEach((btn) => {
+      const active = btn.getAttribute('data-aggr') === value;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-checked', active ? 'true' : 'false');
+    });
   }
 
   // Load language filter checkbox states by checking actual subscriptions
@@ -382,11 +464,15 @@
   };
 
   async function loadTheme() {
-    const storage = await getStorage(['theme', 'fontSize', 'fontFamily', 'borderRadius']);
-    const theme = storage.theme || 'system';
-    applyTheme(theme);
-    updateThemeButtons(theme);
-    updateThemeOptionButtons(theme);
+    const storage = await getStorage(['palette', 'colorMode', 'theme', 'fontSize', 'fontFamily', 'borderRadius']);
+    if (Themes) {
+      const resolved = Themes.resolve(storage, isPaletteId);
+      themeState = { palette: resolved.palette, colorMode: resolved.colorMode };
+      Themes.apply(document, themeState.palette, themeState.colorMode);
+      document.documentElement.classList.add('theme-loaded');
+      syncThemeUi();
+      if (resolved.migrated) await setStorage({ palette: resolved.palette, colorMode: resolved.colorMode });
+    }
 
     // Font size
     const fontSize = storage.fontSize || 14;
@@ -450,16 +536,6 @@
     }
   }
 
-  function applyTheme(theme) {
-    if (theme === 'system') {
-      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
-    } else {
-      document.documentElement.setAttribute('data-theme', theme);
-    }
-    document.documentElement.classList.add('theme-loaded');
-  }
-
   function applyFontFamily(fontFamily) {
     if (!fontFamily || fontFamily === 'system') {
       document.documentElement.style.removeProperty('font-family');
@@ -479,63 +555,6 @@
     document.documentElement.style.setProperty('--radius-sm', Math.max(val - 4, 0) + 'px');
     document.documentElement.style.setProperty('--radius-md', val + 'px');
     document.documentElement.style.setProperty('--radius-lg', Math.min(val + 6, 30) + 'px');
-  }
-
-  function bindThemeCardClicks() {
-    document.querySelectorAll('.theme-card').forEach(btn => {
-      if (btn.dataset.wired === '1') return;
-      btn.dataset.wired = '1';
-      btn.addEventListener('click', async () => {
-        const theme = btn.dataset.theme;
-        applyTheme(theme);
-        updateThemeButtons(theme);
-        updateThemeOptionButtons(theme);
-        await setStorage({ theme });
-      });
-    });
-  }
-
-  // Read shared/themes.json and append a theme card per entry.
-  // Runs after options DOM is ready; custom-themes-loader.js has already
-  // injected the CSS variables, so applyTheme() will take effect instantly.
-  async function renderCustomThemeCards() {
-    try {
-      const grid = document.getElementById('themeGrid');
-      if (!grid) return;
-      let themes = window.__websuddhiCustomThemes;
-      if (!Array.isArray(themes)) {
-        const url = api.runtime.getURL('shared/themes.json');
-        const resp = await fetch(url);
-        if (!resp.ok) return;
-        themes = await resp.json();
-      }
-      if (!Array.isArray(themes)) return;
-      const existing = new Set(
-        Array.from(grid.querySelectorAll('.theme-card')).map(b => b.dataset.theme)
-      );
-      for (const t of themes) {
-        if (!t || !t.id || existing.has(t.id)) continue;
-        const swatches = Array.isArray(t.swatches) ? t.swatches.slice(0, 4) : [];
-        const btn = document.createElement('button');
-        btn.className = 'theme-card';
-        btn.dataset.theme = t.id;
-        btn.title = (t.name || t.id) + (t.recommendedFont ? ' · ' + t.recommendedFont : '');
-        const preview = document.createElement('div');
-        preview.className = 'theme-preview';
-        for (const hex of swatches) {
-          const span = document.createElement('span');
-          span.className = 'swatch';
-          span.style.background = hex;
-          preview.appendChild(span);
-        }
-        const nameEl = document.createElement('span');
-        nameEl.className = 'theme-card-name';
-        nameEl.textContent = t.name || t.id;
-        btn.appendChild(preview);
-        btn.appendChild(nameEl);
-        grid.appendChild(btn);
-      }
-    } catch (_) { /* themes.json missing — silent */ }
   }
 
   async function loadCustomFonts(selectEl) {
@@ -592,18 +611,6 @@
     } catch (err) {
       console.warn('[websuddhi] loadCustomFonts failed:', err);
     }
-  }
-
-  function updateThemeButtons(activeTheme) {
-    document.querySelectorAll('.theme-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.theme === activeTheme);
-    });
-  }
-
-  function updateThemeOptionButtons(activeTheme) {
-    document.querySelectorAll('.theme-card').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.theme === activeTheme);
-    });
   }
 
   async function loadRequestLog() {
@@ -991,7 +998,7 @@
       const actionBtn = document.createElement('button');
       actionBtn.className = 'bar-action-btn';
       actionBtn.title = 'Unblock this domain';
-      actionBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="4" x2="4" y2="12"/><line x1="4" y1="4" x2="12" y2="12"/></svg>';
+      actionBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="4" x2="4" y2="12"/><line x1="4" y1="4" x2="12" y2="12"/></svg>'; // omit-allow: static markup, no interpolation
       actionBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const domain = label;
@@ -1405,7 +1412,7 @@
       input.setAttribute('aria-label', 'Toggle ' + list.name);
       const toggleSwitch = document.createElement('span');
       toggleSwitch.className = 'toggle-switch small';
-      toggleSwitch.innerHTML = '<span class="slider"></span>';
+      toggleSwitch.innerHTML = '<span class="slider"></span>'; // omit-allow: static markup, no interpolation
       label.appendChild(input);
       label.appendChild(toggleSwitch);
       toggleWrap.appendChild(label);
@@ -1521,11 +1528,8 @@
   function setupEventListeners() {
     // Theme toggle
     if (elements.themeToggle) {
-      elements.themeToggle?.addEventListener('click', async () => {
-        const newTheme = getQuickToggleTheme(getActiveTheme());
-        applyTheme(newTheme);
-        updateThemeButtons(newTheme);
-        await setStorage({ theme: newTheme });
+      elements.themeToggle.addEventListener('click', () => {
+        if (Themes) setTheme({ colorMode: quickToggleMode() });
       });
     }
 
@@ -1538,6 +1542,16 @@
       } catch (e) {}
     });
 
+    // Blocking aggressiveness dial — storage-driven; applies on next recompute.
+    const aggrDial = document.getElementById('aggressivenessDial');
+    aggrDial?.querySelectorAll('.aggr-option').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const value = btn.getAttribute('data-aggr') || 'balanced';
+        reflectAggressiveness(value);
+        await setStorage({ aggressiveness: value });
+      });
+    });
+
     // Toggle paywall
     elements.enablePaywall?.addEventListener('change', async () => {
       const enabled = elements.enablePaywall.checked;
@@ -1545,6 +1559,11 @@
       try {
         await sendMessage({ type: 'TOGGLE_PAYWALL', enabled });
       } catch (e) {}
+    });
+
+    // Toggle in-page scriptlets; the background re-registers them on this key.
+    elements.enableScriptlets?.addEventListener('change', async () => {
+      await setStorage({ scriptletsEnabled: elements.enableScriptlets.checked });
     });
 
     // Toggle network blocking
@@ -1793,7 +1812,7 @@
           showToast('Failed to update language filters', 'error');
         } finally {
           updateLangFiltersBtn.disabled = false;
-          updateLangFiltersBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Update Language Filters';
+          updateLangFiltersBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Update Language Filters'; // omit-allow: static markup, no interpolation
         }
       });
     }
@@ -1836,21 +1855,8 @@
       });
     }
 
-    // Theme buttons (sidebar footer)
-    document.querySelectorAll('.theme-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const theme = btn.dataset.theme;
-        applyTheme(theme);
-        updateThemeButtons(theme);
-        updateThemeOptionButtons(theme);
-        await setStorage({ theme });
-      });
-    });
-
-    // Render custom themes from shared/themes.json into the picker and bind clicks.
-    // bindThemeCardClicks handles cards that already exist and the ones appended async.
-    bindThemeCardClicks();
-    renderCustomThemeCards().then(bindThemeCardClicks).catch(() => {});
+    // Mode buttons (sidebar footer) and palette cards (Appearance).
+    bindThemeControls();
 
     // Font family select
     const fontFamilySelect = document.getElementById('fontFamilySelect');
@@ -2487,7 +2493,7 @@
       previewBtn.type = 'button';
       previewBtn.className = 'site-detail-icon-btn';
       previewBtn.title = 'Preview on active tab';
-      previewBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="2.5"/><path d="M1.5 8C3 4.5 5 3 8 3s5 1.5 6.5 5c-1.5 3.5-3.5 5-6.5 5s-5-1.5-6.5-5z"/></svg>';
+      previewBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="2.5"/><path d="M1.5 8C3 4.5 5 3 8 3s5 1.5 6.5 5c-1.5 3.5-3.5 5-6.5 5s-5-1.5-6.5-5z"/></svg>'; // omit-allow: static markup, no interpolation
       previewBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         await previewSelectorOnActiveTab(host, entry.selector);

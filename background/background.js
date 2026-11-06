@@ -1,18 +1,26 @@
 // WebSuddhi - Background Service Worker
 // Universal: Chrome, Edge, Firefox, Safari
-// v2.3.0 - Full ad blocker with network blocking, stats, privacy, filter lists
+// v3.0.0 - Full ad blocker with network blocking, stats, privacy, filter lists
 
 // MV3: Import all modules via importScripts
 try {
   if (typeof importScripts === 'function') {
     importScripts(
       '../shared/utils.js',
+      '../shared/rule-model.js',
+      'classifier.js',
+      'list-loader.js',
       'network-blocker.js',
       'url-cleaner.js',
       'stats-manager.js',
       'privacy.js',
       'filter-lists.js',
-      'phishing-detector.js'
+      'phishing-detector.js',
+      'frame-registry.js',
+      'frame-blocker.js',
+      'connection-log.js',
+      'firewall.js',
+      'scriptlets.js'
     );
   }
 } catch (e) {
@@ -68,6 +76,7 @@ try {
   const DEFAULT_SETTINGS = {
     enabled: true,
     paywallEnabled: true,
+    scriptletsEnabled: true,
     socialBlockingEnabled: false,
     networkBlockingEnabled: true,
     urlCleaningEnabled: true,
@@ -82,6 +91,7 @@ try {
     syncEnabled: false,
     loggingEnabled: true,
     toastDuration: 3,
+    aggressiveness: 'balanced',
     performanceStats: {
       totalBlocked: 0,
       byCategory: { ads: 0, trackers: 0, annoyances: 0, paywall: 0 },
@@ -106,7 +116,10 @@ try {
     'GET_STATS',
     'GET_ENHANCED_STATS',
     'GET_PERIOD_STATS',
-    'GET_STATS_FOR_PERIOD'
+    'GET_STATS_FOR_PERIOD',
+    'LOAD_PICKER',
+    'LOAD_PHISHING_UI',
+    'GET_COSMETIC_FILTERS'
   ]);
 
   // Safe storage wrapper with defaults
@@ -228,12 +241,22 @@ try {
   // ============================================
   // SAFE TAB MESSAGING - Avoids "No tab with id" errors
   // ============================================
-  function safeSendToTab(tabId, message) {
+  function safeSendToTab(tabId, message, options) {
     try {
-      const result = api.tabs.sendMessage(tabId, message, () => {
+      const onDone = () => {
         // Check lastError in callback to suppress "Unchecked runtime.lastError"
         if (api.runtime.lastError) { /* tab not available */ }
-      });
+      };
+      // Promise-style APIs (Firefox `browser`) take no callback; passing one
+      // where `options` goes makes the call throw.
+      let result;
+      if (hasPromiseExtensionApi) {
+        result = options ? api.tabs.sendMessage(tabId, message, options) : api.tabs.sendMessage(tabId, message);
+      } else {
+        result = options
+          ? api.tabs.sendMessage(tabId, message, options, onDone)
+          : api.tabs.sendMessage(tabId, message, onDone);
+      }
       if (result && typeof result.then === 'function') {
         result.catch(() => {});
       }
@@ -519,9 +542,11 @@ try {
 
   function handleContextMenuClick(info, tab) {
     if (info.menuItemId === 'websuddhi-block') {
-      // Send message to content script to enter pick mode
+      // Block the element the user right-clicked, in the frame they clicked.
+      // The content script falls back to pick mode if it has no target.
       if (tab && tab.id) {
-        safeSendToTab(tab.id, { type: 'START_PICK_MODE' });
+        const frameId = typeof info.frameId === 'number' ? info.frameId : 0;
+        safeSendToTab(tab.id, { type: 'BLOCK_CONTEXT_TARGET' }, { frameId });
       }
     }
   }
@@ -898,7 +923,7 @@ try {
     return {
       success: true,
       data: {
-        version: '2.3.0',
+        version: '3.0.0',
         exportDate: new Date().toISOString(),
         blockedSelectors: storage.blockedSelectors || [],
         blockedDomains: storage.blockedDomains || [],
@@ -1012,6 +1037,10 @@ try {
     const refreshResult = await refreshNetworkRules();
     if (!refreshResult.success) warn('Whitelist update saved, but network rules were not refreshed');
 
+    // Every open tab of this site must learn about it, not just the current one,
+    // and the cookie/annoyance blockers need the explicit message.
+    await notifyAllTabs({ type: 'WHITELIST_SITE', hostname });
+
     return { success: true, message: 'Whitelisted ' + hostname };
   }
 
@@ -1035,6 +1064,8 @@ try {
     await setStorage({ whitelistedSites: normalizedWhitelisted });
     const refreshResult = await refreshNetworkRules();
     if (!refreshResult.success) warn('Whitelist update saved, but network rules were not refreshed');
+
+    await notifyAllTabs({ type: 'UNWHITELIST_SITE', hostname: normalizedHostname });
 
     return { success: true, message: 'Unwhitelisted ' + normalizedHostname };
   }
@@ -1161,6 +1192,72 @@ try {
       await notifyAllTabs();
     }
     scheduleNextPauseSweep(after);
+  }
+
+  // ============================================
+  // SITE STATE: one effective answer for "what is WebSuddhi doing on this site"
+  // ============================================
+  // "Paused" is backed only by the stores every layer already honours (DNR
+  // allow rules, content script, cookie/annoyance blockers):
+  //   whitelistedSites -> paused indefinitely
+  //   pausedSites      -> paused until an expiry
+  // ws_siteStates only records "protected". It must never hold "paused"; that
+  // used to switch off frame decisions alone while ads kept being blocked.
+  async function getEffectiveSiteState(hostnameOrUrl) {
+    const host = normalizeHostname(hostnameOrUrl, true);
+    if (!host) return { hostname: null, state: 'default', pausedUntil: null };
+    if (await isSiteWhitelisted(host)) return { hostname: host, state: 'paused', pausedUntil: null };
+    const active = await getActivePausedSites();
+    if (active[host]) return { hostname: host, state: 'paused', pausedUntil: active[host] };
+    const ruleModel = self.WebSuddhi.ruleModel;
+    const stored = ruleModel ? await ruleModel.getSiteState(host) : 'default';
+    return { hostname: host, state: stored === 'protected' ? 'protected' : 'default', pausedUntil: null };
+  }
+
+  // Lift any pause (indefinite or timed). "Protected" survives a pause/resume.
+  async function resumeSite(hostnameOrUrl) {
+    const host = normalizeHostname(hostnameOrUrl, true);
+    if (!host) return { success: false, error: 'Invalid hostname' };
+    if (await isSiteWhitelisted(host)) await unwhitelistSite(host);
+    await unpauseSite(host);
+    return { success: true, ...(await getEffectiveSiteState(host)) };
+  }
+
+  async function setEffectiveSiteState(hostnameOrUrl, next, durationMs) {
+    const host = normalizeHostname(hostnameOrUrl, true);
+    if (!host) return { success: false, error: 'Invalid hostname' };
+    if (next === 'paused') {
+      if (Number.isFinite(durationMs) && durationMs > 0) {
+        if (await isSiteWhitelisted(host)) await unwhitelistSite(host);
+        const r = await pauseSite(host, durationMs);
+        if (!r.success) return r;
+      } else {
+        await unpauseSite(host);
+        await whitelistSite(host);
+      }
+    } else {
+      await resumeSite(host);
+      const ruleModel = self.WebSuddhi.ruleModel;
+      if (ruleModel) await ruleModel.setSiteState(host, next === 'protected' ? 'protected' : 'default');
+    }
+    return { success: true, ...(await getEffectiveSiteState(host)) };
+  }
+
+  // Older builds stored "paused" in ws_siteStates, where only frame decisions
+  // saw it. Move those into the whitelist so the pause is real everywhere.
+  async function migrateLegacyPausedSiteStates() {
+    const ruleModel = self.WebSuddhi.ruleModel;
+    if (!ruleModel || !ruleModel.STORAGE_KEYS) return;
+    const key = ruleModel.STORAGE_KEYS.SITE_STATES;
+    const data = await getStorage([key]);
+    const map = (data && data[key]) || {};
+    const paused = Object.keys(map).filter((h) => map[h] === 'paused');
+    if (!paused.length) return;
+    for (const host of paused) {
+      delete map[host];
+      await whitelistSite(host);
+    }
+    await setStorage({ [key]: map });
   }
 
   async function getPerSiteAllowedSelectors() {
@@ -1493,7 +1590,9 @@ try {
     const filtered = selectors.filter(s => s.selector !== selector);
 
     await setStorage({ blockedSelectors: filtered });
-    await notifyAllTabs();
+    // Tell tabs to unhide it right away. A bare SETTINGS_CHANGED broadcast only
+    // re-runs applyBlocking(), which never restores already-hidden elements.
+    await notifyAllTabs({ type: 'REMOVE_SELECTOR', selector });
 
     return { success: true, message: 'Selector removed' };
   }
@@ -1506,9 +1605,115 @@ try {
     };
   }
 
+  // Recompute the per-tab frame census (honouring site + per-frame rules) and
+  // apply the resulting decisions (tear down blocked frames).
+  async function recomputeTab(tabId) {
+    const reg = self.WebSuddhi.frameRegistry;
+    const ruleModel = self.WebSuddhi.ruleModel;
+    const loader = self.WebSuddhi.listLoader;
+    const blocker = self.WebSuddhi.frameBlocker;
+    if (!reg || !ruleModel || !loader) return;
+    let hostname = '';
+    try {
+      const tab = await api.tabs.get(tabId);
+      hostname = normalizeHostname(new URL(tab.url).hostname, true);
+    } catch (e) { /* tab gone or non-http */ }
+    const settings = await getStorage(['aggressiveness']);
+
+    // Merge persisted + session frame rules for this top-site (session wins).
+    const frameRules = {};
+    if (hostname) {
+      const persisted = await ruleModel.getFrameRulesForSite(hostname);
+      const session = ruleModel.getSessionFrameRulesForSite(hostname);
+      for (const d of Object.keys(persisted)) frameRules[d] = { persistentRule: persisted[d] };
+      for (const d of Object.keys(session)) frameRules[d] = Object.assign(frameRules[d] || {}, { sessionRule: session[d] });
+    }
+
+    const ctx = {
+      lists: await loader.loadLists(),
+      budget: { bytes: 500 * 1024, ms: 150 },
+      siteState: hostname ? (await getEffectiveSiteState(hostname)).state : 'default',
+      aggressiveness: settings.aggressiveness || 'balanced',
+      frameRules
+    };
+    reg.recompute(tabId, ctx);
+    if (blocker) blocker.applyTab(api, tabId, reg.getCensus(tabId));
+  }
+
   // ============================================
   // MESSAGE HANDLER
   // ============================================
+  /**
+   * Inject an on-demand content module into the frame that asked for it.
+   * MV3 (Chromium, Safari) uses scripting.executeScript; the MV2 Firefox build
+   * has no scripting permission and uses tabs.executeScript.
+   */
+  async function injectContentFile(sender, file) {
+    const tabId = sender && sender.tab && sender.tab.id;
+    if (typeof tabId !== 'number' || tabId < 0) return { success: false, error: 'No tab' };
+    const frameId = typeof sender.frameId === 'number' ? sender.frameId : 0;
+    if (api.scripting && api.scripting.executeScript) {
+      await api.scripting.executeScript({ target: { tabId, frameIds: [frameId] }, files: [file] });
+    } else if (hasPromiseExtensionApi) {
+      await api.tabs.executeScript(tabId, { file: '/' + file, frameId });
+    } else {
+      await new Promise((resolve, reject) => {
+        api.tabs.executeScript(tabId, { file: '/' + file, frameId }, () => {
+          if (api.runtime.lastError) reject(new Error(api.runtime.lastError.message));
+          else resolve();
+        });
+      });
+    }
+    return { success: true };
+  }
+
+  // ============================================
+  // List element hiding (EasyList site-specific ##rules)
+  // ============================================
+  // rules/cosmetic-filters.json is built by scripts/build-blocklists.mjs:
+  // selectors stored once, hosts point at them by index. Loaded on first use
+  // and kept for the life of the worker.
+  let cosmeticTablePromise = null;
+  const EMPTY_COSMETIC_TABLE = { selectors: [], hide: {}, unhide: {}, disabled: [] };
+
+  function loadCosmeticTable() {
+    if (!cosmeticTablePromise) {
+      cosmeticTablePromise = fetch(api.runtime.getURL('rules/cosmetic-filters.json'))
+        .then((response) => (response.ok ? response.json() : null))
+        .catch(() => null)
+        .then((table) => {
+          if (!table || !Array.isArray(table.selectors)) return EMPTY_COSMETIC_TABLE;
+          table.disabledSet = new Set(table.disabled || []);
+          return table;
+        });
+    }
+    return cosmeticTablePromise;
+  }
+
+  /**
+   * Selectors to hide on a host: rules for the host and each parent domain,
+   * minus their exceptions. Pause and whitelist are the content script's call.
+   */
+  async function getListCosmetics(hostnameOrUrl) {
+    const host = normalizeHostname(hostnameOrUrl);
+    if (!host) return [];
+    const table = await loadCosmeticTable();
+    const labels = host.split('.');
+    const hide = new Set();
+    const unhide = new Set();
+    for (let i = 0; i < labels.length; i++) {
+      const suffix = labels.slice(i).join('.');
+      if (table.disabledSet && table.disabledSet.has(suffix)) return [];
+      for (const index of table.hide[suffix] || []) hide.add(index);
+      for (const index of table.unhide[suffix] || []) unhide.add(index);
+    }
+    const selectors = [];
+    for (const index of hide) {
+      if (!unhide.has(index) && table.selectors[index]) selectors.push(table.selectors[index]);
+    }
+    return selectors;
+  }
+
   async function handleMessage(message, sender, sendResponse) {
     // Handle rate limiting
     if (!RATE_LIMIT_EXEMPT_TYPES.has(message.type)) {
@@ -1547,6 +1752,13 @@ try {
         case 'RESET_STATS':
           return await resetStats();
 
+        // Element picker: injected into the asking frame on first use.
+        case 'LOAD_PICKER':
+          return await injectContentFile(sender, 'content/picker.js');
+
+        case 'LOAD_PHISHING_UI':
+          return await injectContentFile(sender, 'content/phishing-warning.js');
+
         // Selectors
         case 'ADD_SELECTOR':
           return await addSelector(sender.tab?.id, message.selector);
@@ -1570,6 +1782,11 @@ try {
           }
           return { success: false, error: 'Network blocker not available' };
 
+        case 'FRAMES_DETECTED':
+          // Content scripts broadcast this; the popup is the real consumer.
+          // Without a case it fell through to "Unknown message type".
+          return { success: true };
+
         case 'GET_BLOCKED_COUNT':
           if (self.WebSuddhi.networkBlocker) {
             const network = self.WebSuddhi.networkBlocker.getNetworkBlockedCount(message.tabId);
@@ -1579,6 +1796,90 @@ try {
             return { success: true, count: network + cosmetic, network, cosmetic };
           }
           return { success: true, count: getNetworkBlockedCount(message.tabId) };
+
+        // Frame engine (Plan 2)
+        case 'FRAME_ANNOUNCE':
+          if (self.WebSuddhi.frameRegistry && sender.tab) {
+            self.WebSuddhi.frameRegistry.registerFrame(
+              sender.tab.id, sender.frameId, sender.frameId === 0 ? -1 : 0, message.frameInfo || {}
+            );
+            await recomputeTab(sender.tab.id);
+          }
+          return { success: true };
+
+        case 'FRAME_METRICS':
+          if (self.WebSuddhi.frameRegistry && sender.tab) {
+            self.WebSuddhi.frameRegistry.updateMetrics(sender.tab.id, sender.frameId, message);
+            await recomputeTab(sender.tab.id);
+          }
+          return { success: true };
+
+        case 'FRAME_CHILDREN':
+          return { success: true }; // recorded opportunistically; full sandbox-fallback in a later plan
+
+        case 'REPORT_COSMETIC':
+          if (self.WebSuddhi.frameRegistry && sender.tab) {
+            self.WebSuddhi.frameRegistry.addCosmeticCount(sender.tab.id, message.count || 0);
+          }
+          return { success: true };
+
+        case 'GET_TAB_CENSUS':
+          if (self.WebSuddhi.frameRegistry) {
+            return { success: true, census: self.WebSuddhi.frameRegistry.getCensus(message.tabId) };
+          }
+          return { success: true, census: { frames: [], counts: { frames: 0, heavy: 0, blocked: 0, flagged: 0, cosmetic: 0 } } };
+
+        case 'GET_TAB_CONNECTIONS': {
+          const log = self.WebSuddhi.connectionLog;
+          const tabId = Number.isInteger(message.tabId) ? message.tabId : sender.tab?.id;
+          const connections = log
+            ? log.getConnections(tabId)
+            : { mainHost: '', mainIp: null, server: null, hsts: false, cert: null, hosts: [] };
+          return { success: true, connections };
+        }
+
+        case 'GET_FIREWALL_RULES': {
+          const fwm = self.WebSuddhi.firewall;
+          if (!fwm) return { success: false, error: 'Firewall unavailable' };
+          return { success: true, rules: await fwm.getSiteRules(message.site) };
+        }
+
+        case 'SET_FIREWALL_RULE': {
+          const fwm = self.WebSuddhi.firewall;
+          if (!fwm) return { success: false, error: 'Firewall unavailable' };
+          // `type` is the message name, so the request type travels as `requestType`.
+          return await fwm.setRule(message.site, message.host, message.requestType,
+            message.action === undefined ? null : message.action);
+        }
+
+        case 'RESET_FIREWALL_SITE': {
+          const fwm = self.WebSuddhi.firewall;
+          if (!fwm) return { success: false, error: 'Firewall unavailable' };
+          return await fwm.resetSite(message.site);
+        }
+
+        case 'SET_FRAME_RULE': {
+          const reg = self.WebSuddhi.frameRegistry;
+          const ruleModel = self.WebSuddhi.ruleModel;
+          const blocker = self.WebSuddhi.frameBlocker;
+          if (!reg || !ruleModel) return { success: false, error: 'Frame engine unavailable' };
+          const tabId = Number.isInteger(message.tabId) ? message.tabId : sender.tab?.id;
+          let site = '';
+          try {
+            const tab = await api.tabs.get(tabId);
+            site = normalizeHostname(new URL(tab.url).hostname, true);
+          } catch (e) { return { success: false, error: 'No tab URL' }; }
+          if (!site || !message.frameDomain) return { success: false, error: 'Missing site or frameDomain' };
+
+          await ruleModel.setFrameRule(site, message.frameDomain, message.rule || null, { persist: message.persist !== false });
+          // Persisted block also gets a network rule so it does not reload.
+          if (blocker) {
+            if (message.rule === 'blocked' && message.persist !== false) await blocker.addNetworkBlock(api, message.frameDomain);
+            else await blocker.removeNetworkBlock(api, message.frameDomain);
+          }
+          await recomputeTab(tabId);
+          return { success: true, census: reg.getCensus(tabId) };
+        }
 
         case 'TOGGLE_NETWORK_BLOCKING':
           if (self.WebSuddhi.networkBlocker) {
@@ -1635,6 +1936,21 @@ try {
         case 'GET_WHITELIST':
           const storage = await getStorage(['whitelistedSites']);
           return { success: true, whitelistedSites: storage.whitelistedSites || [] };
+
+        // Site state model: protected / default / paused (replaces whitelist).
+        case 'GET_SITE_STATE':
+          return { success: true, ...(await getEffectiveSiteState(message.hostname)) };
+
+        case 'SET_SITE_STATE':
+        case 'RESUME_SITE': {
+          if (!message.hostname) return { success: false, error: 'No hostname provided' };
+          const result = message.type === 'RESUME_SITE'
+            ? await resumeSite(message.hostname)
+            : await setEffectiveSiteState(message.hostname, message.state || 'default', Number(message.durationMs));
+          const stateTabId = Number.isInteger(message.tabId) ? message.tabId : sender.tab?.id;
+          if (result.success && Number.isInteger(stateTabId)) await recomputeTab(stateTabId);
+          return result;
+        }
 
         case 'REPORT_FRAME':
           return await reportFrame(message, sender);
@@ -1791,6 +2107,13 @@ try {
               if (sender.tab?.id) {
                 startIconBlink(sender.tab.id);
               }
+              // Inject the warning UI before replying so the content script can
+              // show it straight away. If this fails it asks for LOAD_PHISHING_UI.
+              try {
+                await injectContentFile(sender, 'content/phishing-warning.js');
+              } catch (err) {
+                logError('Phishing UI pre-inject failed:', err);
+              }
             }
             return result;
           }
@@ -1907,11 +2230,21 @@ try {
         case 'GET_PAUSED_SITES':
           return { success: true, pausedSites: await getActivePausedSites() };
 
+        case 'GET_COSMETIC_FILTERS': {
+          // The frame's own URL first: an iframe gets its own site's rules.
+          const frameUrl = sender && /^https?:/.test(sender.url || '') ? sender.url : message.hostname;
+          return { success: true, selectors: await getListCosmetics(frameUrl) };
+        }
+
         case 'IS_PAUSED': {
-          const active = await getActivePausedSites();
-          const host = normalizeHostname(message.hostname, true);
-          const expiry = host ? active[host] || 0 : 0;
-          return { success: true, paused: expiry > Date.now(), expiry };
+          // Any pause counts: indefinite (whitelist) reports expiry 0.
+          const eff = await getEffectiveSiteState(message.hostname);
+          return {
+            success: true,
+            paused: eff.state === 'paused',
+            expiry: eff.pausedUntil || 0,
+            indefinite: eff.state === 'paused' && !eff.pausedUntil
+          };
         }
 
         case 'ALLOW_SELECTOR_ON_SITE':
@@ -1995,6 +2328,77 @@ try {
     }
   }
 
+  // Register every browser-event listener synchronously, on the worker's first
+  // turn. MV3 delivers the event that woke the worker right after top-level
+  // evaluation; a listener added after an `await` misses it. That is why
+  // right-click "Block this element", Alt+P and pause expiry used to do nothing
+  // whenever the worker had gone to sleep.
+  function registerEventListeners() {
+    api.runtime.onUpdateCheckStatus && api.runtime.onUpdateCheckStatus.addListener((status) => {
+      if (status === 'update_available') {
+        log('Update available');
+      }
+    });
+    if (api.tabs && api.tabs.onRemoved) {
+      api.tabs.onRemoved.addListener((tabId) => {
+        tabFrameMap.delete(tabId);
+        stopIconBlink(tabId);
+        if (self.WebSuddhi.frameRegistry) self.WebSuddhi.frameRegistry.removeTab(tabId);
+      });
+    }
+    // Reset the per-tab frame census on top-frame navigation (per-page counts).
+    if (api.webNavigation && api.webNavigation.onCommitted) {
+      api.webNavigation.onCommitted.addListener((details) => {
+        if (details.frameId === 0 && self.WebSuddhi.frameRegistry) {
+          self.WebSuddhi.frameRegistry.resetTab(details.tabId);
+        }
+      });
+    }
+    if (api.tabs && api.tabs.onUpdated) {
+      api.tabs.onUpdated.addListener((tabId, changeInfo) => {
+        if (changeInfo && changeInfo.status === 'loading') {
+          tabFrameMap.delete(tabId);
+        }
+      });
+    }
+
+    // Set up context menu
+    if (supportsContextMenus()) {
+      setupContextMenu();
+      api.contextMenus.onClicked.addListener(handleContextMenuClick);
+    }
+
+    // Pause-expiry alarm
+    if (api.alarms && api.alarms.onAlarm) {
+      api.alarms.onAlarm.addListener((alarm) => {
+        if (alarm && alarm.name === PAUSE_ALARM_NAME) {
+          sweepExpiredPauses().catch(err => logError('Pause sweep failed:', err));
+        }
+      });
+    }
+
+    // Set up command listener
+    setupCommandListener();
+
+    // Set up storage change listener for sync
+    if (supportsSyncStorage() && api.storage?.onChanged) {
+      api.storage.onChanged.addListener((changes, area) => {
+        if (area === 'sync' && changes) {
+          // Propagate sync changes to local
+          const localChanges = {};
+          for (const key in changes) {
+            localChanges[key] = changes[key].newValue;
+          }
+          if (Object.keys(localChanges).length > 0) {
+            setStorageArea('local', localChanges).catch((err) => {
+              logError('Failed to apply sync changes locally:', err);
+            });
+          }
+        }
+      });
+    }
+  }
+
   // ============================================
   // INITIALIZATION
   // ============================================
@@ -2005,74 +2409,11 @@ try {
       // Modules imported via importScripts auto-initialize themselves.
       // Avoid calling module init functions here to prevent duplicate listeners/timers.
 
-      // Set up listeners
-      api.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        handleMessage(message, sender, sendResponse)
-          .then(result => {
-            if (result === true) {
-              sendResponse({ success: true });
-              return;
-            }
-            sendResponse(result);
-          })
-          .catch(err => sendResponse({ success: false, error: err.message }));
-        return true; // Keep port open for async response
-      });
-      api.runtime.onUpdateCheckStatus && api.runtime.onUpdateCheckStatus.addListener((status) => {
-        if (status === 'update_available') {
-          log('Update available');
-        }
-      });
-      if (api.tabs && api.tabs.onRemoved) {
-        api.tabs.onRemoved.addListener((tabId) => {
-          tabFrameMap.delete(tabId);
-          stopIconBlink(tabId);
-        });
-      }
-      if (api.tabs && api.tabs.onUpdated) {
-        api.tabs.onUpdated.addListener((tabId, changeInfo) => {
-          if (changeInfo && changeInfo.status === 'loading') {
-            tabFrameMap.delete(tabId);
-          }
-        });
-      }
-
-      // Set up context menu
-      if (supportsContextMenus()) {
-        setupContextMenu();
-        api.contextMenus.onClicked.addListener(handleContextMenuClick);
-      }
-
-      // Set up pause-expiry alarm + initial sweep
-      if (api.alarms && api.alarms.onAlarm) {
-        api.alarms.onAlarm.addListener((alarm) => {
-          if (alarm && alarm.name === PAUSE_ALARM_NAME) {
-            sweepExpiredPauses().catch(err => logError('Pause sweep failed:', err));
-          }
-        });
-        sweepExpiredPauses().catch(() => {});
-      }
-
-      // Set up command listener
-      setupCommandListener();
-
-      // Set up storage change listener for sync
-      if (supportsSyncStorage() && api.storage?.onChanged) {
-        api.storage.onChanged.addListener((changes, area) => {
-          if (area === 'sync' && changes) {
-            // Propagate sync changes to local
-            const localChanges = {};
-            for (const key in changes) {
-              localChanges[key] = changes[key].newValue;
-            }
-            if (Object.keys(localChanges).length > 0) {
-              setStorageArea('local', localChanges).catch((err) => {
-                logError('Failed to apply sync changes locally:', err);
-              });
-            }
-          }
-        });
-      }
+      // Warm the rule-list cache so the first FRAME_ANNOUNCE classifies correctly.
+      if (self.WebSuddhi.listLoader) self.WebSuddhi.listLoader.loadLists();
+      // Clear any pauses that expired while the worker was asleep.
+      sweepExpiredPauses().catch(() => {});
+      migrateLegacyPausedSiteStates().catch(err => logError('Site-state migration failed:', err));
 
       // Clean up old storage keys on init (run monthly)
       const oldKeys = ['adsBlocked', 'trackersBlocked', 'lastCleanUp'];
@@ -2087,6 +2428,28 @@ try {
     } catch (err) {
       logError('Initialization error:', err);
     }
+  }
+
+  // Register the message listener synchronously, before any await. MV3 wakes the
+  // worker *because of* the message; a listener added after an async hop can miss
+  // that message entirely, which left the popup with no responder (dead buttons).
+  api.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    handleMessage(message, sender, sendResponse)
+      .then(result => {
+        if (result === true) {
+          sendResponse({ success: true });
+          return;
+        }
+        sendResponse(result);
+      })
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true; // Keep port open for async response
+  });
+
+  try {
+    registerEventListeners();
+  } catch (err) {
+    logError('Listener registration failed:', err);
   }
 
   // Start initialization

@@ -406,6 +406,11 @@
 
         refreshState();
         sendResponse({ success: true });
+      } else if (message.type === 'WHITELIST_SITE' || message.type === 'UNWHITELIST_SITE') {
+        // Allow/Unblock on the site card has to reach this blocker too — it only
+        // listened for SETTINGS_CHANGED and kept dismissing banners on allowed sites.
+        refreshState();
+        sendResponse({ success: true });
       } else if (message.type === 'DISMISS_COOKIES_NOW') {
         attempts = 0;
         const dismissed = tryDismiss();

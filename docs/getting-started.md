@@ -24,9 +24,14 @@ git clone https://github.com/sriinnu/web-suddhi.git
 ### Safari (macOS)
 
 ```bash
-xcrun safari-web-extension-converter safari/
-# Opens in Xcode — click "Run" to install
+npm install
+npm run build:targets   # generates dist/browser/safari
+# Open safari/WebSuddhi/WebSuddhi.xcodeproj in Xcode, set your signing team,
+# select the "WebSuddhi (macOS)" scheme and click Run.
+# Or build unsigned from the CLI: npm run build:safari
 ```
+
+Then enable the extension in **Safari > Settings > Extensions**.
 
 ### Safari (iOS)
 

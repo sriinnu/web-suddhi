@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "WebSuddhi",
-  "version": "2.3.0",
+  "version": "3.0.9",
+  "version_name": "3.00.0009",
   "description": "Block ads, remove paywalls, strip trackers, and clean up any website. Privacy-first, no tracking.",
   "permissions": [
     "storage",
@@ -9,6 +10,7 @@
     "scripting",
     "tabs",
     "declarativeNetRequest",
+    "webRequest",
     "alarms",
     "webNavigation",
     "contextMenus"
@@ -39,6 +41,21 @@
         "path": "rules/tracking-params.json"
       },
       {
+        "id": "generated_security_1",
+        "enabled": true,
+        "path": "rules/generated-security-1.json"
+      },
+      {
+        "id": "generated_security_2",
+        "enabled": true,
+        "path": "rules/generated-security-2.json"
+      },
+      {
+        "id": "generated_spam_1",
+        "enabled": true,
+        "path": "rules/generated-spam-1.json"
+      },
+      {
         "id": "generated_ads_1",
         "enabled": true,
         "path": "rules/generated-ads-1.json"
@@ -52,26 +69,6 @@
         "id": "generated_ads_3",
         "enabled": true,
         "path": "rules/generated-ads-3.json"
-      },
-      {
-        "id": "generated_security_1",
-        "enabled": true,
-        "path": "rules/generated-security-1.json"
-      },
-      {
-        "id": "generated_security_2",
-        "enabled": true,
-        "path": "rules/generated-security-2.json"
-      },
-      {
-        "id": "generated_security_3",
-        "enabled": true,
-        "path": "rules/generated-security-3.json"
-      },
-      {
-        "id": "generated_spam_1",
-        "enabled": true,
-        "path": "rules/generated-spam-1.json"
       }
     ]
   },
@@ -86,15 +83,29 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["shared/utils.js", "content/ad-blocker.js"],
-      "css": ["content/ad-blocker.css"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "shared/utils.js",
+        "content/ad-blocker.js",
+        "content/frame-agent.js"
+      ],
+      "css": [
+        "content/ad-blocker.css"
+      ],
       "run_at": "document_start",
       "all_frames": true
     },
     {
-      "matches": ["<all_urls>"],
-      "js": ["shared/utils.js", "content/cookie-consent.js", "content/annoyance-blocker.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "shared/utils.js",
+        "content/cookie-consent.js",
+        "content/annoyance-blocker.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }
@@ -114,29 +125,47 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["content/ad-blocker.css"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "content/ad-blocker.css"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     },
     {
-      "resources": ["icons/*.png"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "icons/*.png"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     },
     {
-      "resources": ["fonts/*"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "fonts/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ],
   "commands": {
     "toggle-pick-mode": {
-      "suggested_key": { "default": "Alt+P" },
+      "suggested_key": {
+        "default": "Alt+P"
+      },
       "description": "Toggle element picker"
     },
     "toggle-whitelist": {
-      "suggested_key": { "default": "Alt+W" },
+      "suggested_key": {
+        "default": "Alt+W"
+      },
       "description": "Toggle whitelist for current site"
     },
     "open-settings": {
-      "suggested_key": { "default": "Alt+S" },
+      "suggested_key": {
+        "default": "Alt+S"
+      },
       "description": "Open settings"
     }
   }

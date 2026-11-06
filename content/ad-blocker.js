@@ -49,11 +49,6 @@
     return !pageContainsPasswordField();
   }
 
-  const phishingWarningState = {
-    overlay: null,
-    observer: null,
-    domain: null
-  };
 
   function normalizeWarningDomain(domain) {
     return (domain || '').toLowerCase().replace(/^www\./, '');
@@ -84,7 +79,7 @@
       const response = await sendMessageEarly({ type: 'CHECK_PHISHING', domain });
 
       if (response?.isSuspicious) {
-        showPhishingWarning(response);
+        (await loadModule('__wsPhishingUI', 'LOAD_PHISHING_UI')).show(response);
       } else if (forceRefresh) {
         // If not suspicious now, ensure no stale warning remains.
         hidePhishingWarning({ persistDismissal: false });
@@ -116,412 +111,12 @@
     });
   }
 
-  // Escape HTML to prevent XSS
-  function escapeHtmlPhishing(text) {
-    const div = document.createElement('div');
-    div.textContent = text || '';
-    return div.textContent;  // Return textContent, not innerHTML
-  }
-
-  // Highlight suspicious characters (homoglyphs) in domain
-  function highlightSuspiciousChars(domain) {
-    if (!domain) return '';
-
-    // Common homoglyph mappings (suspicious char -> normal char it mimics)
-    const homoglyphs = {
-      '0': 'o', 'О': 'O', 'о': 'o', // Cyrillic O
-      '1': 'l', 'І': 'I', 'і': 'i', // Cyrillic I
-      'а': 'a', 'А': 'A', // Cyrillic A
-      'е': 'e', 'Е': 'E', // Cyrillic E
-      'р': 'p', 'Р': 'P', // Cyrillic P
-      'с': 'c', 'С': 'C', // Cyrillic C
-      'у': 'y', 'У': 'Y', // Cyrillic Y
-      'х': 'x', 'Х': 'X', // Cyrillic X
-      'ѕ': 's', 'Ѕ': 'S', // Cyrillic S
-      'ј': 'j', 'Ј': 'J', // Cyrillic J
-      'ԁ': 'd', // Cyrillic D
-      'ɡ': 'g', // Latin small letter script G
-      'ո': 'n', // Armenian N
-      'ɑ': 'a', // Latin alpha
-      'ß': 'ss', // German eszett
-      'ı': 'i', // Dotless I
-      'ｇ': 'g', 'ｏ': 'o', 'ｌ': 'l', 'ｅ': 'e', // Fullwidth chars
-      'ⅰ': 'i', 'ⅼ': 'l', // Roman numerals
-      'ɴ': 'n', 'ᴍ': 'm', 'ᴀ': 'a', // Small caps
-      'ⓐ': 'a', 'ⓑ': 'b', 'ⓒ': 'c', 'ⓓ': 'd', 'ⓔ': 'e', // Circled letters
-      'ⓕ': 'f', 'ⓖ': 'g', 'ⓗ': 'h', 'ⓘ': 'i', 'ⓙ': 'j',
-      'ⓚ': 'k', 'ⓛ': 'l', 'ⓜ': 'm', 'ⓝ': 'n', 'ⓞ': 'o',
-      'ⓟ': 'p', 'ⓠ': 'q', 'ⓡ': 'r', 'ⓢ': 's', 'ⓣ': 't',
-      'ⓤ': 'u', 'ⓥ': 'v', 'ⓦ': 'w', 'ⓧ': 'x', 'ⓨ': 'y', 'ⓩ': 'z',
-      'rn': 'm' // Common trick: rn looks like m
-    };
-
-    let result = '';
-    for (let i = 0; i < domain.length; i++) {
-      const char = domain[i];
-      if (homoglyphs[char]) {
-        result += '<span class="websuddhi-suspicious-char">' + escapeHtmlPhishing(char) + '</span>';
-      } else if (char.charCodeAt(0) > 127) {
-        // Non-ASCII character - potentially suspicious
-        result += '<span class="websuddhi-suspicious-char">' + escapeHtmlPhishing(char) + '</span>';
-      } else {
-        result += escapeHtmlPhishing(char);
-      }
-    }
-    return result;
-  }
-
-  // Show full-page phishing warning overlay
-  function showPhishingWarning(data) {
-    const originalDomain = normalizeWarningDomain(data?.originalDomain || window.location.hostname);
-    if (!originalDomain) return;
-
-    // Remove stale overlay before creating a fresh one.
-    hidePhishingWarning({ persistDismissal: false });
-
-    // Check if user already dismissed warning for this domain in this session
-    try {
-      if (sessionStorage.getItem('websuddhi_phishing_dismissed_' + originalDomain) === 'true') {
-        return; // Don't show warning again
-      }
-    } catch (e) {
-      // Session storage might not be available
-    }
-
-    // Normalize data fields (phishing detector uses matchedDomain, we want realDomain for display)
-    const realDomain = data.realDomain || data.matchedDomain || 'unknown';
-    const matchedBrand = data.matchedBrand || 'Unknown';
-    const displayDomain = data.originalDomain || window.location.hostname;
-    const riskLevel = (data.riskLevel || '').toString().toLowerCase();
-    const isHighRisk = riskLevel === 'high';
-    const proceedCooldownSeconds = isHighRisk ? 10 : 5;
-
-    // Create full-page overlay
-    const overlay = document.createElement('div');
-    overlay.className = 'websuddhi-phishing-overlay';
-    overlay.id = 'websuddhi-phishing-overlay';
-
-    // Build overlay using safe DOM methods (no innerHTML with user data)
-    const modal = document.createElement('div');
-    modal.className = 'websuddhi-phishing-modal';
-
-    // Icon
-    const iconDiv = document.createElement('div');
-    iconDiv.className = 'websuddhi-phishing-icon';
-    const warnSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    warnSvg.setAttribute('viewBox', '0 0 24 24');
-    warnSvg.setAttribute('fill', 'currentColor');
-    const warnPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    warnPath.setAttribute('d', 'M12 2L1 21h22L12 2zm0 3.5L19.5 19h-15L12 5.5zM11 10v4h2v-4h-2zm0 6v2h2v-2h-2z');
-    warnSvg.appendChild(warnPath);
-    iconDiv.appendChild(warnSvg);
-    modal.appendChild(iconDiv);
-
-    // Title
-    const title = document.createElement('h1');
-    title.className = 'websuddhi-phishing-title';
-    title.textContent = 'Warning: Suspicious Website';
-    modal.appendChild(title);
-
-    // Alert section
-    const alertDiv = document.createElement('div');
-    alertDiv.className = 'websuddhi-phishing-alert';
-    const alertP = document.createElement('p');
-    alertP.appendChild(document.createTextNode('This website '));
-    const strong = document.createElement('strong');
-    strong.textContent = displayDomain;
-    alertP.appendChild(strong);
-    alertP.appendChild(document.createTextNode(" looks like it's trying to impersonate:"));
-    alertDiv.appendChild(alertP);
-    const brandDiv = document.createElement('div');
-    brandDiv.className = 'websuddhi-phishing-brand';
-    brandDiv.textContent = matchedBrand;
-    alertDiv.appendChild(brandDiv);
-    modal.appendChild(alertDiv);
-
-    // Comparison section
-    const compDiv = document.createElement('div');
-    compDiv.className = 'websuddhi-phishing-comparison';
-
-    const fakeDiv = document.createElement('div');
-    fakeDiv.className = 'websuddhi-domain-fake';
-    const fakeLabel = document.createElement('span');
-    fakeLabel.className = 'websuddhi-domain-label';
-    fakeLabel.textContent = "You're visiting:";
-    fakeDiv.appendChild(fakeLabel);
-    const fakeValue = document.createElement('span');
-    fakeValue.className = 'websuddhi-domain-value';
-    fakeValue.textContent = displayDomain;
-    fakeDiv.appendChild(fakeValue);
-    compDiv.appendChild(fakeDiv);
-
-    const realDiv = document.createElement('div');
-    realDiv.className = 'websuddhi-domain-real';
-    const realLabel = document.createElement('span');
-    realLabel.className = 'websuddhi-domain-label';
-    realLabel.textContent = 'Real website:';
-    realDiv.appendChild(realLabel);
-    const realValue = document.createElement('span');
-    realValue.className = 'websuddhi-domain-value';
-    realValue.textContent = realDomain;
-    realDiv.appendChild(realValue);
-    compDiv.appendChild(realDiv);
-    modal.appendChild(compDiv);
-
-    // Info section
-    const infoDiv = document.createElement('div');
-    infoDiv.className = 'websuddhi-phishing-info';
-    const infoP = document.createElement('p');
-    infoP.textContent = 'This could be a phishing attempt to steal your:';
-    infoDiv.appendChild(infoP);
-    const infoUl = document.createElement('ul');
-    ['Passwords and login credentials', 'Credit card information', 'Personal data'].forEach(text => {
-      const li = document.createElement('li');
-      li.textContent = text;
-      infoUl.appendChild(li);
-    });
-    infoDiv.appendChild(infoUl);
-    modal.appendChild(infoDiv);
-
-    // Action buttons
-    const actionsDiv = document.createElement('div');
-    actionsDiv.className = 'websuddhi-phishing-actions';
-
-    const goBackBtn = document.createElement('button');
-    goBackBtn.className = 'websuddhi-btn-safe';
-    goBackBtn.id = 'websuddhiGoBack';
-    const goBackSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    goBackSvg.setAttribute('width', '16');
-    goBackSvg.setAttribute('height', '16');
-    goBackSvg.setAttribute('viewBox', '0 0 24 24');
-    goBackSvg.setAttribute('fill', 'none');
-    goBackSvg.setAttribute('stroke', 'currentColor');
-    goBackSvg.setAttribute('stroke-width', '2');
-    const goBackPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    goBackPath.setAttribute('d', 'M19 12H5M12 19l-7-7 7-7');
-    goBackSvg.appendChild(goBackPath);
-    goBackBtn.appendChild(goBackSvg);
-    goBackBtn.appendChild(document.createTextNode(' Go Back to Safety'));
-    actionsDiv.appendChild(goBackBtn);
-
-    const reportBtn = document.createElement('button');
-    reportBtn.className = 'websuddhi-btn-report';
-    reportBtn.id = 'websuddhiReport';
-    const reportSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    reportSvg.setAttribute('width', '16');
-    reportSvg.setAttribute('height', '16');
-    reportSvg.setAttribute('viewBox', '0 0 24 24');
-    reportSvg.setAttribute('fill', 'none');
-    reportSvg.setAttribute('stroke', 'currentColor');
-    reportSvg.setAttribute('stroke-width', '2');
-    const reportPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    reportPath.setAttribute('d', 'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z');
-    reportSvg.appendChild(reportPath);
-    const reportLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    reportLine.setAttribute('x1', '4'); reportLine.setAttribute('y1', '22');
-    reportLine.setAttribute('x2', '4'); reportLine.setAttribute('y2', '15');
-    reportSvg.appendChild(reportLine);
-    reportBtn.appendChild(reportSvg);
-    reportBtn.appendChild(document.createTextNode(' Report This Site'));
-    actionsDiv.appendChild(reportBtn);
-    modal.appendChild(actionsDiv);
-
-    // Advanced - proceed anyway
-    const details = document.createElement('details');
-    details.className = 'websuddhi-phishing-advanced';
-    const summary = document.createElement('summary');
-    summary.textContent = 'I understand the risk, proceed anyway';
-    details.appendChild(summary);
-    const advWarning = document.createElement('p');
-    advWarning.className = 'websuddhi-phishing-advanced-warning';
-    advWarning.textContent = 'Only proceed if you are absolutely certain this is safe. This site may attempt to steal your personal information.';
-    details.appendChild(advWarning);
-    const proceedBtn = document.createElement('button');
-    proceedBtn.className = 'websuddhi-btn-danger';
-    proceedBtn.id = 'websuddhiProceed';
-    const proceedBaseText = 'Proceed to ' + displayDomain;
-    proceedBtn.textContent = proceedBaseText;
-    proceedBtn.disabled = true;
-    proceedBtn.setAttribute('aria-disabled', 'true');
-    proceedBtn.style.opacity = '0.6';
-    details.appendChild(proceedBtn);
-
-    const proceedHint = document.createElement('p');
-    proceedHint.className = 'websuddhi-phishing-advanced-warning';
-    proceedHint.textContent = isHighRisk
-      ? 'High risk: wait 10 seconds, then type the full domain to proceed.'
-      : 'Please wait 5 seconds before proceeding.';
-    details.appendChild(proceedHint);
-
-    let domainConfirmInput = null;
-    let domainConfirmed = !isHighRisk;
-
-    if (isHighRisk) {
-      const confirmLabel = document.createElement('label');
-      confirmLabel.className = 'websuddhi-phishing-advanced-warning';
-      confirmLabel.textContent = 'Type "' + displayDomain + '" to confirm you want to continue:';
-      details.appendChild(confirmLabel);
-
-      domainConfirmInput = document.createElement('input');
-      domainConfirmInput.type = 'text';
-      domainConfirmInput.autocomplete = 'off';
-      domainConfirmInput.spellcheck = false;
-      domainConfirmInput.placeholder = displayDomain;
-      domainConfirmInput.setAttribute('aria-label', 'Type domain to confirm proceeding');
-      details.appendChild(domainConfirmInput);
-    }
-    modal.appendChild(details);
-
-    // Footer
-    const footer = document.createElement('div');
-    footer.className = 'websuddhi-phishing-footer';
-    const footerSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    footerSvg.setAttribute('width', '14');
-    footerSvg.setAttribute('height', '14');
-    footerSvg.setAttribute('viewBox', '0 0 24 24');
-    footerSvg.setAttribute('fill', 'currentColor');
-    const footerPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    footerPath.setAttribute('d', 'M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 2.18l7 3.12v5.7c0 4.83-3.4 9.36-7 10.36-3.6-1-7-5.53-7-10.36V6.3l7-3.12zM11 7v6h2V7h-2zm0 8v2h2v-2h-2z');
-    footerSvg.appendChild(footerPath);
-    footer.appendChild(footerSvg);
-    footer.appendChild(document.createTextNode(' Protected by WebSuddhi'));
-    modal.appendChild(footer);
-
-    overlay.appendChild(modal);
-
-    // Insert at very beginning of document
-    const rootNode = document.documentElement || document;
-    if (rootNode && rootNode.insertBefore) {
-      try {
-        rootNode.insertBefore(overlay, rootNode.firstChild);
-      } catch (e) {
-        rootNode.appendChild(overlay);
-      }
-    } else {
-      return;
-    }
-    phishingWarningState.overlay = overlay;
-    phishingWarningState.observer = null;
-    phishingWarningState.domain = originalDomain;
-
-    // Hide original page content
-    if (document.body) {
-      document.body.style.setProperty('display', 'none', 'important');
-    }
-
-    // Also hide content if body loads later
-    const bodyObserver = new MutationObserver(() => {
-      if (document.body && !document.body.hasAttribute('data-websuddhi-phishing-hidden')) {
-        document.body.setAttribute('data-websuddhi-phishing-hidden', 'true');
-        document.body.style.setProperty('display', 'none', 'important');
-      }
-    });
-    const observerTarget = document.documentElement || document.body || document;
-    bodyObserver.observe(observerTarget, { childList: true, subtree: true });
-    phishingWarningState.observer = bodyObserver;
-
-    let cooldownRemaining = proceedCooldownSeconds;
-    const updateProceedButtonState = () => {
-      const cooldownDone = cooldownRemaining <= 0;
-      const canProceed = cooldownDone && domainConfirmed;
-      proceedBtn.disabled = !canProceed;
-      proceedBtn.style.opacity = canProceed ? '1' : '0.6';
-      proceedBtn.setAttribute('aria-disabled', canProceed ? 'false' : 'true');
-      proceedBtn.textContent = cooldownDone
-        ? proceedBaseText
-        : (proceedBaseText + ' (' + cooldownRemaining + 's)');
-    };
-    updateProceedButtonState();
-
-    const cooldownTimer = setInterval(() => {
-      cooldownRemaining -= 1;
-      updateProceedButtonState();
-      if (cooldownRemaining <= 0) {
-        clearInterval(cooldownTimer);
-      }
-    }, 1000);
-
-    if (domainConfirmInput) {
-      const expectedDomain = originalDomain.trim().toLowerCase();
-      domainConfirmInput.addEventListener('input', () => {
-        domainConfirmed = domainConfirmInput.value.trim().toLowerCase() === expectedDomain;
-        updateProceedButtonState();
-      });
-    }
-
-    // Event handlers
-    goBackBtn.onclick = () => {
-      clearInterval(cooldownTimer);
-      if (window.history.length > 1) {
-        window.history.back();
-      } else {
-        window.location.href = 'about:blank';
-      }
-    };
-
-    reportBtn.onclick = () => {
-      reportPhishing(data);
-      reportBtn.textContent = 'Thank you for reporting!';
-      reportBtn.disabled = true;
-      reportBtn.style.opacity = '0.7';
-    };
-
-    proceedBtn.onclick = () => {
-      if (proceedBtn.disabled) return;
-      clearInterval(cooldownTimer);
-      dismissPhishingWarning(overlay, bodyObserver, originalDomain);
-    };
-  }
-
-  // Dismiss the phishing warning and show the page
-  function dismissPhishingWarning(overlay, observer, domain, options = {}) {
-    const targetOverlay = overlay || phishingWarningState.overlay;
-    const targetObserver = observer || phishingWarningState.observer;
-    const targetDomain = normalizeWarningDomain(domain || phishingWarningState.domain);
-    const persistDismissal = options.persistDismissal !== false;
-
-    // Stop the observer
-    if (targetObserver) {
-      targetObserver.disconnect();
-    }
-
-    // Remove the overlay
-    if (targetOverlay && targetOverlay.parentNode) {
-      targetOverlay.parentNode.removeChild(targetOverlay);
-    }
-    if (phishingWarningState.overlay === targetOverlay) {
-      phishingWarningState.overlay = null;
-      phishingWarningState.observer = null;
-      phishingWarningState.domain = null;
-    }
-
-    // Restore body display
-    if (document.body) {
-      document.body.style.removeProperty('display');
-      document.body.removeAttribute('data-websuddhi-phishing-hidden');
-    }
-
-    // Store in session that user dismissed for this domain
-    try {
-      if (targetDomain && persistDismissal) {
-        sessionStorage.setItem('websuddhi_phishing_dismissed_' + targetDomain, 'true');
-      } else if (targetDomain) {
-        sessionStorage.removeItem('websuddhi_phishing_dismissed_' + targetDomain);
-      }
-    } catch (e) {
-      // Session storage might not be available
-    }
-
-    // Stop icon blinking in background
-    try {
-      sendMessageEarly({ type: 'STOP_PHISHING_ALERT' }).catch(() => {});
-    } catch (e) {
-      // Silently fail
-    }
-  }
-
   function hidePhishingWarning(options = {}) {
-    return dismissPhishingWarning(null, null, null, options);
+    const ui = self.__wsPhishingUI;
+    if (ui) return ui.dismiss(null, null, null, options);
+    // The overlay was never loaded in this frame, so there is nothing to remove;
+    // just make sure the toolbar icon stops blinking.
+    sendMessageEarly({ type: 'STOP_PHISHING_ALERT' }).catch(() => {});
   }
 
   function clearPhishingDismissalForDomain(domain) {
@@ -535,34 +130,25 @@
     }
   }
 
-  // Report phishing site to background
-  function reportPhishing(data) {
-    try {
-      sendMessageEarly({
-        type: 'REPORT_PHISHING',
-        domain: data.originalDomain,
-        matchedBrand: data.matchedBrand,
-        realDomain: data.realDomain,
-        timestamp: Date.now()
-      }).catch(() => {
-        // Silently fail
-      });
-    } catch (e) {
-      // Silently fail
-    }
-  }
-
   // ============================================
   // CONFIGURATION - All Common Ad Patterns
   // ============================================
   const AD_SELECTORS = {
     // Generic ad containers
     common: [
-      '[class*="ad-"]', '[class*="ads-"]', '[class*="advert"]',
-      '[id*="ad-"]', '[id*="ads-"]', '[id*="advert"]',
+      // Token-boundary matches only. `[class*="ad-"]` also matches `head-`,
+      // `load-`, `download-`, `thread-` — which hides real page content.
+      '[class^="ad-"]', '[class*=" ad-"]',
+      '[class^="ads-"]', '[class*=" ads-"]',
+      '[class*="advert"]',
+      '[id*="advert"]',
+      // Ids are a single token, so a prefix is the boundary-safe match.
+      '[id^="ad-"]', '[id^="ads-"]',
+      '[id^="div-gpt-ad"]', '[id^="google_ads_iframe"]', '[id^="gpt-ad"]',
+      '#ad', '#ads', '#ad-container', '#ads-container',
       '[data-ad]', '[data-ads]', '[data-advertisement]',
       '[data-ad-width]', '[data-ad-height]',
-      '[data-google-query-id]', '[data-slot]',
+      '[data-google-query-id]', '[data-ad-slot]',
       '[data-adsbygoogle]', '[data-ad-client]',
       '.ad', '.ads', '.ad-container', '.ads-container',
       '.ad-wrapper', '.ads-wrapper', '.ad-unit', '.ads-unit',
@@ -838,11 +424,20 @@
     pausedSites: {},
     perSiteAllowedSelectors: {},
     pickMode: false,
-    pickModeShiftHeld: false,
-    pickModeCtrlHeld: false,
+    pickAltHeld: false,        // flip element/frame mode
+    pickCtrlHeld: false,       // specific selector (element mode)
+    pickZapHeld: false,        // quick-kill: skip confirm (Shift)
+    pickZapDefault: false,     // zap entry point: skip confirm by default
+    pickFrameMode: false,      // current resolution targets a whole frame
     pickDialogOpen: false,
-    zapMode: false,
+    pickOverlay: null,         // full-viewport hit-shield (catches events over iframes)
+    pickLastX: 0,
+    pickLastY: 0,
+    pickCommitting: false,     // re-entrancy guard
+    zapMode: false,            // legacy alias; true while a zap-default pick is active
     hoveredElement: null,
+    contextTarget: null,       // last right-clicked element in this frame
+    contextTargetAt: 0,
     observer: null,
     observerTimeout: null,
     blockedCount: 0,
@@ -877,8 +472,9 @@
     try {
       const { whitelisted } = await refreshLocalSettings();
 
-      // Auto-detect and remove paywalls (only if not whitelisted)
-      if (state.paywallEnabled && !whitelisted) {
+      // Auto-detect and remove paywalls (only if blocking is actually active —
+      // pausing a site must not let paywall removal keep mutating the page)
+      if (state.paywallEnabled && state.enabled && !whitelisted && !isSitePaused()) {
         setTimeout(() => detectAndRemovePaywall(), 1000);
         setTimeout(() => detectAndRemovePaywall(), 3000);
       }
@@ -892,8 +488,6 @@
         setTimeout(() => removeAntiAdblockOverlays(), 5000);
       }
 
-      // Setup listeners
-      setupMessageListener();
       // Only start observer when body exists
       if (document.body) {
         setupMutationObserver();
@@ -959,6 +553,50 @@
     });
   }
 
+  // ============================================
+  // LIST ELEMENT HIDING (EasyList site-specific ##rules)
+  // ============================================
+  // One display:none rule per selector in a single <style>. CSS error recovery
+  // drops only a rule whose selector this browser rejects, never the rest.
+  const LIST_COSMETICS_STYLE_ID = 'websuddhi-list-cosmetics';
+  let listCosmeticsCss = null;
+  let listCosmeticsRequest = null;
+
+  function attachListCosmetics() {
+    if (!listCosmeticsCss) return;
+    let style = document.getElementById(LIST_COSMETICS_STYLE_ID);
+    if (!style) {
+      style = document.createElement('style');
+      style.id = LIST_COSMETICS_STYLE_ID;
+      (document.head || document.documentElement).appendChild(style);
+    }
+    if (style.textContent !== listCosmeticsCss) style.textContent = listCosmeticsCss;
+  }
+
+  function applyListCosmetics() {
+    if (listCosmeticsCss !== null) {
+      attachListCosmetics();
+      return;
+    }
+    if (listCosmeticsRequest) return;
+    listCosmeticsRequest = sendMessageEarly({ type: 'GET_COSMETIC_FILTERS', hostname: window.location.hostname })
+      .then((response) => {
+        const allowed = getAllowedSelectorSet();
+        const selectors = ((response && response.selectors) || []).filter((sel) => !allowed.has(sel));
+        listCosmeticsCss = selectors.map((sel) => sel + '{display:none!important}').join('\n');
+        if (state.enabled) attachListCosmetics();
+      })
+      .catch(() => {})
+      .finally(() => { listCosmeticsRequest = null; });
+  }
+
+  function removeListCosmetics() {
+    const style = document.getElementById(LIST_COSMETICS_STYLE_ID);
+    if (style) style.remove();
+    // Re-ask next time: the per-site allowed selectors may have changed.
+    listCosmeticsCss = null;
+  }
+
   async function refreshLocalSettings() {
     const storage = await getStorage();
     state.enabled = storage.enabled !== false;
@@ -986,7 +624,10 @@
     }
 
     if (state.enabled) {
+      listCosmeticsCss = null; // settings changed: re-ask, allowed selectors may differ
+      applyListCosmetics();
       applyBlocking();
+      scheduleLateSweep();
       removePingAttributes();
       if (shouldRunAggressiveAntiAdblock(storage)) {
         setupAntiAntiAdblock();
@@ -999,6 +640,7 @@
         detectAndRemovePaywall();
       }
     } else {
+      removeListCosmetics();
       unblockAll();
       hidePhishingWarning({ persistDismissal: false });
       if (!whitelisted) {
@@ -1127,36 +769,44 @@
         return { success: true, sites: state.whitelistedSites };
 
       case 'START_PICK_MODE':
-        startPickMode();
+        (await loadPicker()).startPickMode();
         return { success: true };
+
+      case 'BLOCK_CONTEXT_TARGET':
+        return blockContextTarget();
 
       case 'TOGGLE_PICK_MODE':
         if (state.pickMode) {
-          stopPickMode();
+          self.__wsPicker?.stopPickMode();
         } else {
-          startPickMode();
+          (await loadPicker()).startPickMode();
         }
         return { success: true, pickMode: state.pickMode };
 
       case 'STOP_PICK_MODE':
-        stopPickMode();
+        self.__wsPicker?.stopPickMode();
         return { success: true };
 
       case 'START_ZAP_MODE':
-        startZapMode();
+        (await loadPicker()).startZapMode();
         return { success: true };
 
       case 'TOGGLE_ZAP_MODE':
         if (state.zapMode) {
-          stopZapMode();
+          self.__wsPicker?.stopZapMode();
         } else {
-          startZapMode();
+          (await loadPicker()).startZapMode();
         }
         return { success: true, zapMode: state.zapMode };
 
       case 'STOP_ZAP_MODE':
-        stopZapMode();
+        self.__wsPicker?.stopZapMode();
         return { success: true };
+
+      case 'RELAX_COSMETIC':
+        // "Looks broken?" — restore everything we cosmetically hid on this page.
+        // Network blocking is unaffected (it lives in the background).
+        return { success: true, restored: relaxCosmeticHides() };
 
       case 'REMOVE_PAYWALL':
         const removed = removePaywall();
@@ -1172,8 +822,10 @@
         return { success: true };
 
       case 'REMOVE_SELECTOR':
+        // Storage is the background's job here (it broadcasts this after
+        // removing). Writing it back from a tab would resurrect selectors that
+        // another tab already dropped.
         state.blockedSelectors.delete(message.selector);
-        await saveSelectors();
         unblockSelector(message.selector);
         return { success: true };
 
@@ -1371,6 +1023,9 @@
 
     // Method 5: Restore body scroll if locked by paywall
     restoreBodyScroll();
+
+    // Method 6: Show the story a soft paywall hid with CSS
+    revealGatedContent();
   }
 
   function findFullViewportOverlays() {
@@ -1405,7 +1060,7 @@
         // Text signals tilt decision — if nothing matches, we still neutralize interactivity
         // (pointer-events:none) but don't fully remove, since it might be a legitimate modal.
         const text = (el.innerText || '').toLowerCase().substring(0, 500);
-        const className = (typeof el.className === 'string') ? el.className.toLowerCase() : '';
+        const className = ownClassNames(el);
         const looksLikePaywall =
           /subscribe|sign in|log in|paywall|metered|unlock|continue reading|free article/.test(text) ||
           /paywall|gate|overlay|modal|subscribe|offer|piano|tp-modal|tinypass/.test(className);
@@ -1421,11 +1076,53 @@
     });
   }
 
+  // The element's own class names and id, lowercased. Utility-CSS tokens such
+  // as Tailwind's `[&_#paywall-fallback-container]:relative` style the element's
+  // children; they are not names for the element, so they are left out.
+  // (Matching the raw class string hid axios.com's whole article body.)
+  function ownClassNames(el) {
+    const tokens = el.classList ? Array.from(el.classList) : [];
+    const names = tokens.filter((token) => !/[[\]:&()]/.test(token));
+    return (names.join(' ') + ' ' + (el.id || '')).toLowerCase();
+  }
+
+  // True when the element carries the story itself: paragraphs of prose, or a
+  // main/article region. A paywall pass may hide what covers the story, never
+  // the story.
+  const ARTICLE_PARAGRAPH_CHARS = 80;
+  const ARTICLE_MIN_PARAGRAPHS = 3;
+  function holdsArticle(el) {
+    if (el.matches?.('main, article, [role="article"], [role="main"]')) return true;
+    if (el.querySelector?.('main, article, [role="article"], [role="main"]')) return true;
+    let prose = 0;
+    for (const p of el.querySelectorAll?.('p') || []) {
+      if ((p.textContent || '').trim().length >= ARTICLE_PARAGRAPH_CHARS && ++prose >= ARTICLE_MIN_PARAGRAPHS) return true;
+    }
+    return false;
+  }
+
+  // Soft paywalls keep the full story in the page and hide it with CSS while
+  // the wall is up (axios: `#piano-wall:has(...) ~ .gated-content { display: none }`).
+  // Hiding the wall does not undo that rule, so show the story directly.
+  const GATED_CONTENT_SELECTOR = '[class*="gated"], [class*="locked"], [class*="premium-content"], [class*="subscriber-content"]';
+  const GATED_NAME = /(^|[\s_-])(gated|locked|premium-content|subscriber-content)/;
+  function revealGatedContent() {
+    let revealed = 0;
+    try {
+      document.querySelectorAll(GATED_CONTENT_SELECTOR).forEach((el) => {
+        if (el.hasAttribute('data-websuddhi-revealed')) return;
+        if (!GATED_NAME.test(ownClassNames(el)) || !holdsArticle(el)) return;
+        if (window.getComputedStyle(el).display !== 'none') return;
+        el.style.setProperty('display', 'block', 'important');
+        el.setAttribute('data-websuddhi-revealed', 'gated-content');
+        revealed++;
+      });
+    } catch (err) {}
+    return revealed;
+  }
+
   function isPaywallElement(el) {
     const text = (el.innerText || '').substring(0, 500);
-    const className = (typeof el.className === 'string') ? el.className : '';
-    const id = el.id || '';
-
     // Check class/id for strong paywall indicators
     const strongClassPatterns = [
       'paywall', 'subscribe-wall', 'subscription-wall',
@@ -1434,7 +1131,7 @@
       'piano-offer', 'tp-modal', 'tinypass'
     ];
 
-    const classAndId = (className + ' ' + id).toLowerCase();
+    const classAndId = ownClassNames(el);
     if (strongClassPatterns.some(p => classAndId.includes(p))) {
       return true;
     }
@@ -1480,7 +1177,7 @@
 
           if (isFixed && coversContent && hasHighZIndex) {
             const text = (el.innerText || '').toLowerCase().substring(0, 500);
-            const className = (typeof el.className === 'string') ? el.className.toLowerCase() : '';
+            const className = ownClassNames(el);
 
             if (text.includes('subscribe') ||
                 text.includes('sign in') ||
@@ -1653,6 +1350,7 @@
     detectContentBlockers();
     detectBlurOverlays();
     restoreBodyScroll();
+    removedCount += revealGatedContent();
 
     return removedCount;
   }
@@ -1662,6 +1360,7 @@
     const tag = el.tagName?.toLowerCase();
     if (tag === 'body' || tag === 'html' || tag === 'main' || tag === 'article') return;
     if (el.id === 'content' || el.id === 'main-content' || el.id === 'article-body') return;
+    if (holdsArticle(el)) return;
 
     // Already removed
     if (el.hasAttribute('data-websuddhi-removed')) return;
@@ -1810,7 +1509,7 @@
           fakeAd.style.cssText = 'position:absolute!important;left:-9999px!important;top:-9999px!important;' +
             'width:1px!important;height:1px!important;opacity:0.01!important;pointer-events:none!important;' +
             'visibility:visible!important;display:block!important;';
-          fakeAd.innerHTML = '&nbsp;';
+          fakeAd.textContent = '\u00a0';
 
           if (document.body) {
             document.body.appendChild(fakeAd);
@@ -2056,10 +1755,14 @@
     if (!state.enabled || isSiteWhitelisted() || isSitePaused()) return;
 
     const allowed = getAllowedSelectorSet();
+    const currentHost = getCurrentHostname();
 
-    for (const selector of state.blockedSelectors.keys()) {
+    // Saved pick-mode selectors are site-specific: an id or DOM path picked on
+    // one site usually exists elsewhere and would hide an unrelated element.
+    for (const [selector, info] of state.blockedSelectors) {
       if (allowed.has(selector)) continue;
-      blockSelector(selector);
+      if (!selectorIsForThisSite(info, currentHost)) continue;
+      blockSelector(selector, { userRule: true });
     }
 
     for (const selector of ALL_SELECTORS) {
@@ -2068,7 +1771,7 @@
     }
 
     blockByAttributes();
-    handleDynamicContent();
+    handleShadowDOM();
 
     // Also apply social blocking if enabled
     if (state.socialBlockingEnabled) {
@@ -2076,12 +1779,30 @@
     }
   }
 
-  function blockSelector(selector) {
+  function selectorIsForThisSite(info, currentHost) {
+    const rawHost = typeof info === 'string' ? info : (info && info.url);
+    // Entries saved before the hostname was recorded have no scope; keep the
+    // old global behaviour for those rather than silently dropping them.
+    if (!rawHost || !currentHost) return true;
+
+    const normalize = (value) => String(value)
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .split('/')[0]
+      .replace(/^www\./, '');
+
+    const entryHost = normalize(rawHost);
+    const siteHost = normalize(currentHost);
+
+    return entryHost === siteHost || siteHost.endsWith('.' + entryHost);
+  }
+
+  function blockSelector(selector, opts) {
     try {
       const elements = document.querySelectorAll(selector);
       elements.forEach(el => {
         if (self.WebSuddhi.utils.isVisible(el) && !el.hasAttribute('data-websuddhi-blocked')) {
-          hideElement(el, selector);
+          hideElement(el, selector, opts);
         }
       });
     } catch (err) {}
@@ -2168,6 +1889,7 @@
       elements.forEach(el => {
         el.classList.remove('websuddhi-hidden');
         el.removeAttribute('data-websuddhi-blocked');
+        el.removeAttribute('data-websuddhi-rule');
         el.style.display = '';
         el.style.visibility = '';
         el.style.opacity = '';
@@ -2181,6 +1903,7 @@
     document.querySelectorAll('.websuddhi-hidden, [data-websuddhi-blocked], [data-websuddhi-removed]').forEach(el => {
       el.classList.remove('websuddhi-hidden', 'websuddhi-removed', 'websuddhi-social-blocked');
       el.removeAttribute('data-websuddhi-blocked');
+      el.removeAttribute('data-websuddhi-rule');
       el.removeAttribute('data-websuddhi-removed');
       el.style.display = '';
       el.style.visibility = '';
@@ -2196,6 +1919,7 @@
     document.querySelectorAll('.websuddhi-social-blocked, [data-websuddhi-blocked="social"]').forEach(el => {
       el.classList.remove('websuddhi-hidden', 'websuddhi-social-blocked');
       el.removeAttribute('data-websuddhi-blocked');
+      el.removeAttribute('data-websuddhi-rule');
       el.style.display = '';
       el.style.visibility = '';
       el.style.opacity = '';
@@ -2213,7 +1937,10 @@
           const attrNames = Array.from(el.attributes).map(a => a.name.toLowerCase());
           const attrValues = Array.from(el.attributes).map(a => (a.name + '=' + a.value).toLowerCase());
           const combined = attrNames.concat(attrValues).join(' ');
-          const hasAdAttr = attrs.some(adAttr => combined.includes(adAttr.toLowerCase()));
+          // Whole-token matching. A substring test made `loading="lazy"` match
+          // "ad" and hid every lazy iframe on the page.
+          const tokens = new Set(combined.split(/[^a-z0-9]+/).filter(Boolean));
+          const hasAdAttr = attrs.some(adAttr => tokens.has(adAttr.toLowerCase()));
           if (hasAdAttr && self.WebSuddhi.utils.isVisible(el)) {
             hideElement(el);
           }
@@ -2228,9 +1955,52 @@
     } catch (err) {}
   }
 
-  function hideElement(el, matchedSelector) {
+  // Never hide what is plainly the page itself. A broad selector that matches a
+  // layout wrapper takes the whole site down with it — galleries, images, text.
+  function isProtectedContent(el) {
+    if (!el || !el.tagName) return true;
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'html' || tag === 'body' || tag === 'main' || tag === 'article') return true;
+    if (el.querySelector && el.querySelector('main, article, [role="main"]')) return true;
+
+    // A large box holding media is content — unless it labels itself as an ad.
+    // Without this check, full-viewport video/exit-intent ads were never hidden.
+    const looksLikeAd = /(^|[\s_-])(ad|ads|advert\w*|sponsor\w*|promoted|interstitial|banner|overlay)([\s_-]|$)/i
+      .test(ownClassNames(el));
+    if (looksLikeAd) return false;
+
+    // Paragraphs of prose are the story. A broad list selector can reach an
+    // article wrapper through utility classes that style an ad slot inside it.
+    if (holdsArticle(el)) return true;
+
+    try {
+      const rect = el.getBoundingClientRect();
+      const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+      const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+      if (vw && vh && rect.width * rect.height >= vw * vh * 0.5) {
+        if (el.querySelector && el.querySelector('img, picture, video, h1, h2')) return true;
+      }
+    } catch (e) {}
+
+    return false;
+  }
+
+  // opts.userRule: the user picked this element themselves. The content guard
+  // exists to stop broad *filter-list* selectors eating articles; it must not
+  // veto an explicit user choice (it used to, silently, while the toast said
+  // "Element blocked"). Only <html>/<body> stay off-limits.
+  function hideElement(el, matchedSelector, opts) {
+    if (opts && opts.userRule) {
+      if (!el || !el.tagName || el === document.documentElement || el === document.body) return;
+    } else if (isProtectedContent(el)) {
+      return;
+    }
     el.classList.add('websuddhi-hidden');
     el.setAttribute('data-websuddhi-blocked', 'true');
+    // Which rule hid it. Lets the e2e survey (and anyone in devtools) trace a
+    // wrongly hidden element back to its selector. The page can already see
+    // data-websuddhi-blocked, so this exposes nothing new.
+    if (matchedSelector) el.setAttribute('data-websuddhi-rule', String(matchedSelector).slice(0, 200));
     el.style.setProperty('display', 'none', 'important');
     el.style.setProperty('visibility', 'hidden', 'important');
     el.style.setProperty('opacity', '0', 'important');
@@ -2243,6 +2013,21 @@
     // Try to get a meaningful selector for logging
     const selectorForLog = matchedSelector || getElementDescriptor(el);
     reportCosmeticBlockDebounced(selectorForLog);
+  }
+
+  // Undo cosmetic hides: reveal elements WebSuddhi hid on this page. Network
+  // blocking is untouched (background-owned). Returns the count restored.
+  function relaxCosmeticHides() {
+    let restored = 0;
+    const hidden = document.querySelectorAll('[data-websuddhi-blocked], .websuddhi-hidden');
+    hidden.forEach((el) => {
+      el.classList.remove('websuddhi-hidden');
+      el.removeAttribute('data-websuddhi-blocked');
+      el.removeAttribute('data-websuddhi-rule');
+      ['display', 'visibility', 'opacity', 'position', 'pointer-events', 'z-index'].forEach((p) => el.style.removeProperty(p));
+      restored += 1;
+    });
+    return restored;
   }
 
   function getElementDescriptor(el) {
@@ -2389,10 +2174,19 @@
     });
   }
 
-  function handleDynamicContent() {
-    setTimeout(() => applyBlocking(), 500);
-    setTimeout(() => applyBlocking(), 1500);
-    setTimeout(() => applyBlocking(), 3000);
+  // One late pass for ads injected after load. This used to be called from
+  // applyBlocking() itself, so every sweep scheduled three more sweeps — an
+  // exponential timer tree that pinned a CPU core on every page.
+  let dynamicContentTimer = null;
+
+  function scheduleLateSweep() {
+    if (dynamicContentTimer) return;
+    dynamicContentTimer = setTimeout(() => {
+      dynamicContentTimer = null;
+      applyBlocking();
+      // Pages that rebuild <head> (document.open, SPA shells) drop our style.
+      if (state.enabled) attachListCosmetics();
+    }, 1500);
   }
 
   // ============================================
@@ -2404,443 +2198,6 @@
         el.removeAttribute('ping');
       });
     } catch (e) {}
-  }
-
-  // ============================================
-  // PICK MODE - Select & Save Elements
-  // ============================================
-  function startPickMode() {
-    // Only run pick mode in the top/main frame to avoid conflicts with iframes
-    if (window !== window.top) {
-      return;
-    }
-
-    if (state.zapMode) stopZapMode();
-    state.pickMode = true;
-    state.pickModeShiftHeld = false;
-    state.pickModeCtrlHeld = false;
-    state.pickDialogOpen = false;
-    document.body.classList.add('websuddhi-pick-mode');
-
-    // Ensure document has focus for keyboard events
-    window.focus();
-    if (document.body) {
-      document.body.focus();
-    }
-
-    addPickListeners();
-
-    document.body.style.userSelect = 'none';
-    document.body.style.webkitUserSelect = 'none';
-
-    // Create the preview panel
-    createPreviewPanel();
-
-    showToast('Pick mode: click an element to block it. Press Esc to cancel.');
-  }
-
-  function stopPickMode() {
-    state.pickMode = false;
-    state.pickModeShiftHeld = false;
-    state.pickModeCtrlHeld = false;
-    state.pickDialogOpen = false;
-    document.body.classList.remove('websuddhi-pick-mode');
-
-    removePickListeners();
-
-    document.body.style.userSelect = '';
-    document.body.style.webkitUserSelect = '';
-
-    clearHighlights();
-    removePreviewPanel();
-    removeToast();
-
-    // Clean up any leftover dialog
-    const dialog = document.querySelector('.websuddhi-pick-dialog');
-    if (dialog) dialog.remove();
-
-    const preview = document.querySelector('.websuddhi-pick-preview');
-    if (preview) preview.remove();
-  }
-
-  // ============================================
-  // ELEMENT PREVIEW PANEL
-  // ============================================
-  function createPreviewPanel() {
-    // Remove existing panel if any
-    removePreviewPanel();
-
-    const panel = document.createElement('div');
-    panel.className = 'websuddhi-preview-panel';
-    panel.innerHTML = `
-      <div class="websuddhi-preview-header">Element Preview</div>
-      <div class="websuddhi-preview-selector"></div>
-      <div class="websuddhi-preview-info">
-        <span class="websuddhi-preview-tag"></span>
-        <span class="websuddhi-preview-matches"></span>
-        <span class="websuddhi-preview-dimensions"></span>
-      </div>
-      <div class="websuddhi-preview-details">
-        <span class="websuddhi-preview-id"></span>
-        <span class="websuddhi-preview-classes"></span>
-      </div>
-      <div class="websuddhi-preview-warning" style="display: none;"></div>
-      <div class="websuddhi-preview-hint">
-        Click to block <kbd>Esc</kbd> cancel <kbd>Shift</kbd> parent <kbd>Ctrl</kbd> specific
-      </div>
-    `;
-    panel.style.display = 'none';
-    document.body.appendChild(panel);
-    return panel;
-  }
-
-  function removePreviewPanel() {
-    const panel = document.querySelector('.websuddhi-preview-panel');
-    if (panel) panel.remove();
-  }
-
-  function updatePreviewPanel(element) {
-    const panel = document.querySelector('.websuddhi-preview-panel');
-    if (!panel || !element) {
-      if (panel) panel.style.display = 'none';
-      return;
-    }
-
-    // Get the actual target element based on modifiers
-    let targetElement = element;
-    if (state.pickModeShiftHeld && element.parentElement && element.parentElement !== document.body) {
-      targetElement = element.parentElement;
-      // Update highlight to show parent instead
-      clearHighlights();
-      targetElement.classList.add('websuddhi-pick-highlight');
-    }
-
-    // Generate selector based on modifiers
-    const selector = state.pickModeCtrlHeld
-      ? getSpecificSelector(targetElement)
-      : getUniqueSelector(targetElement);
-
-    // Count matching elements
-    let matchCount = 0;
-    try {
-      matchCount = document.querySelectorAll(selector).length;
-    } catch (e) {
-      matchCount = 1;
-    }
-
-    // Get element info
-    const tagName = targetElement.tagName.toLowerCase();
-    const rect = targetElement.getBoundingClientRect();
-    const width = Math.round(rect.width);
-    const height = Math.round(rect.height);
-    const id = targetElement.id || '';
-    const classes = (typeof targetElement.className === 'string')
-      ? targetElement.className.trim().split(/\s+/).filter(c => c && !c.startsWith('websuddhi')).slice(0, 5)
-      : [];
-
-    // Update panel content
-    const selectorEl = panel.querySelector('.websuddhi-preview-selector');
-    const tagEl = panel.querySelector('.websuddhi-preview-tag');
-    const matchesEl = panel.querySelector('.websuddhi-preview-matches');
-    const dimensionsEl = panel.querySelector('.websuddhi-preview-dimensions');
-    const idEl = panel.querySelector('.websuddhi-preview-id');
-    const classesEl = panel.querySelector('.websuddhi-preview-classes');
-    const warningEl = panel.querySelector('.websuddhi-preview-warning');
-
-    if (selectorEl) {
-      // Truncate long selectors for display
-      const displaySelector = selector.length > 100 ? selector.substring(0, 100) + '...' : selector;
-      selectorEl.textContent = displaySelector;
-      selectorEl.title = selector;
-    }
-
-    if (tagEl) {
-      tagEl.textContent = tagName;
-    }
-
-    if (matchesEl) {
-      matchesEl.textContent = matchCount + ' match' + (matchCount !== 1 ? 'es' : '');
-      matchesEl.className = 'websuddhi-preview-matches';
-      if (matchCount > 10) {
-        matchesEl.classList.add('danger');
-      } else if (matchCount > 5) {
-        matchesEl.classList.add('warning');
-      }
-    }
-
-    if (dimensionsEl) {
-      dimensionsEl.textContent = width + ' x ' + height + 'px';
-    }
-
-    if (idEl) {
-      idEl.textContent = id ? '#' + id : '';
-      idEl.style.display = id ? 'inline' : 'none';
-    }
-
-    if (classesEl) {
-      if (classes.length > 0) {
-        classesEl.textContent = '.' + classes.join(' .');
-        classesEl.style.display = 'inline';
-      } else {
-        classesEl.style.display = 'none';
-      }
-    }
-
-    // Show warning if many elements match
-    if (warningEl) {
-      if (matchCount > 5) {
-        warningEl.textContent = 'Warning: This will block ' + matchCount + ' element' + (matchCount !== 1 ? 's' : '');
-        warningEl.style.display = 'flex';
-      } else {
-        warningEl.style.display = 'none';
-      }
-    }
-
-    // Position panel to avoid overlapping with hovered element
-    positionPreviewPanel(panel, rect);
-
-    panel.style.display = 'block';
-  }
-
-  function positionPreviewPanel(panel, elementRect) {
-    // Reset position classes
-    panel.classList.remove('position-top');
-
-    const panelHeight = panel.offsetHeight || 150;
-    const viewportHeight = window.innerHeight;
-    const bottomSpace = viewportHeight - elementRect.bottom;
-
-    // If element is in the bottom half of the screen, show panel at top
-    if (elementRect.bottom > viewportHeight / 2 && bottomSpace < panelHeight + 40) {
-      panel.classList.add('position-top');
-    }
-  }
-
-  function getSpecificSelector(element) {
-    // Generate a more specific selector including nth-child
-    if (!element || element === document.body) return 'body';
-
-    const path = [];
-    let el = element;
-    let depth = 0;
-
-    while (el && el !== document.documentElement && depth < 4) {
-      let selector = el.tagName.toLowerCase();
-
-      // Add ID if present
-      if (el.id) {
-        selector += '#' + CSS.escape(el.id);
-        path.unshift(selector);
-        break;
-      }
-
-      // Add classes (limit to 2)
-      if (el.className && typeof el.className === 'string') {
-        const classes = el.className.trim().split(/\s+/)
-          .filter(c => c && !c.startsWith('websuddhi'))
-          .slice(0, 2);
-        if (classes.length > 0) {
-          selector += '.' + classes.map(c => CSS.escape(c)).join('.');
-        }
-      }
-
-      // Add nth-child for specificity
-      const parent = el.parentElement;
-      if (parent) {
-        const siblings = Array.from(parent.children);
-        const index = siblings.indexOf(el) + 1;
-        selector += ':nth-child(' + index + ')';
-      }
-
-      path.unshift(selector);
-      el = el.parentElement;
-      depth++;
-    }
-
-    return path.join(' > ');
-  }
-
-  // Keyboard handlers for pick mode modifiers
-  function handlePickKeyDown(e) {
-    if (!state.pickMode) return;
-
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      stopPickMode();
-      return;
-    }
-
-    // Track modifier keys
-    if (e.key === 'Shift' && !state.pickModeShiftHeld) {
-      state.pickModeShiftHeld = true;
-      // Update preview if we have a hovered element
-      if (state.hoveredElement) {
-        updatePreviewPanel(state.hoveredElement);
-      }
-    }
-
-    if ((e.key === 'Control' || e.key === 'Meta') && !state.pickModeCtrlHeld) {
-      state.pickModeCtrlHeld = true;
-      // Update preview if we have a hovered element
-      if (state.hoveredElement) {
-        updatePreviewPanel(state.hoveredElement);
-      }
-    }
-  }
-
-  function handlePickKeyUp(e) {
-    if (!state.pickMode) return;
-
-    if (e.key === 'Shift') {
-      state.pickModeShiftHeld = false;
-      // Update preview and restore highlight to original element
-      if (state.hoveredElement) {
-        clearHighlights();
-        state.hoveredElement.classList.add('websuddhi-pick-highlight');
-        updatePreviewPanel(state.hoveredElement);
-      }
-    }
-
-    if (e.key === 'Control' || e.key === 'Meta') {
-      state.pickModeCtrlHeld = false;
-      // Update preview
-      if (state.hoveredElement) {
-        updatePreviewPanel(state.hoveredElement);
-      }
-    }
-  }
-
-  // ============================================
-  // ZAP MODE - Quick Hide Without Saving
-  // ============================================
-  function startZapMode() {
-    // Only run zap mode in the top/main frame to avoid conflicts with iframes
-    if (window !== window.top) {
-      return;
-    }
-
-    if (state.pickMode) stopPickMode();
-    state.zapMode = true;
-    document.body.classList.add('websuddhi-zap-mode');
-
-    // Ensure document has focus for keyboard events
-    window.focus();
-    if (document.body) {
-      document.body.focus();
-    }
-
-    document.addEventListener('mouseover', handleMouseOver, true);
-    document.addEventListener('mouseout', handleMouseOut, true);
-    document.addEventListener('click', handleZapClick, true);
-    document.addEventListener('keydown', handleZapEscape, true);
-
-    document.body.style.userSelect = 'none';
-    document.body.style.webkitUserSelect = 'none';
-
-    showToast('Zap mode: click elements to hide them instantly. Press Esc to exit.');
-  }
-
-  function stopZapMode() {
-    state.zapMode = false;
-    document.body.classList.remove('websuddhi-zap-mode');
-
-    document.removeEventListener('mouseover', handleMouseOver, true);
-    document.removeEventListener('mouseout', handleMouseOut, true);
-    document.removeEventListener('click', handleZapClick, true);
-    document.removeEventListener('keydown', handleZapEscape, true);
-
-    document.body.style.userSelect = '';
-    document.body.style.webkitUserSelect = '';
-
-    clearHighlights();
-    removeToast();
-  }
-
-  function handleZapClick(e) {
-    if (!state.zapMode) return;
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-
-    const el = e.target;
-    if (el.classList.contains('websuddhi-pick-preview') || el.closest('.websuddhi-pick-preview')) return;
-
-    hideElement(el);
-    showToast('Element hidden (not saved)');
-  }
-
-  function handleZapEscape(e) {
-    if (e.key === 'Escape' && state.zapMode) {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      stopZapMode();
-    }
-  }
-
-  // ============================================
-  // SHARED PICK/ZAP HANDLERS
-  // ============================================
-  function handleMouseOver(e) {
-    if (!state.pickMode && !state.zapMode) return;
-    e.stopPropagation();
-
-    // Don't highlight our own UI
-    if (e.target.classList.contains('websuddhi-pick-preview') ||
-        e.target.closest('.websuddhi-pick-preview') ||
-        e.target.classList.contains('websuddhi-preview-panel') ||
-        e.target.closest('.websuddhi-preview-panel') ||
-        e.target.classList.contains('websuddhi-pick-dialog') ||
-        e.target.closest('.websuddhi-pick-dialog') ||
-        e.target.classList.contains('websuddhi-toast') ||
-        e.target === document.body ||
-        e.target === document.documentElement) return;
-
-    clearHighlights();
-    state.hoveredElement = e.target;
-    state.hoveredElement.classList.add('websuddhi-pick-highlight');
-
-    if (state.pickMode) {
-      // Use the new enhanced preview panel
-      updatePreviewPanel(e.target);
-    }
-  }
-
-  function handleMouseOut(e) {
-    if (!state.pickMode && !state.zapMode) return;
-    if (e.target === state.hoveredElement) {
-      e.target.classList.remove('websuddhi-pick-highlight');
-      state.hoveredElement = null;
-    }
-  }
-
-  function clearHighlights() {
-    document.querySelectorAll('.websuddhi-pick-highlight').forEach(el => {
-      el.classList.remove('websuddhi-pick-highlight');
-    });
-  }
-
-  function handlePickClick(e) {
-    if (!state.pickMode) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-
-    // Determine target element based on modifiers
-    let targetElement = e.target;
-    if (state.pickModeShiftHeld && e.target.parentElement && e.target.parentElement !== document.body) {
-      targetElement = e.target.parentElement;
-    }
-
-    // Generate selector based on modifiers
-    const selector = state.pickModeCtrlHeld
-      ? getSpecificSelector(targetElement)
-      : getUniqueSelector(targetElement);
-
-    showConfirmDialog(selector, targetElement);
   }
 
   // ============================================
@@ -2913,176 +2270,6 @@
     return path.join(' > ');
   }
 
-  // ============================================
-  // UI DIALOGS
-  // ============================================
-  function showPreview(element) {
-    let preview = document.querySelector('.websuddhi-pick-preview');
-    if (!preview) {
-      preview = document.createElement('div');
-      preview.className = 'websuddhi-pick-preview';
-      document.body.appendChild(preview);
-    }
-
-    const rect = element.getBoundingClientRect();
-    const selector = getUniqueSelector(element);
-    const tagName = element.tagName.toLowerCase();
-    const dims = Math.round(rect.width) + 'x' + Math.round(rect.height);
-
-    preview.innerHTML =
-      '<div class="websuddhi-pick-info">' +
-        '<span>Click to block</span>' +
-        '<code>' + escapeHtml(selector.substring(0, 80)) + (selector.length > 80 ? '...' : '') + '</code>' +
-        '<span class="websuddhi-pick-hint">&lt;' + tagName + '&gt; ' + dims + ' | Esc to cancel</span>' +
-      '</div>';
-
-    const padding = 10;
-    let top = rect.bottom + padding;
-    let left = rect.left;
-
-    if (left + 300 > window.innerWidth) {
-      left = window.innerWidth - 320;
-    }
-    if (left < 10) left = 10;
-    if (top + 100 > window.innerHeight) {
-      top = rect.top - 110;
-    }
-    if (top < 0) top = 10;
-
-    preview.style.cssText =
-      'position:fixed!important;z-index:2147483647!important;' +
-      'top:' + top + 'px!important;left:' + left + 'px!important;';
-  }
-
-  function removePickListeners() {
-    document.removeEventListener('mouseover', handleMouseOver, true);
-    document.removeEventListener('mouseout', handleMouseOut, true);
-    document.removeEventListener('click', handlePickClick, true);
-    document.removeEventListener('contextmenu', handlePickClick, true);
-    document.removeEventListener('keydown', handlePickKeyDown, true);
-    document.removeEventListener('keyup', handlePickKeyUp, true);
-  }
-
-  function addPickListeners() {
-    document.addEventListener('mouseover', handleMouseOver, true);
-    document.addEventListener('mouseout', handleMouseOut, true);
-    document.addEventListener('click', handlePickClick, true);
-    document.addEventListener('contextmenu', handlePickClick, true);
-    document.addEventListener('keydown', handlePickKeyDown, true);
-    document.addEventListener('keyup', handlePickKeyUp, true);
-  }
-
-  function showConfirmDialog(selector, element) {
-    // Remove existing dialog
-    const existingDialog = document.querySelector('.websuddhi-pick-dialog');
-    if (existingDialog) existingDialog.remove();
-
-    // Fully remove all capture-phase listeners so nothing intercepts dialog clicks
-    removePickListeners();
-    document.body.classList.remove('websuddhi-pick-mode');
-    clearHighlights();
-    removePreviewPanel();
-
-    const dialog = document.createElement('div');
-    dialog.className = 'websuddhi-pick-dialog';
-    dialog.style.cssText = 'position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;z-index:2147483647!important;display:flex!important;align-items:center!important;justify-content:center!important;pointer-events:auto!important;cursor:default!important;';
-
-    const content = document.createElement('div');
-    content.className = 'websuddhi-pick-content';
-    content.style.cssText = 'pointer-events:auto!important;';
-
-    const titleEl = document.createElement('div');
-    titleEl.className = 'websuddhi-pick-title';
-    titleEl.textContent = 'Block this element?';
-    content.appendChild(titleEl);
-
-    const selectorEl = document.createElement('code');
-    selectorEl.className = 'websuddhi-pick-selector';
-    selectorEl.textContent = selector;
-    content.appendChild(selectorEl);
-
-    const buttonsDiv = document.createElement('div');
-    buttonsDiv.className = 'websuddhi-pick-buttons';
-    buttonsDiv.style.cssText = 'pointer-events:auto!important;';
-
-    const confirmBtn = document.createElement('button');
-    confirmBtn.className = 'websuddhi-btn confirm';
-    confirmBtn.textContent = 'Block';
-    confirmBtn.style.cssText = 'pointer-events:auto!important;cursor:pointer!important;';
-    buttonsDiv.appendChild(confirmBtn);
-
-    const cancelBtn = document.createElement('button');
-    cancelBtn.className = 'websuddhi-btn cancel';
-    cancelBtn.textContent = 'Cancel';
-    cancelBtn.style.cssText = 'pointer-events:auto!important;cursor:pointer!important;';
-    buttonsDiv.appendChild(cancelBtn);
-
-    content.appendChild(buttonsDiv);
-    dialog.appendChild(content);
-    document.body.appendChild(dialog);
-
-    // Focus the confirm button so keyboard works immediately
-    confirmBtn.focus();
-
-    function closeDialog() {
-      if (dialog.parentNode) dialog.remove();
-    }
-
-    // Escape key closes dialog (simple, no capture needed)
-    function onKeyDown(e) {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        closeDialog();
-        document.removeEventListener('keydown', onKeyDown);
-        resumePickMode();
-      }
-    }
-    document.addEventListener('keydown', onKeyDown);
-
-    function resumePickMode() {
-      document.removeEventListener('keydown', onKeyDown);
-      document.body.classList.add('websuddhi-pick-mode');
-      addPickListeners();
-      createPreviewPanel();
-    }
-
-    confirmBtn.addEventListener('click', async () => {
-      try {
-        if (state.blockedSelectors.size >= 500) {
-          showToast('Rule limit reached (500). Remove old rules first.');
-          closeDialog();
-          stopPickMode();
-          return;
-        }
-        state.blockedSelectors.set(selector, {
-          url: window.location.hostname,
-          date: Date.now()
-        });
-        await saveSelectors();
-        blockSelector(selector);
-        try { await sendMessage({ type: 'ADD_SELECTOR', selector }); } catch (e) {}
-        closeDialog();
-        document.removeEventListener('keydown', onKeyDown);
-        stopPickMode();
-        showToast('Element blocked and rule saved');
-      } catch (err) {
-        logError('Failed to add selector:', err);
-      }
-    });
-
-    cancelBtn.addEventListener('click', () => {
-      closeDialog();
-      resumePickMode();
-    });
-
-    dialog.addEventListener('click', (e) => {
-      if (e.target === dialog) {
-        closeDialog();
-        resumePickMode();
-      }
-    });
-  }
-
   function removeToast() {
     const toast = document.querySelector('.websuddhi-toast');
     if (toast) toast.remove();
@@ -3153,15 +2340,115 @@
     });
   }
 
-  function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.textContent;
+  // ============================================
+  // ON-DEMAND MODULES
+  // ============================================
+  // content/picker.js and content/phishing-warning.js are not manifest content
+  // scripts. The background injects them into the asking frame on first use.
+  // They read core helpers from this isolated-world global, which page
+  // scripts cannot reach.
+  self.__wsCore = {
+    state, blockSelector, hideElement, saveSelectors, sendMessage,
+    showToast, removeToast, getUniqueSelector, logError,
+    normalizeWarningDomain, sendMessageEarly
+  };
+
+  const moduleLoads = new Map();
+  function loadModule(globalName, messageType) {
+    if (self[globalName]) return Promise.resolve(self[globalName]);
+    if (!moduleLoads.has(globalName)) {
+      moduleLoads.set(globalName, sendMessageEarly({ type: messageType })
+        .then(() => {
+          if (!self[globalName]) throw new Error(messageType + ': module failed to load');
+          return self[globalName];
+        })
+        .finally(() => moduleLoads.delete(globalName)));
+    }
+    return moduleLoads.get(globalName);
+  }
+
+  function loadPicker() {
+    return loadModule('__wsPicker', 'LOAD_PICKER');
   }
 
   // ============================================
   // START
   // ============================================
+  // Register the message listener synchronously. It used to be installed at the
+  // end of an async init(), so a storage failure left the page permanently deaf
+  // to pick mode, toggles and whitelist messages.
+  // ============================================
+  // RIGHT-CLICK "Block this element"
+  // ============================================
+  const CONTEXT_TARGET_TTL_MS = 60 * 1000;
+
+  function rememberContextTarget(e) {
+    if (state.pickMode) return; // pick mode handles its own right-clicks
+    const t = e.target;
+    state.contextTarget = t && t.nodeType === 1 ? t : (t && t.parentElement) || null;
+    state.contextTargetAt = Date.now();
+  }
+
+  // A right-click usually lands on an inner <img>/<span>. Climb to the outermost
+  // wrapper that is still essentially the same box, so the whole ad slot goes
+  // rather than leaving an empty frame behind. Never climbs into <body>.
+  function widenToWrapper(el) {
+    const area = (node) => {
+      try { const r = node.getBoundingClientRect(); return r.width * r.height; } catch (e) { return 0; }
+    };
+    let cur = el;
+    const base = area(el);
+    if (!base) return el;
+    while (cur.parentElement &&
+           cur.parentElement !== document.body &&
+           cur.parentElement !== document.documentElement) {
+      const parentArea = area(cur.parentElement);
+      if (!parentArea || parentArea > base * 1.3) break;
+      cur = cur.parentElement;
+    }
+    return cur;
+  }
+
+  async function blockContextTarget() {
+    const raw = state.contextTarget;
+    const fresh = raw && raw.isConnected && (Date.now() - state.contextTargetAt) < CONTEXT_TARGET_TTL_MS;
+    state.contextTarget = null;
+    if (!fresh) {
+      // Nothing right-clicked in this frame (e.g. older browser without frameId).
+      if (window === window.top) (await loadPicker()).startPickMode();
+      return { success: true, pickMode: state.pickMode };
+    }
+
+    const el = widenToWrapper(raw);
+    if (el === document.body || el === document.documentElement) {
+      showToast('Can\'t block the whole page');
+      return { success: false, error: 'refused page root' };
+    }
+    const selector = getUniqueSelector(el);
+    hideElement(el, selector, { userRule: true });
+    if (!el.hasAttribute('data-websuddhi-blocked')) {
+      return { success: false, error: 'could not hide' };
+    }
+    if (state.blockedSelectors.size >= 500) {
+      showToast('Hidden for now. Rule limit reached (500), so it was not saved.');
+      return { success: true, saved: false, selector };
+    }
+    state.blockedSelectors.set(selector, { url: window.location.hostname, date: Date.now() });
+    try {
+      await saveSelectors();
+      sendMessage({ type: 'ADD_SELECTOR', selector }).catch(() => {});
+    } catch (err) {
+      logError('Failed to save selector:', err);
+    }
+    showToast('Element blocked on ' + (window.location.hostname || 'this page'));
+    return { success: true, saved: true, selector };
+  }
+
+  // Capture phase, registered at document_start, so the page can't swallow it.
+  document.addEventListener('contextmenu', rememberContextTarget, true);
+
+  setupMessageListener();
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {

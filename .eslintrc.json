@@ -10,7 +10,7 @@
   },
   "overrides": [
     {
-      "files": ["rollup.config.js", "vitest.config.js", "src/**/*.js"],
+      "files": ["rollup.config.js", "vitest.config.js", "src/**/*.js", "scripts/**/*.mjs"],
       "env": {
         "node": true,
         "browser": false
@@ -20,7 +20,7 @@
       }
     },
     {
-      "files": ["tests/**/*.js"],
+      "files": ["tests/**/*.js", "tests/**/*.mjs"],
       "env": {
         "node": true,
         "browser": true
@@ -62,6 +62,7 @@
   },
   "ignorePatterns": [
     "_metadata/",
+    "build/",
     "dist/",
     "icons/convert-icons.js",
     "safari*/",

@@ -1,0 +1,46 @@
+name: Refresh blocklists
+
+on:
+  schedule:
+    # Every Monday at 04:00 UTC — upstream lists move constantly.
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '20'
+
+      - run: npm install --no-audit --no-fund
+
+      - name: Compile blocklists
+        run: npm run build:blocklists
+
+      - name: Open PR when the rules changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git diff --quiet -- rules manifest.json; then
+            echo "No blocklist changes this week."
+            exit 0
+          fi
+
+          git config user.name "websuddhi-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git checkout -b "chore/refresh-blocklists-$(date +%Y%m%d)"
+          git add rules manifest.json
+          git commit -m "chore(rules): refresh upstream blocklists"
+          git push -u origin HEAD
+          gh pr create \
+            --title "chore(rules): refresh upstream blocklists" \
+            --body "Automated weekly refresh of the generated declarativeNetRequest rulesets. Review the rule counts before merging." \
+            --base main

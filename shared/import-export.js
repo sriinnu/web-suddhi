@@ -17,6 +17,7 @@
   const EXPORT_KEYS = [
     'enabled',
     'paywallEnabled',
+    'scriptletsEnabled',
     'socialBlockingEnabled',
     'networkBlockingEnabled',
     'urlCleaningEnabled',
@@ -31,6 +32,8 @@
     'loggingEnabled',
     'syncEnabled',
     'theme',
+    'palette',
+    'colorMode',
     'toastDuration',
     'enabledLanguageFilters',
     'shortcuts',
@@ -98,7 +101,7 @@
       getLocalStorage(EXPORT_KEYS)
         .then((data) => {
           const exportData = {
-            version: '2.3.0',
+            version: '3.0.0',
             exportedAt: new Date().toISOString(),
             settings: {}
           };
@@ -174,6 +177,7 @@
                 break;
               case 'enabled':
               case 'paywallEnabled':
+              case 'scriptletsEnabled':
               case 'socialBlockingEnabled':
               case 'networkBlockingEnabled':
               case 'urlCleaningEnabled':
@@ -194,8 +198,15 @@
                 }
                 break;
               case 'theme':
-                if (typeof settings[key] !== 'string' || settings[key].length === 0) {
+              case 'palette':
+                if (typeof settings[key] !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(settings[key])) {
                   console.warn(`Skipping ${key}: expected string`);
+                  continue;
+                }
+                break;
+              case 'colorMode':
+                if (!['system', 'light', 'dark'].includes(settings[key])) {
+                  console.warn(`Skipping ${key}: expected system, light or dark`);
                   continue;
                 }
                 break;

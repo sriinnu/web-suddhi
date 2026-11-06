@@ -1,0 +1,23 @@
+{
+  "stripe.com": "payment",
+  "js.stripe.com": "payment",
+  "paypal.com": "payment",
+  "paypalobjects.com": "payment",
+  "braintreegateway.com": "payment",
+  "adyen.com": "payment",
+  "applepay.cdn-apple.com": "payment",
+  "checkout.com": "payment",
+  "google.com/recaptcha": "captcha",
+  "recaptcha.net": "captcha",
+  "gstatic.com/recaptcha": "captcha",
+  "hcaptcha.com": "captcha",
+  "challenges.cloudflare.com": "captcha",
+  "accounts.google.com": "auth",
+  "login.microsoftonline.com": "auth",
+  "appleid.apple.com": "auth",
+  "youtube.com": "embed",
+  "youtube-nocookie.com": "embed",
+  "player.vimeo.com": "embed",
+  "google.com/maps": "embed",
+  "maps.googleapis.com": "embed"
+}

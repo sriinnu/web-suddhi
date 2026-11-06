@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "WebSuddhi",
-  "version": "2.3.0",
+  "version": "3.0.9",
   "description": "Block ads, remove paywalls, strip trackers, and clean up any website. Privacy-first, no tracking.",
   "permissions": [
     "storage",
@@ -21,33 +21,58 @@
   "background": {
     "scripts": [
       "shared/utils.js",
+      "shared/rule-model.js",
       "background/background.js",
+      "background/classifier.js",
+      "background/list-loader.js",
       "background/network-blocker.js",
       "background/url-cleaner.js",
       "background/stats-manager.js",
       "background/privacy.js",
       "background/filter-lists.js",
-      "background/phishing-detector.js"
+      "background/phishing-detector.js",
+      "background/frame-registry.js",
+      "background/frame-blocker.js",
+      "background/connection-log.js",
+      "background/firewall.js"
     ],
     "persistent": true
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["shared/utils.js", "content/ad-blocker.js"],
-      "css": ["content/ad-blocker.css"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "shared/utils.js",
+        "content/ad-blocker.js",
+        "content/frame-agent.js"
+      ],
+      "css": [
+        "content/ad-blocker.css"
+      ],
       "run_at": "document_start",
       "all_frames": true
     },
     {
-      "matches": ["<all_urls>"],
-      "js": ["shared/utils.js", "content/cookie-consent.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "shared/utils.js",
+        "content/cookie-consent.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     },
     {
-      "matches": ["<all_urls>"],
-      "js": ["shared/utils.js", "content/annoyance-blocker.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "shared/utils.js",
+        "content/annoyance-blocker.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }
@@ -78,15 +103,21 @@
   ],
   "commands": {
     "toggle-pick-mode": {
-      "suggested_key": { "default": "Alt+P" },
+      "suggested_key": {
+        "default": "Alt+P"
+      },
       "description": "Toggle element picker"
     },
     "toggle-whitelist": {
-      "suggested_key": { "default": "Alt+W" },
+      "suggested_key": {
+        "default": "Alt+W"
+      },
       "description": "Toggle whitelist for current site"
     },
     "open-settings": {
-      "suggested_key": { "default": "Alt+S" },
+      "suggested_key": {
+        "default": "Alt+S"
+      },
       "description": "Open settings"
     }
   }

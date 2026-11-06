@@ -59,8 +59,70 @@
       enabled: true,
       builtin: true,
       ruleCount: 0
+    },
+    {
+      id: 'websuddhi-security',
+      name: 'Threat Intelligence (malware, phishing, scams)',
+      url: null,
+      enabled: true,
+      builtin: true,
+      ruleCount: 0
+    },
+    {
+      id: 'websuddhi-spam',
+      name: 'Spam TLDs',
+      url: null,
+      enabled: true,
+      builtin: true,
+      ruleCount: 0
     }
   ];
+
+  // Which rulesets each built-in list owns. Generated chunk ids follow
+  // `generated_<category>_<n>`, so a prefix match covers every chunk.
+  const BUILTIN_RULESET_MATCHERS = {
+    'websuddhi-ads': ['ad_domains', 'generated_ads_'],
+    'websuddhi-tracking': ['tracking_domains', 'generated_tracking_'],
+    'websuddhi-security': ['generated_security_'],
+    'websuddhi-spam': ['generated_spam_']
+  };
+
+  let rulesetCountsCache = null;
+
+  function getRulesetIdsForBuiltin(subscriptionId) {
+    const matchers = BUILTIN_RULESET_MATCHERS[subscriptionId] || [];
+    if (!matchers.length) return [];
+
+    let resources = [];
+    try {
+      resources = api.runtime.getManifest()?.declarative_net_request?.rule_resources || [];
+    } catch (e) {
+      resources = [];
+    }
+
+    return resources
+      .map((resource) => resource && resource.id)
+      .filter((id) => id && matchers.some((match) => id === match || id.startsWith(match)));
+  }
+
+  async function loadRulesetCounts() {
+    if (rulesetCountsCache) return rulesetCountsCache;
+
+    try {
+      const response = await fetch(api.runtime.getURL('rules/ruleset-counts.json'));
+      rulesetCountsCache = await response.json();
+    } catch (e) {
+      rulesetCountsCache = {};
+    }
+
+    return rulesetCountsCache;
+  }
+
+  async function getBuiltinRuleCount(subscriptionId) {
+    const counts = await loadRulesetCounts();
+    return getRulesetIdsForBuiltin(subscriptionId)
+      .reduce((sum, id) => sum + (Number(counts[id]) || 0), 0);
+  }
 
   // MV2: In-memory set of blocked domains from subscriptions
   let mv2SubscriptionDomains = new Set();
@@ -289,15 +351,20 @@
     await setStorage({ filterSubscriptions: subscriptions });
 
     if (sub.builtin) {
-      // Toggle built-in rulesets
+      // Toggle every ruleset the category owns — the curated one plus the
+      // generated chunks. Toggling only the curated file left 29,500 generated
+      // rules blocking while the UI claimed the list was off.
       if (api.declarativeNetRequest) {
-        const rulesetId = sub.id === 'websuddhi-ads' ? 'ad_domains' : 'tracking_domains';
+        const rulesetIds = getRulesetIdsForBuiltin(sub.id);
         try {
           await api.declarativeNetRequest.updateEnabledRulesets({
-            enableRulesetIds: enabled ? [rulesetId] : [],
-            disableRulesetIds: enabled ? [] : [rulesetId]
+            enableRulesetIds: enabled ? rulesetIds : [],
+            disableRulesetIds: enabled ? [] : rulesetIds
           });
-        } catch (e) {}
+        } catch (e) {
+          logError('Failed to toggle built-in rulesets:', e);
+          return { success: false, error: e.message || 'Could not update filter list' };
+        }
       }
     } else {
       // Toggle custom subscription rules
@@ -498,7 +565,7 @@
           priority: 1,
           action: { type: 'block' },
           condition: {
-            urlFilter: '||' + domain,
+            urlFilter: '||' + domain + '^',
             resourceTypes: [
               'script', 'image', 'xmlhttprequest', 'sub_frame',
               'stylesheet', 'font', 'media', 'websocket', 'ping', 'other'

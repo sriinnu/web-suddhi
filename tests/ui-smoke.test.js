@@ -9,6 +9,11 @@ function readFixture(relativePath) {
   return readFileSync(resolve(ROOT_DIR, relativePath), 'utf8');
 }
 
+// The popup's own scripts, in popup.html order. They share one global scope in
+// the browser, so the harness runs them as one script.
+const POPUP_SCRIPTS = Array.from(readFixture('popup/popup.html').matchAll(/<script src="(modules\/[^"]+)"/g),
+  (m) => 'popup/' + m[1]);
+
 function pickStorageValues(source, keys) {
   if (keys === null || keys === undefined) return { ...source };
   if (Array.isArray(keys)) {
@@ -146,11 +151,13 @@ async function mountExtensionPage(htmlPath, scriptPath, api, options = {}) {
   };
   globalThis.IntersectionObserver = window.IntersectionObserver;
 
+  window.eval(readFixture('shared/palettes.js')); // omit-allow: test harness runs the extension's own bundled script in jsdom
   window.eval(readFixture('shared/utils.js'));
   for (const extraScript of extraScripts) {
     window.eval(readFixture(extraScript));
   }
-  window.eval(readFixture(scriptPath));
+  const scripts = Array.isArray(scriptPath) ? scriptPath : [scriptPath];
+  window.eval(scripts.map(readFixture).join('\n')); // omit-allow: test harness runs the extension's own popup scripts in jsdom
   await flushAsyncWork();
 }
 
@@ -222,19 +229,70 @@ it('loads the popup with the saved theme and persists quick theme changes', asyn
     }
   });
 
-  await mountExtensionPage('popup/popup.html', 'popup/popup.js', api);
+  await mountExtensionPage('popup/popup.html', POPUP_SCRIPTS, api);
 
-  expect(document.documentElement.getAttribute('data-theme')).toBe('forest-dark');
+  // The old single theme setting migrates to palette + mode.
+  expect(document.documentElement.getAttribute('data-palette')).toBe('forest');
+  expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  expect(storageData.palette).toBe('forest');
+  expect(storageData.colorMode).toBe('dark');
   expect(document.getElementById('currentSite').textContent).toBe('example.com');
-  expect(document.getElementById('themeSelect').value).toBe('forest-dark');
+  const dots = document.querySelectorAll('#paletteDots .dot');
+  expect(dots.length).toBe(12);
+  expect(document.querySelector('#paletteDots .dot[aria-pressed="true"]').dataset.palette).toBe('forest');
+  expect(document.querySelector('#modeSeg button[aria-pressed="true"]').dataset.mode).toBe('dark');
 
-  const themeSelect = document.getElementById('themeSelect');
-  themeSelect.value = 'coastal';
-  themeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+  document.querySelector('#paletteDots .dot[data-palette="coastal"]').click();
+  await flushAsyncWork();
+  document.querySelector('#modeSeg button[data-mode="system"]').click();
   await flushAsyncWork();
 
-  expect(storageData.theme).toBe('coastal');
-  expect(document.documentElement.getAttribute('data-theme')).toBe('coastal');
+  expect(storageData.palette).toBe('coastal');
+  expect(storageData.colorMode).toBe('system');
+  expect(document.documentElement.getAttribute('data-palette')).toBe('coastal');
+  expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+});
+
+it('renders the frame census panel and blocks a frame via SET_FRAME_RULE', async () => {
+  const census = {
+    frames: [
+      { domain: 'doubleclick.net', url: 'https://doubleclick.net/a', category: 'ad', action: 'block', isProtected: false, isHeavy: true, bytes: 1572864 },
+      { domain: 'youtube.com', url: 'https://youtube.com/embed/x', category: 'embed', action: 'allow', isProtected: false, isHeavy: false, bytes: 51200 }
+    ],
+    counts: { frames: 2, heavy: 1, blocked: 1, flagged: 0, cosmetic: 0 }
+  };
+  const setFrameRuleCalls = [];
+  const { api } = createExtensionApiMock({
+    storageData: { theme: 'system', enabled: true, networkBlockingEnabled: true },
+    runtimeHandlers: {
+      GET_ALL_SETTINGS: () => ({ success: true, settings: { enabled: true, networkBlockingEnabled: true } }),
+      IS_WHITELISTED: () => ({ success: true, whitelisted: false }),
+      GET_SITE_STATE: () => ({ success: true, state: 'default' }),
+      GET_SECURITY_INFO: () => ({ success: true, connection: { protocol: 'https:', host: 'example.com' }, phishing: { isSuspicious: false } }),
+      GET_TAB_CENSUS: () => ({ success: true, census }),
+      SET_FRAME_RULE: (message) => { setFrameRuleCalls.push(message); return { success: true, census }; }
+    }
+  });
+
+  await mountExtensionPage('popup/popup.html', POPUP_SCRIPTS, api);
+
+  const framesSection = document.getElementById('framesSection');
+  expect(framesSection.style.display).toBe('block');
+  expect(document.getElementById('framesCount').textContent).toBe('2');
+  // The heavy ad frame appears in the pinned resource-hogs section.
+  expect(document.getElementById('framesHogs').style.display).toBe('block');
+  expect(document.getElementById('framesHogsCount').textContent).toBe('1');
+
+  // Click the first "Block" toggle (on the allowed youtube embed row).
+  const blockBtn = Array.from(document.querySelectorAll('.frame-toggle')).find((b) => b.textContent === 'Block');
+  expect(blockBtn).toBeTruthy();
+  blockBtn.click();
+  await flushAsyncWork();
+
+  const call = setFrameRuleCalls.find((c) => c.rule === 'blocked');
+  expect(call).toBeTruthy();
+  expect(call.persist).toBe(true);
+  expect(typeof call.frameDomain).toBe('string');
 });
 
 it('disables sync on browsers without storage.sync and keeps custom themes toggleable', async () => {
@@ -256,7 +314,8 @@ it('disables sync on browsers without storage.sync and keeps custom themes toggl
       thirdPartyCookieBlockingEnabled: false,
       syncEnabled: true,
       loggingEnabled: true,
-      toastDuration: 3
+      toastDuration: 3,
+      aggressiveness: 'aggressive'
     },
     runtimeHandlers: {
       GET_FILTER_SUBSCRIPTIONS: () => ({ success: true, subscriptions: [] }),
@@ -289,16 +348,35 @@ it('disables sync on browsers without storage.sync and keeps custom themes toggl
 
   await mountExtensionPage('options/options.html', 'options/options.js', api);
 
-  expect(document.documentElement.getAttribute('data-theme')).toBe('forest-dark');
-  expect(document.querySelector('.theme-btn[data-theme="forest-dark"]').classList.contains('active')).toBe(true);
+  expect(document.documentElement.getAttribute('data-palette')).toBe('forest');
+  expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  expect(document.querySelector('.theme-btn[data-mode="dark"]').classList.contains('active')).toBe(true);
+  expect(document.querySelectorAll('#themeGrid .theme-card').length).toBe(12);
+  expect(document.querySelector('.theme-card[data-palette="forest"]').classList.contains('active')).toBe(true);
   expect(document.getElementById('enableSync').disabled).toBe(true);
   expect(document.getElementById('syncDescription').textContent).toContain('settings stay local');
 
+  // Aggressiveness dial reflects stored value and persists a change.
+  expect(document.querySelector('.aggr-option[data-aggr="aggressive"]').classList.contains('is-active')).toBe(true);
+  document.querySelector('.aggr-option[data-aggr="conservative"]').click();
+  await flushAsyncWork();
+  expect(storageData.aggressiveness).toBe('conservative');
+  expect(document.querySelector('.aggr-option[data-aggr="conservative"]').classList.contains('is-active')).toBe(true);
+
+  // The header toggle flips the mode and keeps the palette.
   document.getElementById('themeToggle').click();
   await flushAsyncWork();
 
-  expect(storageData.theme).toBe('forest');
-  expect(document.documentElement.getAttribute('data-theme')).toBe('forest');
+  expect(storageData.colorMode).toBe('light');
+  expect(storageData.palette).toBe('forest');
+  expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+
+  // Picking a palette card keeps the mode.
+  document.querySelector('.theme-card[data-palette="aurora"]').click();
+  await flushAsyncWork();
+  expect(storageData.palette).toBe('aurora');
+  expect(document.documentElement.getAttribute('data-palette')).toBe('aurora');
+  expect(document.querySelector('.theme-card[data-palette="aurora"]').getAttribute('aria-pressed')).toBe('true');
 });
 
 it('uses the promise-based browser API path and keeps stats deep-links working', async () => {
@@ -354,9 +432,10 @@ it('uses the promise-based browser API path and keeps stats deep-links working',
     }
   });
 
-  await mountExtensionPage('popup/popup.html', 'popup/popup.js', api, { mode: 'browser' });
+  await mountExtensionPage('popup/popup.html', POPUP_SCRIPTS, api, { mode: 'browser' });
 
-  expect(document.documentElement.getAttribute('data-theme')).toBe('coastal-dark');
+  expect(document.documentElement.getAttribute('data-palette')).toBe('coastal');
+  expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
 
   document.getElementById('viewAllBlocked').click();
   await flushAsyncWork();
@@ -365,11 +444,229 @@ it('uses the promise-based browser API path and keeps stats deep-links working',
     url: 'chrome-extension://test/options/options.html#stats'
   });
 
-  const themeSelect = document.getElementById('themeSelect');
-  themeSelect.value = 'forest';
-  themeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+  document.querySelector('#paletteDots .dot[data-palette="suddhi"]').click();
   await flushAsyncWork();
 
-  expect(storageData.theme).toBe('forest');
-  expect(document.documentElement.getAttribute('data-theme')).toBe('forest');
+  // The default palette needs no attribute; the mode stays.
+  expect(storageData.palette).toBe('suddhi');
+  expect(document.documentElement.hasAttribute('data-palette')).toBe(false);
+  expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+});
+
+it('keeps the popup clickable when the background worker never answers', async () => {
+  const { api } = createExtensionApiMock();
+  // A worker that isn't awake yet rejects with a connection error. That must not
+  // abort init before the click handlers are attached.
+  api.runtime.sendMessage = vi.fn(() =>
+    Promise.reject(new Error('Could not establish connection. Receiving end does not exist.'))
+  );
+
+  await mountExtensionPage('popup/popup.html', POPUP_SCRIPTS, api);
+
+  const securityBtn = document.getElementById('securityMainBtn');
+  const certPanel = document.getElementById('certDetailsPanel');
+
+  expect(certPanel.hidden).toBe(true);
+  securityBtn.click();
+
+  expect(certPanel.hidden).toBe(false);
+  expect(securityBtn.getAttribute('aria-expanded')).toBe('true');
+});
+
+it('fills the ring and activity from this site only, and runs each click once', async () => {
+  const now = Date.now();
+  const setStateCalls = [];
+  const { api } = createExtensionApiMock({
+    storageData: { enabled: true },
+    runtimeHandlers: {
+      GET_ALL_SETTINGS: () => ({ success: true, settings: { enabled: true } }),
+      IS_WHITELISTED: () => ({ success: true, whitelisted: false }),
+      GET_SITE_STATE: () => ({ success: true, state: 'default' }),
+      GET_BLOCKED_COUNT: () => ({ success: true, count: 5, network: 3, cosmetic: 2 }),
+      GET_REQUEST_LOG: () => ({
+        success: true,
+        log: [
+          { type: 'network', url: 'ads.example.net', site: 'example.com', category: 'Advertising', timestamp: now },
+          { type: 'network', url: 'stats.example.org', site: 'www.example.com', category: 'Analytics', timestamp: now - 1000 },
+          { type: 'cosmetic', selector: '.promo', site: 'example.com', category: 'Annoyance', timestamp: now - 2000 },
+          { type: 'network', url: 'elsewhere.net', site: 'other.com', category: 'Advertising', timestamp: now }
+        ]
+      }),
+      SET_SITE_STATE: (message) => { setStateCalls.push(message); return { success: true, state: message.state }; }
+    }
+  });
+
+  await mountExtensionPage('popup/popup.html', POPUP_SCRIPTS, api);
+
+  // Three entries belong to example.com; the other.com one is left out.
+  expect(document.getElementById('activityCount').textContent).toBe('3');
+  expect(document.querySelectorAll('#activityFeed .ev').length).toBe(3);
+  expect(document.querySelectorAll('#ringSegs circle').length).toBe(3);
+  expect(document.getElementById('ringLegend').textContent).toContain('Advertising');
+
+  document.getElementById('siteStateProtected').click();
+  await flushAsyncWork();
+  expect(setStateCalls.length).toBe(1);
+  expect(document.getElementById('siteStateProtected').getAttribute('aria-pressed')).toBe('true');
+  expect(document.getElementById('siteStateWhy').textContent).toMatch(/heavy frames/);
+
+  // The repair ladder opens in place.
+  const broken = document.getElementById('brokenBtn');
+  broken.click();
+  expect(document.getElementById('fixLadder').hidden).toBe(false);
+  expect(broken.getAttribute('aria-expanded')).toBe('true');
+
+  // Tabs switch panels.
+  document.getElementById('tabFrames').click();
+  expect(document.getElementById('panelFrames').hidden).toBe(false);
+  expect(document.getElementById('panelActivity').hidden).toBe(true);
+});
+
+it('fills Site safety from the connection log and saves firewall cells', async () => {
+  const setRuleCalls = [];
+  const { api } = createExtensionApiMock({
+    storageData: { enabled: true },
+    runtimeHandlers: {
+      GET_ALL_SETTINGS: () => ({ success: true, settings: { enabled: true } }),
+      IS_WHITELISTED: () => ({ success: true, whitelisted: false }),
+      GET_SITE_STATE: () => ({ success: true, state: 'default' }),
+      GET_TAB_CONNECTIONS: () => ({
+        success: true,
+        connections: {
+          mainHost: 'example.com', mainIp: '93.184.216.34', server: 'ECS', hsts: true, cert: null,
+          hosts: [
+            { host: 'example.com', firstParty: true, count: 4, blocked: 0, types: { script: 2 }, ips: ['93.184.216.34'] },
+            { host: 'tracker.net', firstParty: false, count: 3, blocked: 3, types: { script: 3 }, ips: ['10.0.0.9'] }
+          ]
+        }
+      }),
+      GET_FIREWALL_RULES: () => ({ success: true, rules: {} }),
+      SET_FIREWALL_RULE: (message) => { setRuleCalls.push(message); return { success: true, rules: {} }; }
+    }
+  });
+
+  await mountExtensionPage('popup/popup.html', POPUP_SCRIPTS, api);
+  await flushAsyncWork();
+
+  expect(document.getElementById('kvIp').textContent).toBe('93.184.216.34');
+  expect(document.getElementById('kvHsts').textContent).toBe('On');
+  expect(document.getElementById('kvThird').textContent).toBe('1');
+  expect(document.getElementById('firewallTabCount').textContent).toBe('1');
+
+  const rows = document.querySelectorAll('#firewallBody tr:not(.grp)');
+  expect(rows.length).toBe(2);
+  // The page's own "All" cell cannot be flipped.
+  expect(rows[0].querySelector('.cell').disabled).toBe(true);
+
+  // Lists blocked tracker.net; flipping its Script cell stages an allow.
+  const script = rows[1].querySelectorAll('.cell')[1];
+  expect(script.dataset.e).toBe('block');
+  script.click();
+  expect(document.getElementById('firewallCommit').hidden).toBe(false);
+  document.getElementById('firewallSave').click();
+  await flushAsyncWork();
+  expect(setRuleCalls.length).toBe(1);
+  expect(setRuleCalls[0]).toMatchObject({ site: 'example.com', host: 'tracker.net', requestType: 'script', action: 'allow' });
+});
+
+it('lists frames the lists stopped before they loaded, and unblocks them with a firewall cell', async () => {
+  const setRuleCalls = [];
+  const { api } = createExtensionApiMock({
+    storageData: { enabled: true },
+    runtimeHandlers: {
+      GET_ALL_SETTINGS: () => ({ success: true, settings: { enabled: true } }),
+      IS_WHITELISTED: () => ({ success: true, whitelisted: false }),
+      GET_SITE_STATE: () => ({ success: true, state: 'default' }),
+      GET_TAB_CENSUS: () => ({ success: true, census: { frames: [], counts: {} } }),
+      GET_TAB_CONNECTIONS: () => ({
+        success: true,
+        connections: {
+          mainHost: 'example.com', mainIp: null, server: null, hsts: false, cert: null,
+          hosts: [
+            { host: 'example.com', firstParty: true, count: 2, blocked: 0, types: { frame: 1 }, ips: [] },
+            { host: 'ads.frame.net', firstParty: false, count: 2, blocked: 2, types: { frame: 2 }, ips: [] }
+          ]
+        }
+      }),
+      GET_FIREWALL_RULES: () => ({ success: true, rules: {} }),
+      SET_FIREWALL_RULE: (message) => { setRuleCalls.push(message); return { success: true, rules: { 'ads.frame.net': { frame: 'allow' } } }; }
+    }
+  });
+
+  await mountExtensionPage('popup/popup.html', POPUP_SCRIPTS, api);
+  await flushAsyncWork();
+
+  expect(document.getElementById('framesTabCount').textContent).toBe('1');
+  expect(document.getElementById('framesEmpty').hidden).toBe(true);
+  const row = document.querySelector('#framesList .frame-item');
+  expect(row.classList.contains('blocked')).toBe(true);
+  expect(row.textContent).toContain('ads.frame.net');
+  expect(row.textContent).toContain('Stopped before it loaded');
+
+  row.querySelector('button').click();
+  await flushAsyncWork();
+  expect(setRuleCalls[0]).toMatchObject({ site: 'example.com', host: 'ads.frame.net', requestType: 'frame', action: 'allow' });
+});
+
+it('shows everywhere rules with a dot and saves to every site when that scope is picked', async () => {
+  const setRuleCalls = [];
+  const { api } = createExtensionApiMock({
+    storageData: { enabled: true },
+    runtimeHandlers: {
+      GET_ALL_SETTINGS: () => ({ success: true, settings: { enabled: true } }),
+      IS_WHITELISTED: () => ({ success: true, whitelisted: false }),
+      GET_SITE_STATE: () => ({ success: true, state: 'default' }),
+      GET_TAB_CONNECTIONS: () => ({
+        success: true,
+        connections: {
+          mainHost: 'example.com', mainIp: null, server: null, hsts: false, cert: null,
+          hosts: [
+            { host: 'example.com', firstParty: true, count: 1, blocked: 0, types: {}, ips: [] },
+            { host: 'cdn.net', firstParty: false, count: 2, blocked: 0, types: { script: 2 }, ips: [] },
+            { host: 'pixel.io', firstParty: false, count: 1, blocked: 0, types: { image: 1 }, ips: [] }
+          ]
+        }
+      }),
+      GET_FIREWALL_RULES: (message) => ({ success: true, rules: message.site === '*' ? { 'pixel.io': { image: 'block' } } : {} }),
+      SET_FIREWALL_RULE: (message) => { setRuleCalls.push(message); return { success: true, rules: {} }; }
+    }
+  });
+
+  await mountExtensionPage('popup/popup.html', POPUP_SCRIPTS, api);
+  await flushAsyncWork();
+
+  const rows = document.querySelectorAll('#firewallBody tr:not(.grp)');
+  const pixelImage = rows[2].querySelectorAll('.cell')[4];
+  expect(pixelImage.dataset.e).toBe('block');
+  expect(pixelImage.dataset.g).toBe('1');
+
+  rows[1].querySelectorAll('.cell')[1].click();
+  const scope = document.getElementById('firewallScope');
+  scope.value = 'all';
+  scope.dispatchEvent(new Event('change'));
+  document.getElementById('firewallSave').click();
+  await flushAsyncWork();
+  expect(setRuleCalls[0]).toMatchObject({ site: '*', host: 'cdn.net', requestType: 'script', action: 'block' });
+});
+
+it('turns video ad fixes off from Features and stores scriptletsEnabled', async () => {
+  const { api, storageData } = createExtensionApiMock({
+    storageData: { enabled: true },
+    runtimeHandlers: {
+      GET_ALL_SETTINGS: () => ({ success: true, settings: { enabled: true, scriptletsEnabled: true } }),
+      IS_WHITELISTED: () => ({ success: true, whitelisted: false }),
+      GET_SITE_STATE: () => ({ success: true, state: 'default' })
+    }
+  });
+
+  await mountExtensionPage('popup/popup.html', POPUP_SCRIPTS, api);
+  await flushAsyncWork();
+
+  const toggle = document.getElementById('scriptletsToggle');
+  expect(toggle.checked).toBe(true);
+  toggle.checked = false;
+  toggle.dispatchEvent(new Event('change'));
+  await flushAsyncWork();
+  expect(storageData.scriptletsEnabled).toBe(false);
+  expect(document.getElementById('featMeta').textContent).toMatch(/of 7 on/);
 });

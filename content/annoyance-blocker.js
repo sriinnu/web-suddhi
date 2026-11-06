@@ -368,6 +368,10 @@
 
         refreshState();
         sendResponse({ success: true });
+      } else if (message.type === 'WHITELIST_SITE' || message.type === 'UNWHITELIST_SITE') {
+        // Mirror the cookie blocker: allow/unblock must stop widget hiding too.
+        refreshState();
+        sendResponse({ success: true });
       }
       return false;
     };

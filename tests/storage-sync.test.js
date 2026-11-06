@@ -138,6 +138,12 @@ it('persists fetched MV2 subscription domains and reuses cached .well-known list
     'https://example.com/.well-known/websuddhi.txt'
   );
 
+  // addSubscription deliberately returns before the fetch finishes so the
+  // message channel doesn't time out — let the background update settle.
+  for (let i = 0; i < 10; i += 1) {
+    await flushAsyncWork();
+  }
+
   expect(result.success).toBe(true);
 
   const subscriptionId = result.subscription.id;
@@ -190,7 +196,7 @@ it('includes theme and synced preferences in full backup import/export', async (
   expect(exported.settings.enabledLanguageFilters).toEqual(['german']);
 
   const result = await globalThis.WebSuddhi.importExport.importSettings({
-    version: '2.3.0',
+    version: '3.0.0',
     exportedAt: new Date().toISOString(),
     settings: {
       syncEnabled: true,

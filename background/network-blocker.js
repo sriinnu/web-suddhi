@@ -92,25 +92,44 @@
     const storage = await getStorage(['networkBlockingEnabled', 'whitelistedSites', 'blockedDomains', 'allowedDomains', 'pausedSites']);
     const enabled = storage.networkBlockingEnabled !== false;
 
-    if (!enabled) {
-      if (api.declarativeNetRequest) {
-        await clearManagedDynamicRules();
-      }
-      return;
-    }
-
     if (api.declarativeNetRequest) {
-      // MV3: Static rules are auto-loaded from manifest
-      // Set up dynamic rules for user-added blocks and whitelist
+      // The manifest enables every ruleset by default, so the stored flag has to
+      // be re-applied on each worker start. Without this, importing a backup (or
+      // syncing settings) with blocking off leaves 29,500 static rules live.
+      await reconcileNetworkRulesets(enabled);
+
+      if (!enabled) {
+        await clearManagedDynamicRules();
+        return;
+      }
+
       await setupDynamicRules(storage);
       setupDNRFeedback();
     } else if (api.webRequest && api.webRequest.onBeforeRequest) {
-      // MV2: webRequest blocking
+      if (!enabled) return;
+      // MV2: webRequest blocking, backed by the same generated blocklist
+      // Chrome gets via declarativeNetRequest.
+      await loadMV2GeneratedDomains();
       setupWebRequestBlocking(storage);
     }
 
     setupTabListeners();
     setupNavigationListener();
+  }
+
+  async function reconcileNetworkRulesets(enabled) {
+    const rulesetIds = getNetworkRulesetIds();
+    if (!rulesetIds.length) return;
+
+    try {
+      await api.declarativeNetRequest.updateEnabledRulesets(
+        enabled
+          ? { enableRulesetIds: rulesetIds, disableRulesetIds: [] }
+          : { enableRulesetIds: [], disableRulesetIds: rulesetIds }
+      );
+    } catch (e) {
+      logError('Failed to reconcile network rulesets:', e);
+    }
   }
 
   // ============================================
@@ -221,13 +240,13 @@
       return true;
     }
 
-    // User-blocked domains
+    // User-blocked domains — must outrank list exceptions (priority 100).
     for (const domain of blockedDomains) {
       if (!pushManagedRule({
-        priority: 1,
+        priority: 500,
         action: { type: 'block' },
         condition: {
-          urlFilter: '||' + domain,
+          urlFilter: '||' + domain + '^',
           resourceTypes: BLOCKED_RESOURCE_TYPES
         }
       })) break;
@@ -236,10 +255,10 @@
     // Explicit allowed domains preserve previous behavior (allow matching URL domain).
     for (const domain of allowedDomains) {
       if (!pushManagedRule({
-        priority: 2,
+        priority: 600,
         action: { type: 'allow' },
         condition: {
-          urlFilter: '||' + domain,
+          urlFilter: '||' + domain + '^',
           resourceTypes: BLOCKED_RESOURCE_TYPES
         }
       })) break;
@@ -248,7 +267,7 @@
     // Whitelisted + currently-paused sites: full-site exemption by initiator domain.
     for (const domain of effectiveWhitelist) {
       if (!pushManagedRule({
-        priority: 3,
+        priority: 1000,
         action: { type: 'allow' },
         condition: {
           resourceTypes: BLOCKED_RESOURCE_TYPES,
@@ -346,67 +365,146 @@
   // ============================================
   // MV2: WEBREQUEST BLOCKING
   // ============================================
-  function setupWebRequestBlocking(storage) {
-    const whitelistedSites = new Set(storage.whitelistedSites || []);
-    const userBlockedDomains = new Set(storage.blockedDomains || []);
-    const allowedDomains = new Set(storage.allowedDomains || []);
-    // Paused sites act as a transient whitelist; checked live so expiry honors ticks.
-    const pausedMap = (storage.pausedSites && typeof storage.pausedSites === 'object') ? storage.pausedSites : {};
-    const isPaused = (host) => {
-      const exp = pausedMap[host];
-      return typeof exp === 'number' && exp > Date.now();
-    };
+  // MV2 blocking state lives here so it can be refreshed at runtime; the old
+  // version captured these sets once and ignored every later change.
+  const mv2State = {
+    whitelistedSites: new Set(),
+    userBlockedDomains: new Set(),
+    allowedDomains: new Set(),
+    pausedMap: {},
+    allBlocked: new Set()
+  };
+  let mv2Handler = null;
+  let mv2GeneratedDomains = null;
 
-    // Combine all blocked domains
-    const allBlocked = new Set([...MV2_AD_DOMAINS, ...MV2_TRACKING_DOMAINS, ...userBlockedDomains]);
+  async function loadMV2GeneratedDomains() {
+    if (mv2GeneratedDomains) return mv2GeneratedDomains;
 
-    api.webRequest.onBeforeRequest.addListener(
-      (details) => {
-        // Don't block main_frame
-        if (details.type === 'main_frame') return {};
+    try {
+      const response = await fetch(api.runtime.getURL('rules/generated-mv2-domains.json'));
+      const domains = await response.json();
+      mv2GeneratedDomains = new Set(
+        (Array.isArray(domains) ? domains : []).map((domain) => String(domain).toLowerCase())
+      );
+    } catch (e) {
+      logError('Could not load generated blocklist for MV2:', e);
+      mv2GeneratedDomains = new Set();
+    }
 
+    return mv2GeneratedDomains;
+  }
+
+  function refreshMV2State(storage) {
+    mv2State.whitelistedSites = new Set(storage.whitelistedSites || []);
+    mv2State.userBlockedDomains = new Set(storage.blockedDomains || []);
+    mv2State.allowedDomains = new Set(storage.allowedDomains || []);
+    mv2State.pausedMap = (storage.pausedSites && typeof storage.pausedSites === 'object')
+      ? storage.pausedSites
+      : {};
+
+    const subscriptionDomains = self.WebSuddhi.filterLists?.getMV2SubscriptionDomains?.() || [];
+    const generatedDomains = mv2GeneratedDomains || new Set();
+
+    mv2State.allBlocked = new Set([
+      ...MV2_AD_DOMAINS,
+      ...MV2_TRACKING_DOMAINS,
+      ...mv2State.userBlockedDomains,
+      ...generatedDomains,
+      ...subscriptionDomains
+    ]);
+  }
+
+  function isPausedMV2(host) {
+    const expiry = mv2State.pausedMap[host];
+    return typeof expiry === 'number' && expiry > Date.now();
+  }
+
+  function mv2BlockingHandler(details) {
+    // Don't block main_frame
+    if (details.type === 'main_frame') return {};
+
+    try {
+      const url = new URL(details.url);
+      const domain = url.hostname;
+
+      // Check if initiator is whitelisted or currently paused
+      if (details.initiator || details.documentUrl) {
+        const initiatorUrl = details.initiator || details.documentUrl;
         try {
-          const url = new URL(details.url);
-          const domain = url.hostname;
-
-          // Check if initiator is whitelisted or currently paused
-          let initiatorHost = null;
-          if (details.initiator || details.documentUrl) {
-            const initiatorUrl = details.initiator || details.documentUrl;
-            try {
-              initiatorHost = new URL(initiatorUrl).hostname.replace(/^www\./, '');
-              if (whitelistedSites.has(initiatorHost) || isPaused(initiatorHost)) return {};
-            } catch (e) {}
-          }
-
-          // Check if domain is allowed
-          if (allowedDomains.has(domain)) return {};
-
-          // Check against blocklist
-          if (isDomainBlocked(domain, allBlocked)) {
-            const tabId = details.tabId;
-            if (tabId >= 0) {
-              tabBlockedCounts.set(tabId, (tabBlockedCounts.get(tabId) || 0) + 1);
-              updateBadge(tabId, getTotalBlockedCount(tabId));
-              notifyCountUpdate(tabId);
-
-              if (self.WebSuddhi.reportNetworkBlock) {
-                // Get initiator site for logging (reuse parsed value if available)
-                const initiatorSite = initiatorHost !== null
-                  ? (details.initiator || details.documentUrl || '').replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '')
-                  : 'Unknown';
-                self.WebSuddhi.reportNetworkBlock(tabId, domain, initiatorSite);
-              }
-            }
-            return { cancel: true };
-          }
+          const initiatorHost = new URL(initiatorUrl).hostname.replace(/^www\./, '');
+          if (mv2State.whitelistedSites.has(initiatorHost) || isPausedMV2(initiatorHost)) return {};
         } catch (e) {}
+      }
 
-        return {};
-      },
-      { urls: ['<all_urls>'] },
-      ['blocking']
-    );
+      // Check if domain is allowed
+      if (mv2State.allowedDomains.has(domain)) return {};
+
+      // Per-site firewall 'allow' overrides the lists (its own listener handles 'block').
+      if (self.WebSuddhi.firewall && self.WebSuddhi.firewall.decideCached(details) === 'allow') return {};
+
+      // Check against blocklist
+      if (isDomainBlocked(domain, mv2State.allBlocked)) {
+        const tabId = details.tabId;
+        if (tabId >= 0) {
+          tabBlockedCounts.set(tabId, (tabBlockedCounts.get(tabId) || 0) + 1);
+          updateBadge(tabId, getTotalBlockedCount(tabId));
+          notifyCountUpdate(tabId);
+
+          if (self.WebSuddhi.reportNetworkBlock) {
+            const initiatorSite = (details.initiator || details.documentUrl || '')
+              .replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '') || 'Unknown';
+            self.WebSuddhi.reportNetworkBlock(tabId, domain, initiatorSite);
+          }
+        }
+        return { cancel: true };
+      }
+    } catch (e) {}
+
+    return {};
+  }
+
+  function applyMV2Blocking(enabled, storage) {
+    if (!api.webRequest || !api.webRequest.onBeforeRequest) return;
+
+    if (!enabled) {
+      if (mv2Handler) {
+        try {
+          api.webRequest.onBeforeRequest.removeListener(mv2Handler);
+        } catch (e) {
+          logError('Could not remove webRequest listener:', e);
+        }
+        mv2Handler = null;
+      }
+      return;
+    }
+
+    if (storage) refreshMV2State(storage);
+
+    if (!mv2Handler) {
+      mv2Handler = mv2BlockingHandler;
+      api.webRequest.onBeforeRequest.addListener(
+        mv2Handler,
+        { urls: ['<all_urls>'] },
+        ['blocking']
+      );
+    }
+  }
+
+  function setupWebRequestBlocking(storage) {
+    applyMV2Blocking(true, storage);
+
+    // Re-read state whenever any of the sets that drive blocking change.
+    if (api.storage && api.storage.onChanged) {
+      api.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'local' && area !== 'sync') return;
+        const watched = ['whitelistedSites', 'blockedDomains', 'allowedDomains', 'pausedSites', 'filterSubscriptions'];
+        if (!watched.some((key) => key in (changes || {}))) return;
+
+        getStorage(watched).then((next) => {
+          refreshMV2State(next);
+        }).catch(() => {});
+      });
+    }
   }
 
   function isDomainBlocked(hostname, blocklist) {
@@ -472,17 +570,24 @@
   // PUBLIC API
   // ============================================
   async function addDomainBlock(domain) {
+    // Store the bare host: `||www.example.com^` would not cover example.com, and
+    // the popup compares against a www-stripped hostname.
+    const normalized = normalizeDomain(domain, true) || domain;
     const storage = await getStorage(['blockedDomains']);
     const domains = storage.blockedDomains || [];
-    if (!domains.includes(domain)) {
-      domains.push(domain);
+
+    if (!domains.includes(normalized)) {
+      domains.push(normalized);
       await setStorage({ blockedDomains: domains });
 
       if (api.declarativeNetRequest) {
-        await refreshDynamicRules();
+        const result = await refreshDynamicRules();
+        if (result && result.reason === 'network_blocking_disabled') {
+          return { success: false, error: 'Network blocking is off — turn it on to block this site' };
+        }
       }
     }
-    return { success: true };
+    return { success: true, domain: normalized };
   }
 
   async function removeDomainBlock(domain) {
@@ -523,20 +628,53 @@
     }
   }
 
-  async function toggleNetworkBlocking(enabled) {
-    await setStorage({ networkBlockingEnabled: enabled });
+  // Every ruleset the manifest declares — including the generated blocklist
+  // chunks. Hardcoding three IDs left 40,000 generated rules blocking even
+  // when the user switched network blocking off.
+  // tracking_params is owned by the URL-cleaning toggle; everything else belongs
+  // to network blocking. Toggling one must not silently flip the other.
+  const URL_CLEANING_RULESET_IDS = new Set(['tracking_params']);
 
+  function getStaticRulesetIds() {
+    try {
+      const resources = api.runtime.getManifest()?.declarative_net_request?.rule_resources || [];
+      const ids = resources.map((resource) => resource && resource.id).filter(Boolean);
+      if (ids.length) return ids;
+    } catch (e) {
+      logError('Could not read ruleset ids from manifest:', e);
+    }
+    return ['ad_domains', 'tracking_domains', 'tracking_params'];
+  }
+
+  function getNetworkRulesetIds() {
+    return getStaticRulesetIds().filter((id) => !URL_CLEANING_RULESET_IDS.has(id));
+  }
+
+  async function toggleNetworkBlocking(enabled) {
     if (api.declarativeNetRequest) {
+      const rulesetIds = getNetworkRulesetIds();
+
       try {
-        await api.declarativeNetRequest.updateEnabledRulesets({
-          enableRulesetIds: enabled ? ['ad_domains', 'tracking_domains', 'tracking_params'] : [],
-          disableRulesetIds: enabled ? [] : ['ad_domains', 'tracking_domains', 'tracking_params']
-        });
+        await api.declarativeNetRequest.updateEnabledRulesets(
+          enabled
+            ? { enableRulesetIds: rulesetIds, disableRulesetIds: [] }
+            : { enableRulesetIds: [], disableRulesetIds: rulesetIds }
+        );
       } catch (e) {
         logError('Failed to toggle rulesets:', e);
+        return { success: false, error: e.message || 'Could not update blocking rules' };
       }
 
+      await setStorage({ networkBlockingEnabled: enabled });
       await refreshDynamicRules();
+      return { success: true, enabled };
+    }
+
+    await setStorage({ networkBlockingEnabled: enabled });
+
+    if (!api.declarativeNetRequest) {
+      const storage = await getStorage(['whitelistedSites', 'blockedDomains', 'allowedDomains', 'pausedSites']);
+      applyMV2Blocking(enabled, storage);
     }
 
     return { success: true, enabled };

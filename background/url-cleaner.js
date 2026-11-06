@@ -69,14 +69,30 @@
     const storage = await getStorage(['urlCleaningEnabled']);
     const enabled = storage.urlCleaningEnabled !== false;
 
+    if (api.declarativeNetRequest) {
+      // MV3: tracking-params.json is enabled by manifest default, so the stored
+      // flag has to be re-applied on every worker start.
+      await reconcileTrackingParamsRuleset(enabled);
+      return;
+    }
+
     if (!enabled) return;
 
-    if (api.declarativeNetRequest) {
-      // MV3: Static rules from tracking-params.json handle this
-      // Nothing extra needed - rules auto-loaded
-    } else if (api.webRequest && api.webRequest.onBeforeRequest) {
+    if (api.webRequest && api.webRequest.onBeforeRequest) {
       // MV2: webRequest redirect
       setupWebRequestCleaner();
+    }
+  }
+
+  async function reconcileTrackingParamsRuleset(enabled) {
+    try {
+      await api.declarativeNetRequest.updateEnabledRulesets(
+        enabled
+          ? { enableRulesetIds: ['tracking_params'], disableRulesetIds: [] }
+          : { enableRulesetIds: [], disableRulesetIds: ['tracking_params'] }
+      );
+    } catch (e) {
+      logError('Failed to reconcile URL cleaning ruleset:', e);
     }
   }
 
@@ -115,8 +131,6 @@
   // TOGGLE
   // ============================================
   async function toggleUrlCleaning(enabled) {
-    await setStorage({ urlCleaningEnabled: enabled });
-
     if (api.declarativeNetRequest) {
       try {
         await api.declarativeNetRequest.updateEnabledRulesets({
@@ -125,9 +139,13 @@
         });
       } catch (e) {
         logError('Failed to toggle URL cleaning ruleset:', e);
+        return { success: false, error: e.message || 'Could not update URL cleaning rules' };
       }
     }
 
+    // Persist only after the ruleset actually changed, so the UI never claims
+    // "off" while the rules keep running.
+    await setStorage({ urlCleaningEnabled: enabled });
     return { success: true, enabled };
   }
 

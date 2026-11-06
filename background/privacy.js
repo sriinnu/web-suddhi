@@ -279,10 +279,10 @@
       try {
         const rules = TELEMETRY_DOMAINS.map((domain, index) => ({
           id: TELEMETRY_RULE_ID_START + index,
-          priority: 2,
+          priority: 500,
           action: { type: 'block' },
           condition: {
-            urlFilter: '||' + domain,
+            urlFilter: '||' + domain + '^',
             resourceTypes: [
               'script', 'image', 'xmlhttprequest', 'sub_frame',
               'ping', 'other', 'websocket'

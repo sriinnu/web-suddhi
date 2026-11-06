@@ -39,11 +39,32 @@ body.websuddhi-pick-mode {
   user-select: none !important;
 }
 
+/* Full-viewport hit-shield: makes pointer events land in the top document even
+   over cross-origin iframes, so picking an ad never leaks the click to the ad. */
+.websuddhi-pick-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  z-index: 2147483646 !important;
+  cursor: crosshair !important;
+}
+
 body.websuddhi-pick-mode .websuddhi-pick-highlight {
   outline: 3px solid #2196F3 !important;
   outline-offset: -1px !important;
   background-color: rgba(33, 150, 243, 0.15) !important;
   box-shadow: 0 0 0 4px rgba(33, 150, 243, 0.25) !important;
+}
+
+/* Frame mode: distinct orange highlight — the whole iframe will be collapsed. */
+body.websuddhi-pick-mode .websuddhi-pick-highlight.websuddhi-pick-frame {
+  outline: 3px solid #ff9800 !important;
+  background-color: rgba(255, 152, 0, 0.18) !important;
+  box-shadow: 0 0 0 4px rgba(255, 152, 0, 0.3) !important;
 }
 
 /* ============================================

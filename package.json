@@ -1,17 +1,25 @@
 {
   "name": "websuddhi",
-  "version": "2.3.0",
+  "version": "3.0.9",
   "description": "Block ads, remove paywalls, strip trackers, and clean up any website",
   "main": "background/background.js",
   "scripts": {
     "build": "rollup -c",
-    "build:targets": "node scripts/build-browser-targets.mjs",
+    "build:blocklists": "node scripts/build-blocklists.mjs",
+    "build:themes": "node scripts/build-themes.mjs",
+    "build:targets": "node scripts/bump-version.mjs && node scripts/build-browser-targets.mjs",
+    "build:all": "node scripts/build-themes.mjs && node scripts/build-blocklists.mjs && node scripts/bump-version.mjs && node scripts/build-browser-targets.mjs",
+    "build:safari": "node scripts/build-blocklists.mjs && node scripts/build-browser-targets.mjs && xcodebuild -project 'safari/WebSuddhi/WebSuddhi.xcodeproj' -scheme 'WebSuddhi (macOS)' -configuration Release -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO build",
     "build:watch": "rollup -c -w",
     "lint": "eslint . --ext .js",
     "lint:fix": "eslint . --ext .js --fix",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "node scripts/build-browser-targets.mjs && playwright test -c tests/e2e/playwright.config.mjs",
+    "test:e2e:live": "node scripts/build-browser-targets.mjs && E2E_LIVE=1 playwright test -c tests/e2e/playwright.config.mjs live.spec.mjs",
+    "test:e2e:report": "playwright show-report test-results/html-report",
+    "version:show": "node scripts/bump-version.mjs --print"
   },
   "keywords": [
     "ad-blocker",
@@ -23,16 +31,17 @@
   "author": "Srinivas Pendela",
   "license": "MIT",
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@rollup/plugin-node-resolve": "^15.2.3",
     "@rollup/plugin-terser": "^0.4.4",
-    "@types/chrome": "^0.2.0",
+    "@types/chrome": "^0.3.7",
     "@types/firefox-webext-browser": "^143.0.0",
     "eslint": "^8.57.0",
     "jsdom": "^28.0.0",
     "prettier": "^3.2.5",
     "rollup": "^4.13.0",
     "typescript": "^5.4.3",
-    "vitest": "^1.4.0"
+    "vitest": "^3.2.7"
   },
   "dependencies": {
     "acorn": "^8.15.0"

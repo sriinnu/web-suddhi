@@ -7,129 +7,140 @@
   <link rel="stylesheet" href="../fonts/fonts.css">
   <link rel="stylesheet" href="../shared/themes.css">
   <link rel="stylesheet" href="popup.css">
+  <script src="../shared/palettes.js"></script>
   <script src="../shared/custom-themes-loader.js"></script>
   <script src="../shared/theme-loader.js"></script>
 </head>
 <body>
-  <div class="popup-wrapper">
-    <!-- Header -->
-    <header class="header">
-      <div class="header-left">
-        <img src="../icons/icon48.png" alt="WebSuddhi" class="logo">
+  <div class="popup-wrapper v2">
+    <!-- Header: brand, global switch -->
+    <header class="hd">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2l11 4v9c0 7-4.6 12.2-11 15C9.6 27.2 5 22 5 15V6z" style="fill:var(--accent)"/><path d="M16 2l11 4v9c0 7-4.6 12.2-11 15z" style="fill:var(--fg)" opacity=".35"/><path d="M11 16l3.5 3.5L21 12.5" fill="none" style="stroke:var(--accent-fg)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div class="hd-title">
+        <b>WebSuddhi</b>
+        <small>Clean web, clear mind</small>
       </div>
-      <div class="header-content">
-        <h1>WebSuddhi</h1>
-        <span class="tagline">Clean web, clear mind</span>
-      </div>
-      <div class="header-right">
-        <span class="status-badge" id="statusBadge">
-          <span class="status-dot"></span>
-          Active
-        </span>
-      </div>
+      <span class="status-badge" id="statusBadge" role="status"><span class="status-dot"></span> Active</span>
+      <label class="glob" for="enableToggle" title="Turns WebSuddhi on or off on every site">All sites
+        <span class="sw"><input type="checkbox" id="enableToggle" checked><i></i></span>
+      </label>
     </header>
 
     <main class="main-content">
-      <!-- Protection Toggle -->
-      <section class="card protection-card">
-        <div class="card-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      <!-- Hero: what happened on this page -->
+      <section class="hero" id="siteCard" aria-live="polite">
+        <div class="ring">
+          <svg viewBox="0 0 128 128" aria-hidden="true">
+            <circle class="trk" cx="64" cy="64" r="54"/>
+            <g id="ringSegs"></g>
           </svg>
+          <div class="mid"><strong id="ringCount">0</strong><span>blocked</span></div>
         </div>
-        <div class="card-body">
-          <h2>Protection</h2>
-          <p>Block ads, trackers, and annoyances</p>
+        <div class="hero-text">
+          <p class="verdict" id="verdict">Checking this page</p>
+          <div class="host site-domain loading" id="currentSite">loading...</div>
+          <div class="legend" id="ringLegend"></div>
         </div>
-        <label class="toggle">
-          <input type="checkbox" id="enableToggle" checked>
-          <span class="toggle-track">
-            <span class="toggle-thumb"></span>
-          </span>
-        </label>
+        <div class="totals">
+          <button type="button" class="tot" id="networkStatBtn" title="Show blocked requests"><b id="networkBlockedCount">0</b> network</button>
+          <button type="button" class="tot" id="cosmeticStatBtn" title="Show hidden elements"><b id="cosmeticBlockedCount">0</b> hidden</button>
+          <span class="tot"><b id="dataSaved">0 KB</b> saved</span>
+          <span class="tot"><b id="rulesCount">0</b> rules</span>
+        </div>
       </section>
 
-      <!-- Current Site -->
-      <section class="card site-card" id="siteCard">
-        <div class="pause-ribbon" id="pauseRibbon" hidden>
-          <span class="pause-ribbon-dot" aria-hidden="true"></span>
-          <span class="pause-ribbon-text" id="pauseRibbonText">Paused</span>
-          <button type="button" class="pause-ribbon-resume" id="pauseResumeBtn">Resume</button>
+      <!-- Protection level on this site -->
+      <div class="ctl">
+        <div class="seg site-state-control" role="group" aria-label="Protection on this site">
+          <button type="button" class="site-state-btn" data-state="protected" id="siteStateProtected" aria-pressed="false">Strict</button>
+          <button type="button" class="site-state-btn is-active" data-state="default" id="siteStateDefault" aria-pressed="true">Standard</button>
+          <button type="button" class="site-state-btn" data-state="paused" id="siteStatePaused" aria-pressed="false">Off here</button>
         </div>
-        <div class="site-info">
-          <span class="site-label">Current Website</span>
-          <span class="site-domain loading" id="currentSite">loading...</span>
+        <p class="why" id="siteStateWhy"></p>
+      </div>
+      <div class="note" id="pauseRibbon" role="status" hidden>
+        <span id="pauseRibbonText">Paused on this site</span>
+        <button type="button" class="link" id="pauseResumeBtn">Resume</button>
+      </div>
+
+      <!-- Repair: broken page ladder and the element picker -->
+      <div class="fix">
+        <button type="button" class="btn" id="brokenBtn" aria-expanded="false" aria-controls="fixLadder">Page looks broken?</button>
+        <button type="button" class="btn" id="pickModeBtn" title="Pick an element or frame to block">Pick element</button>
+      </div>
+      <div class="ladder" id="fixLadder" hidden>
+        <div class="step" data-step="1"><span class="k">1</span><div><b>Show hidden parts</b><small>Stops hiding page elements. Ads and trackers stay blocked.</small></div><button type="button" class="btn" id="relaxBtn">Try</button></div>
+        <div class="step" data-step="2"><span class="k">2</span><div><b>Turn off for this site</b><small>Nothing is blocked here until you turn it back on.</small></div><button type="button" class="btn" id="actAllowBtn">Turn off</button></div>
+        <div class="step" data-step="3"><span class="k">3</span><div><b>Report the page</b><small>Sends the address so the rule can be fixed. Pauses blocking for an hour.</small></div><button type="button" class="btn" id="reportBrokenBtn">Report</button></div>
+      </div>
+
+      <!-- Detail tabs -->
+      <div class="tabs" role="tablist" aria-label="Page detail">
+        <button type="button" role="tab" id="tabActivity" aria-selected="true" aria-controls="panelActivity" data-tab="activity">Activity<span class="n" id="activityCount">0</span></button>
+        <button type="button" role="tab" id="tabFirewall" aria-selected="false" aria-controls="panelFirewall" data-tab="firewall" tabindex="-1">Firewall<span class="n" id="firewallTabCount">0</span></button>
+        <button type="button" role="tab" id="tabFrames" aria-selected="false" aria-controls="panelFrames" data-tab="frames" tabindex="-1">Frames<span class="n" id="framesTabCount">0</span></button>
+      </div>
+      <section class="panel" id="panelActivity" role="tabpanel" aria-labelledby="tabActivity">
+        <div id="activityFeed" class="feed"></div>
+        <p class="empty" id="activityEmpty">Nothing blocked on this site yet.</p>
+        <div class="panel-foot"><a href="#" class="link view-all" id="viewAllBlocked">All activity</a></div>
+      </section>
+      <section class="panel" id="panelFirewall" role="tabpanel" aria-labelledby="tabFirewall" hidden>
+        <p class="empty" id="firewallEmpty">No connections seen yet. Reload the page to fill this in.</p>
+        <table class="mx" id="firewallTable" hidden>
+          <colgroup><col><col class="cn"><col class="cn"><col class="cn"><col class="cn"><col class="cn"></colgroup>
+          <thead><tr><th scope="col">Host</th><th scope="col">All</th><th scope="col">Script</th><th scope="col">Frame</th><th scope="col">XHR</th><th scope="col">Image</th></tr></thead>
+          <tbody id="firewallBody"></tbody>
+        </table>
+        <div class="mxkey" id="firewallKey" hidden><span>Dashed: from filter lists</span><span>Solid: your rule</span><span>Dot: applies on every site</span><span>Click a cell to flip it</span></div>
+        <div class="commit" id="firewallCommit" hidden>
+          <b id="firewallChanges">0 changes</b><select id="firewallScope" aria-label="Where the changes apply"><option value="site">on this site</option><option value="all">on every site</option></select>
+          <span class="sp"><button type="button" class="btn" id="firewallRevert">Revert</button><button type="button" class="btn pri" id="firewallSave">Save and reload</button></span>
         </div>
-        <div class="site-actions" id="siteActions">
-          <button class="btn btn-tri btn-allow" id="whitelistBtn" aria-pressed="false" title="Allow all on this site">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-            <span class="btn-label">Allow</span>
-          </button>
-          <button class="btn btn-tri btn-block" id="blacklistBtn" aria-pressed="false" title="Block all from this site">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-            <span class="btn-label">Block</span>
-          </button>
-          <div class="pause-split">
-            <button class="btn btn-tri btn-pause" id="pauseBtn" aria-haspopup="menu" aria-expanded="false" title="Pause protection on this site">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="6" y="5" width="4" height="14" rx="1"/>
-                <rect x="14" y="5" width="4" height="14" rx="1"/>
-              </svg>
-              <span class="btn-label">Pause</span>
-              <svg class="pause-chevron" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M1 1l4 4 4-4"/>
-              </svg>
-            </button>
-            <div class="pause-menu" id="pauseMenu" role="menu" hidden>
-              <button type="button" role="menuitem" data-duration="900000">15 minutes</button>
-              <button type="button" role="menuitem" data-duration="3600000">1 hour</button>
-              <button type="button" role="menuitem" data-duration="86400000">1 day</button>
-            </div>
+        <div class="panel-foot" id="firewallFoot" hidden><button type="button" class="link" id="firewallReset">Clear my rules for this site</button></div>
+      </section>
+      <section class="panel" id="panelFrames" role="tabpanel" aria-labelledby="tabFrames" hidden>
+        <p class="empty" id="framesEmpty">No frames from other sites on this page. Frames the lists stop before they load show up here after a reload.</p>
+        <div class="frame-section" id="framesSection" style="display: none;">
+          <div class="frame-panel-head">
+            <span class="frame-summary"><span id="framesCount" class="section-count">0</span> frames <span id="framesSummary"></span></span>
           </div>
+          <div class="frame-hogs" id="framesHogs" style="display: none;">
+            <div class="frame-hogs-head">
+              <span class="frame-hogs-title">Heavy frames <span id="framesHogsCount" class="section-count">0</span></span>
+              <button type="button" class="btn frame-killall" id="killAllHogsBtn">Stop heavy frames</button>
+            </div>
+            <div id="framesHogsList" class="frame-list"></div>
+          </div>
+          <div id="framesList" class="frame-list frame-groups"></div>
         </div>
       </section>
 
-      <!-- Site Security -->
-      <section class="card site-security-card">
-        <h3 class="section-title">Site Security</h3>
-        <div id="siteInfoSection" class="site-security-content">
-          <button type="button" class="security-main security-main-btn" id="securityMainBtn" aria-expanded="false" aria-controls="certDetailsPanel" title="Click for certificate details">
-            <div id="siteIcon" class="security-icon-wrap">
-              <svg class="icon icon-secure" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M17 11V7a5 5 0 0 0-10 0v4"/>
-                <rect x="5" y="11" width="14" height="10" rx="2" ry="2"/>
-                <line x1="10" y1="16" x2="14" y2="16"/>
-              </svg>
-              <svg class="icon icon-insecure" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2v8"/>
-                <path d="M4.93 20h14.14"/>
-                <path d="M7 18h10l-1-8H8l-1 8Z"/>
-                <line x1="12" y1="2" x2="12" y2="4"/>
-              </svg>
-            </div>
-            <div class="security-texts">
-              <span id="securityText" class="security-text">Unknown</span>
-              <span class="security-badge" id="securityBadge">Checking</span>
-              <span class="security-meta">
-                Protocol: <span id="certProtocol">---</span> - Type: <span id="certType">---</span>
-              </span>
-            </div>
-            <div id="siteMascot" class="security-mascot">
-              <span class="mascot-happy">[+]</span>
-              <span class="mascot-worried">[!]</span>
-            </div>
-            <svg class="security-expand-chevron" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M1 1l4 4 4-4"/>
-            </svg>
-          </button>
+      <!-- Site safety -->
+      <details class="acc site-security-card">
+        <summary>Site safety <span class="meta" id="safetyMeta"></span></summary>
+        <div class="body" id="siteInfoSection">
+          <div class="kvs" id="safetyRows">
+            <div class="kv"><span>Connection</span><span id="kvConnection">Checking</span></div>
+            <div class="kv"><span>Server address</span><span class="mono" id="kvIp">Not seen yet</span></div>
+            <div class="kv" id="kvServerRow" hidden><span>Server</span><span class="mono" id="kvServer"></span></div>
+            <div class="kv"><span>Strict HTTPS (HSTS)</span><span id="kvHsts">Unknown</span></div>
+            <div class="kv"><span>Certificate</span><span id="kvCert">Checking</span></div>
+            <div class="kv"><span>Scam risk</span><span><span class="chip" id="kvRisk">Checking</span></span></div>
+            <div class="kv"><span>Other sites contacted</span><span id="kvThird">0</span></div>
+          </div>
+          <div class="hostlist" id="safetyHosts" hidden></div>
+          <div class="row-btns">
+            <button type="button" class="btn" id="securityMainBtn" aria-expanded="false" aria-controls="certDetailsPanel">Certificate details</button>
+            <button type="button" class="btn" id="copyDomainBtn" style="display: none;">Copy domain</button>
+            <button type="button" class="btn btn-danger" id="reportPhishingBtn" style="display: none;">Report scam</button>
+          </div>
+          <div class="legacy-sec" hidden aria-hidden="true">
+            <div id="siteIcon"></div><span id="securityText"></span><span id="securityBadge"></span><span id="certProtocol"></span><span id="certType"></span><div id="siteMascot"></div>
+          </div>
           <div id="certDetailsPanel" class="cert-details-panel" hidden>
             <div id="certOwnerSection" class="cert-owner">
-              <span class="cert-owner-title">Certificate Owner</span>
+              <span class="cert-owner-title">Certificate owner</span>
               <span id="certOwnerName"></span>
               <span id="certOwnerDetails"></span>
             </div>
@@ -138,301 +149,76 @@
           </div>
           <div id="phishingRiskSection" class="phishing-risk" style="display: none;">
             <div class="phishing-risk-header">
-              <span class="phishing-risk-label">AI Scam Risk</span>
+              <span class="phishing-risk-label">Scam risk</span>
               <span id="phishingRiskBadge" class="phishing-risk-badge unknown">Checking</span>
             </div>
             <div id="phishingRiskText" class="phishing-risk-text">Evaluating destination</div>
             <div id="phishingRiskDetails" class="phishing-risk-details">No risk signal available yet.</div>
-            <div class="phishing-risk-actions">
-              <button class="btn btn-secondary" id="copyDomainBtn" style="display: none;">Copy Domain</button>
-              <button class="btn btn-danger" id="reportPhishingBtn" style="display: none;">Report Scam</button>
-            </div>
           </div>
         </div>
-      </section>
+      </details>
 
-      <!-- Tracker Summary -->
-      <section class="card tracker-summary-card">
-        <h3 class="section-title">Tracker Summary</h3>
-        <div id="trackerSummary" class="tracker-summary" style="display: none;">
-          <div id="trackerCategories" class="tracker-categories"></div>
-        </div>
-      </section>
-
-      <!-- Third-Party Frames -->
-      <section class="card frame-section" id="framesSection" style="display: none;">
-        <h3 class="section-title">Third-Party Frames <span id="framesCount" class="section-count">0</span></h3>
-        <div id="framesList" class="frame-list"></div>
-      </section>
-
-      <!-- Stats -->
-      <section class="card stats-card">
-        <div class="stats-grid">
-          <div class="stat" id="networkStatBtn" style="cursor: pointer;">
-            <span class="stat-value" id="networkBlockedCount">0</span>
-            <span class="stat-label">Network</span>
+      <!-- Features and look -->
+      <details class="acc features-section">
+        <summary>Features and look <span class="meta" id="featMeta"></span></summary>
+        <div class="body">
+          <div class="toggles">
+            <label for="networkBlockingToggle"><input type="checkbox" id="networkBlockingToggle" checked><span>Ads and trackers<small>Network rules</small></span></label>
+            <label for="urlCleaningToggle"><input type="checkbox" id="urlCleaningToggle" checked><span>Link cleaning<small>Tracking parameters</small></span></label>
+            <label for="cookieConsentToggle"><input type="checkbox" id="cookieConsentToggle" checked><span>Cookie popups<small>Consent banners</small></span></label>
+            <label for="annoyanceToggle"><input type="checkbox" id="annoyanceToggle" checked><span>Annoyances<small>Popups, nags</small></span></label>
+            <label for="socialBlockingToggle"><input type="checkbox" id="socialBlockingToggle"><span>Social widgets<small>Share buttons</small></span></label>
+            <label for="paywallToggle"><input type="checkbox" id="paywallToggle" checked><span>Paywalls<small>Keeps the article</small></span></label>
+            <label for="scriptletsToggle"><input type="checkbox" id="scriptletsToggle" checked><span>Video ads<small>In-page fixes, YouTube</small></span></label>
           </div>
-          <div class="stat-divider"></div>
-          <div class="stat" id="cosmeticStatBtn" style="cursor: pointer;">
-            <span class="stat-value" id="cosmeticBlockedCount">0</span>
-            <span class="stat-label">Cosmetic</span>
+          <div class="sub">Palette <span class="sub-name" id="paletteName"></span></div>
+          <div class="dots" id="paletteDots" role="group" aria-label="Colour palette"></div>
+          <div class="sub">Mode</div>
+          <div class="seg" role="group" aria-label="Light or dark" id="modeSeg">
+            <button type="button" data-mode="system" aria-pressed="true">System</button>
+            <button type="button" data-mode="light" aria-pressed="false">Light</button>
+            <button type="button" data-mode="dark" aria-pressed="false">Dark</button>
           </div>
-          <div class="stat-divider"></div>
-          <div class="stat">
-            <span class="stat-value" id="rulesCount">0</span>
-            <span class="stat-label">Rules</span>
+          <div class="row-btns">
+            <button type="button" class="btn" id="removePaywallBtn">Remove paywall now</button>
+            <button type="button" class="btn" id="openOptionsBtn">All settings</button>
           </div>
         </div>
-        <div class="stats-footer">
-          <span class="stat-sub" id="dataSaved">0 KB saved</span>
-          <a href="#" class="view-all" id="viewAllBlocked">View All</a>
-        </div>
-      </section>
+      </details>
 
-      <!-- Features -->
-      <section class="features-section">
-        <h3 class="section-title">Blocking Features</h3>
-        <div class="features-grid">
-          <label class="feature-item">
-            <input type="checkbox" id="networkBlockingToggle" checked>
-            <div class="feature-card">
-              <div class="feature-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
-                  <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
-                  <circle cx="12" cy="12" r="10"/>
-                </svg>
-              </div>
-              <div class="feature-text">
-                <span class="feature-name">Network</span>
-                <span class="feature-desc">Block ads & trackers</span>
-              </div>
-              <span class="feature-check">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-              </span>
-            </div>
-          </label>
-
-          <label class="feature-item">
-            <input type="checkbox" id="urlCleaningToggle" checked>
-            <div class="feature-card">
-              <div class="feature-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                </svg>
-              </div>
-              <div class="feature-text">
-                <span class="feature-name">URL Clean</span>
-                <span class="feature-desc">Remove tracking params</span>
-              </div>
-              <span class="feature-check">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-              </span>
-            </div>
-          </label>
-
-          <label class="feature-item">
-            <input type="checkbox" id="cookieConsentToggle" checked>
-            <div class="feature-card">
-              <div class="feature-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <circle cx="8" cy="10" r="1" fill="currentColor"/>
-                  <circle cx="15" cy="8" r="1" fill="currentColor"/>
-                  <circle cx="10" cy="15" r="1" fill="currentColor"/>
-                  <circle cx="16" cy="14" r="1" fill="currentColor"/>
-                </svg>
-              </div>
-              <div class="feature-text">
-                <span class="feature-name">Cookies</span>
-                <span class="feature-desc">Block consent popups</span>
-              </div>
-              <span class="feature-check">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-              </span>
-            </div>
-          </label>
-
-          <label class="feature-item">
-            <input type="checkbox" id="annoyanceToggle" checked>
-            <div class="feature-card">
-              <div class="feature-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-                </svg>
-              </div>
-              <div class="feature-text">
-                <span class="feature-name">Annoyances</span>
-                <span class="feature-desc">Hide popups & banners</span>
-              </div>
-              <span class="feature-check">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-              </span>
-            </div>
-          </label>
-
-          <label class="feature-item">
-            <input type="checkbox" id="socialBlockingToggle">
-            <div class="feature-card">
-              <div class="feature-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M12 2a5 5 0 1 0 4 8.9V14a3 3 0 0 1-6 0V10.9A5 5 0 0 0 12 2z"/>
-                  <path d="M8 8h8v8H8z"/>
-                </svg>
-              </div>
-              <div class="feature-text">
-                <span class="feature-name">Social</span>
-                <span class="feature-desc">Hide social widgets</span>
-              </div>
-              <span class="feature-check">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-              </span>
-            </div>
-          </label>
-
-          <label class="feature-item">
-            <input type="checkbox" id="paywallToggle" checked>
-            <div class="feature-card">
-              <div class="feature-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                </svg>
-              </div>
-              <div class="feature-text">
-                <span class="feature-name">Paywall</span>
-                <span class="feature-desc">Remove paywalls</span>
-              </div>
-              <span class="feature-check">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-              </span>
-            </div>
-          </label>
-
-          <button class="action-item" id="removePaywallBtn" style="width: 100%; margin-top: 8px;">
-            <div class="action-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
-              </svg>
-            </div>
-            <span class="action-label">Try Remove Paywall</span>
-          </button>
-        </div>
-      </section>
-
-      <!-- Quick Actions -->
-      <section class="actions-section">
-        <h3 class="section-title">Quick Actions</h3>
-        <div class="actions-grid">
-          <button class="action-item" id="pickModeBtn">
-            <div class="action-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M7 2l12 11.5-5.5 1.2 3.3 6.8-2.2 1-3.2-7L7 20V2z"/>
-              </svg>
-            </div>
-            <span class="action-label">Pick Element</span>
-          </button>
-          <button class="action-item" id="zapModeBtn">
-            <div class="action-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-              </svg>
-            </div>
-            <span class="action-label">Quick Zap</span>
-          </button>
-          <button class="action-item" id="whitelistToggleBtn">
-            <div class="action-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M9 12l2 2 4-4"/>
-                <circle cx="12" cy="12" r="10"/>
-              </svg>
-            </div>
-            <span class="action-label" id="whitelistBtnText">Whitelist</span>
-          </button>
-          <button class="action-item" id="reportBrokenBtn" title="Pause blocking for 1 hour and log a report">
-            <div class="action-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                <line x1="12" y1="9" x2="12" y2="13"/>
-                <line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
-            </div>
-            <span class="action-label">Site broken?</span>
-          </button>
-          <button class="action-item" id="openOptionsBtn">
-            <div class="action-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-              </svg>
-            </div>
-            <span class="action-label">Settings</span>
-          </button>
-        </div>
-      </section>
-
-      <!-- Blocked Panel (hidden by default) -->
+      <!-- Blocked list overlay (opened from the totals) -->
       <div class="blocked-panel" id="blockedPanel" style="display: none;">
         <div class="blocked-header">
           <h3 id="blockedTitle">Blocked</h3>
-          <button class="blocked-close" id="blockedClose">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
+          <button type="button" class="blocked-close" id="blockedClose" aria-label="Close">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
         <div class="blocked-list" id="blockedList"></div>
       </div>
     </main>
 
-    <!-- Footer -->
-    <footer class="footer">
-      <div class="footer-row">
-        <div class="footer-left">
-          <span class="version">v2.3.0</span>
-          <span class="footer-sep"></span>
-          <a href="https://github.com/sriinnu/web-suddhi" target="_blank" rel="noopener noreferrer" class="footer-author">by <strong>Srinivas Pendela</strong></a>
-          <a href="https://buymeacoffee.com/sriinnu" target="_blank" rel="noopener noreferrer" class="footer-coffee" title="Buy me a coffee">
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M2 21h18v-2H2v2zM20 8h-2V5h2v3zm0-5H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-4 10c0 1.1-.9 2-2 2H8c-1.1 0-2-.9-2-2V5h10v8zm4-5h-2V5h2v3z"/></svg>
-          </a>
-        </div>
-        <div class="footer-right">
-          <select id="themeSelect" class="theme-select" aria-label="Color theme">
-            <option value="system">System</option>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-            <option value="ocean">Ocean</option>
-            <option value="midnight">Midnight</option>
-            <option value="sunset">Sunset</option>
-            <option value="forest">Forest</option>
-            <option value="forest-dark">Forest Dark</option>
-            <option value="coastal">Coastal</option>
-            <option value="coastal-dark">Coastal Dark</option>
-          </select>
-          <a href="https://github.com/sriinnu/web-suddhi/issues" target="_blank" rel="noopener noreferrer" class="footer-link" title="Report an issue">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16h.01M12 8v4"/></svg>
-          </a>
-        </div>
-      </div>
+    <footer class="ft">
+      <span class="version">v3.0.0</span>
+      <a href="https://github.com/sriinnu/web-suddhi" target="_blank" rel="noopener noreferrer" class="footer-author">by Srinivas Pendela</a>
+      <a href="https://buymeacoffee.com/sriinnu" target="_blank" rel="noopener noreferrer" class="footer-coffee" title="Buy me a coffee" aria-label="Buy me a coffee">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M2 21h18v-2H2v2zM20 8h-2V5h2v3zm0-5H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-4 10c0 1.1-.9 2-2 2H8c-1.1 0-2-.9-2-2V5h10v8zm4-5h-2V5h2v3z"/></svg>
+      </a>
+      <a href="https://github.com/sriinnu/web-suddhi/issues" target="_blank" rel="noopener noreferrer" class="link ft-issue">Report an issue</a>
     </footer>
   </div>
   <script src="../shared/utils.js"></script>
-  <script src="popup.js"></script>
+  <script src="modules/core.js"></script>
+  <script src="modules/theme.js"></script>
+  <script src="modules/messaging.js"></script>
+  <script src="modules/hero.js"></script>
+  <script src="modules/controls.js"></script>
+  <script src="modules/stats.js"></script>
+  <script src="modules/security.js"></script>
+  <script src="modules/activity.js"></script>
+  <script src="modules/firewall.js"></script>
+  <script src="modules/frames.js"></script>
+  <script src="modules/site-state.js"></script>
+  <script src="modules/main.js"></script>
 </body>
 </html>
