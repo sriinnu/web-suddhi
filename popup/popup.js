@@ -134,7 +134,8 @@
     blacklistBtn: document.getElementById('blacklistBtn'),
     statusBadge: document.getElementById('statusBadge'),
     whitelistToggleBtn: document.getElementById('whitelistToggleBtn'),
-    themeSelect: document.getElementById('themeSelect'),
+    paletteSelect: document.getElementById('paletteSelect'),
+    modeSelect: document.getElementById('modeSelect'),
     // Pause ribbon + split-button + broken-site
     pauseRibbon: document.getElementById('pauseRibbon'),
     pauseRibbonText: document.getElementById('pauseRibbonText'),
@@ -161,97 +162,67 @@
   // ============================================
   // THEME
   // ============================================
-  async function loadPopupTheme() {
-    try {
-      const storage = await getStorage(['theme']);
-      const theme = storage.theme || 'system';
-      applyPopupTheme(theme);
-      await populateCustomThemeOptions();
-      syncThemeControl(theme);
-    } catch (e) {
-      // Default to system
-      syncThemeControl('system');
+  // A theme is a palette (colour family) plus a mode (system, light, dark).
+  // shared/palettes.js holds both lists; theme-loader.js has already applied
+  // the saved choice by the time this runs, so this only fills the controls.
+  const Themes = window.WebSuddhiThemes;
+  let themeState = { palette: 'suddhi', colorMode: 'system' };
+
+  function availablePalettes() {
+    const list = Themes ? Themes.ORDER.map((id) => ({ id, name: Themes.PALETTES[id].name })) : [];
+    const custom = Array.isArray(window.__websuddhiCustomThemes) ? window.__websuddhiCustomThemes : [];
+    for (const t of custom) {
+      if (t && t.id && !list.some((p) => p.id === t.id)) list.push({ id: t.id, name: t.name || t.id });
     }
+    return list;
   }
 
-  function applyPopupTheme(theme) {
-    const root = document.documentElement;
-    if (theme === 'system' || !theme) {
-      root.removeAttribute('data-theme');
-    } else {
-      root.setAttribute('data-theme', theme);
-    }
-  }
-
-  function syncThemeControl(theme) {
-    if (elements.themeSelect) {
-      const v = theme || 'system';
-      elements.themeSelect.dataset.desiredValue = v;
-      elements.themeSelect.value = v;
-    }
-  }
-
-  function appendCustomThemeOptions(list) {
-    if (!elements.themeSelect || !Array.isArray(list) || list.length === 0) return;
-    const existing = new Set(
-      Array.from(elements.themeSelect.options).map((o) => o.value)
-    );
-    for (const t of list) {
-      if (!t || typeof t.id !== 'string' || existing.has(t.id)) continue;
+  function fillPaletteSelect() {
+    const select = elements.paletteSelect;
+    if (!select) return;
+    const have = new Set(Array.from(select.options).map((o) => o.value));
+    for (const p of availablePalettes()) {
+      if (have.has(p.id)) continue;
       const opt = document.createElement('option');
-      opt.value = t.id;
-      opt.textContent = t.name || t.id;
-      elements.themeSelect.appendChild(opt);
+      opt.value = p.id;
+      opt.textContent = p.name;
+      select.appendChild(opt);
     }
   }
 
-  function injectCustomThemeCss(themes) {
-    if (document.getElementById('websuddhi-custom-themes')) return;
-    if (!Array.isArray(themes) || themes.length === 0) return;
-    const blocks = [];
-    for (const t of themes) {
-      if (!t || typeof t.id !== 'string' || !t.tokens || typeof t.tokens !== 'object') continue;
-      const safeId = t.id.replace(/[^a-zA-Z0-9_-]/g, '');
-      if (!safeId) continue;
-      const decls = [];
-      for (const key of Object.keys(t.tokens)) {
-        if (!/^--[a-zA-Z0-9_-]+$/.test(key)) continue;
-        const val = String(t.tokens[key]).replace(/[<>]/g, '');
-        decls.push('  ' + key + ': ' + val + ';');
-      }
-      if (decls.length === 0) continue;
-      blocks.push('[data-theme="' + safeId + '"] {\n' + decls.join('\n') + '\n}');
-    }
-    if (blocks.length === 0) return;
-    const style = document.createElement('style');
-    style.id = 'websuddhi-custom-themes';
-    style.textContent = blocks.join('\n\n');
-    (document.head || document.documentElement).appendChild(style);
+  function syncThemeControls() {
+    if (elements.paletteSelect) elements.paletteSelect.value = themeState.palette;
+    if (elements.modeSelect) elements.modeSelect.value = themeState.colorMode;
   }
 
-  async function populateCustomThemeOptions() {
-    if (!elements.themeSelect) return;
-
-    // Fast path: loader already ran
-    if (Array.isArray(window.__websuddhiCustomThemes) && window.__websuddhiCustomThemes.length) {
-      appendCustomThemeOptions(window.__websuddhiCustomThemes);
-      injectCustomThemeCss(window.__websuddhiCustomThemes);
-      return;
-    }
-
-    // Fallback: fetch themes.json directly. Cheap + deterministic.
+  async function loadPopupTheme() {
+    fillPaletteSelect();
+    window.addEventListener('websuddhi:custom-themes-loaded', () => {
+      fillPaletteSelect();
+      syncThemeControls();
+    });
+    if (!Themes) return;
     try {
-      const url = api.runtime.getURL('shared/themes.json');
-      const resp = await fetch(url);
-      if (!resp.ok) return;
-      const themes = await resp.json();
-      if (!Array.isArray(themes)) return;
-      window.__websuddhiCustomThemes = themes;
-      appendCustomThemeOptions(themes);
-      injectCustomThemeCss(themes);
+      const stored = await getStorage(['palette', 'colorMode', 'theme']);
+      themeState = Themes.resolve(stored, (id) => typeof id === 'string' && Themes.safeId(id) === id && id !== '');
+      Themes.apply(document, themeState.palette, themeState.colorMode);
+      if (themeState.migrated) {
+        await setStorage({ palette: themeState.palette, colorMode: themeState.colorMode });
+      }
     } catch (e) {
-      // Silent — built-in themes still work
+      // Keep the default palette.
     }
+    syncThemeControls();
+  }
+
+  async function onThemeControlChange() {
+    if (!Themes) return;
+    themeState = {
+      palette: elements.paletteSelect?.value || Themes.DEFAULT_PALETTE,
+      colorMode: elements.modeSelect?.value || 'system'
+    };
+    Themes.apply(document, themeState.palette, themeState.colorMode);
+    await setStorage({ palette: themeState.palette, colorMode: themeState.colorMode });
   }
 
   // ============================================
@@ -1882,11 +1853,8 @@
     elements.cosmeticStatBtn?.addEventListener('click', showCosmeticStats);
     elements.copyDomainBtn?.addEventListener('click', copyCurrentDomain);
     elements.reportPhishingBtn?.addEventListener('click', reportCurrentSiteAsPhishing);
-    elements.themeSelect?.addEventListener('change', async () => {
-      const theme = elements.themeSelect.value || 'system';
-      applyPopupTheme(theme);
-      await setStorage({ theme });
-    });
+    elements.paletteSelect?.addEventListener('change', onThemeControlChange);
+    elements.modeSelect?.addEventListener('change', onThemeControlChange);
     // Header action buttons
     elements.whitelistBtn?.addEventListener('click', quickWhitelist);
     elements.blacklistBtn?.addEventListener('click', quickBlacklist);
@@ -2024,11 +1992,8 @@
     elements.copyDomainBtn?.addEventListener('click', copyCurrentDomain);
     elements.reportPhishingBtn?.addEventListener('click', reportCurrentSiteAsPhishing);
     elements.securityMainBtn?.addEventListener('click', toggleCertDetails);
-    elements.themeSelect?.addEventListener('change', async () => {
-      const theme = elements.themeSelect.value || 'system';
-      applyPopupTheme(theme);
-      await setStorage({ theme });
-    });
+    elements.paletteSelect?.addEventListener('change', onThemeControlChange);
+    elements.modeSelect?.addEventListener('change', onThemeControlChange);
     // Tri-state site actions — clicking an active state clears it
     elements.whitelistBtn?.addEventListener('click', async () => {
       if (isWhitelisted) {

@@ -31,6 +31,8 @@
     'loggingEnabled',
     'syncEnabled',
     'theme',
+    'palette',
+    'colorMode',
     'toastDuration',
     'enabledLanguageFilters',
     'shortcuts',
@@ -194,8 +196,15 @@
                 }
                 break;
               case 'theme':
-                if (typeof settings[key] !== 'string' || settings[key].length === 0) {
+              case 'palette':
+                if (typeof settings[key] !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(settings[key])) {
                   console.warn(`Skipping ${key}: expected string`);
+                  continue;
+                }
+                break;
+              case 'colorMode':
+                if (!['system', 'light', 'dark'].includes(settings[key])) {
+                  console.warn(`Skipping ${key}: expected system, light or dark`);
                   continue;
                 }
                 break;

@@ -146,6 +146,7 @@ async function mountExtensionPage(htmlPath, scriptPath, api, options = {}) {
   };
   globalThis.IntersectionObserver = window.IntersectionObserver;
 
+  window.eval(readFixture('shared/palettes.js')); // omit-allow: test harness runs the extension's own bundled script in jsdom
   window.eval(readFixture('shared/utils.js'));
   for (const extraScript of extraScripts) {
     window.eval(readFixture(extraScript));
@@ -224,17 +225,28 @@ it('loads the popup with the saved theme and persists quick theme changes', asyn
 
   await mountExtensionPage('popup/popup.html', 'popup/popup.js', api);
 
-  expect(document.documentElement.getAttribute('data-theme')).toBe('forest-dark');
+  // The old single theme setting migrates to palette + mode.
+  expect(document.documentElement.getAttribute('data-palette')).toBe('forest');
+  expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  expect(storageData.palette).toBe('forest');
+  expect(storageData.colorMode).toBe('dark');
   expect(document.getElementById('currentSite').textContent).toBe('example.com');
-  expect(document.getElementById('themeSelect').value).toBe('forest-dark');
+  const paletteSelect = document.getElementById('paletteSelect');
+  const modeSelect = document.getElementById('modeSelect');
+  expect(paletteSelect.options.length).toBe(8);
+  expect(paletteSelect.value).toBe('forest');
+  expect(modeSelect.value).toBe('dark');
 
-  const themeSelect = document.getElementById('themeSelect');
-  themeSelect.value = 'coastal';
-  themeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+  paletteSelect.value = 'coastal';
+  paletteSelect.dispatchEvent(new Event('change', { bubbles: true }));
+  modeSelect.value = 'system';
+  modeSelect.dispatchEvent(new Event('change', { bubbles: true }));
   await flushAsyncWork();
 
-  expect(storageData.theme).toBe('coastal');
-  expect(document.documentElement.getAttribute('data-theme')).toBe('coastal');
+  expect(storageData.palette).toBe('coastal');
+  expect(storageData.colorMode).toBe('system');
+  expect(document.documentElement.getAttribute('data-palette')).toBe('coastal');
+  expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
 });
 
 it('renders the frame census panel and blocks a frame via SET_FRAME_RULE', async () => {
@@ -332,8 +344,11 @@ it('disables sync on browsers without storage.sync and keeps custom themes toggl
 
   await mountExtensionPage('options/options.html', 'options/options.js', api);
 
-  expect(document.documentElement.getAttribute('data-theme')).toBe('forest-dark');
-  expect(document.querySelector('.theme-btn[data-theme="forest-dark"]').classList.contains('active')).toBe(true);
+  expect(document.documentElement.getAttribute('data-palette')).toBe('forest');
+  expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  expect(document.querySelector('.theme-btn[data-mode="dark"]').classList.contains('active')).toBe(true);
+  expect(document.querySelectorAll('#themeGrid .theme-card').length).toBe(8);
+  expect(document.querySelector('.theme-card[data-palette="forest"]').classList.contains('active')).toBe(true);
   expect(document.getElementById('enableSync').disabled).toBe(true);
   expect(document.getElementById('syncDescription').textContent).toContain('settings stay local');
 
@@ -344,11 +359,20 @@ it('disables sync on browsers without storage.sync and keeps custom themes toggl
   expect(storageData.aggressiveness).toBe('conservative');
   expect(document.querySelector('.aggr-option[data-aggr="conservative"]').classList.contains('is-active')).toBe(true);
 
+  // The header toggle flips the mode and keeps the palette.
   document.getElementById('themeToggle').click();
   await flushAsyncWork();
 
-  expect(storageData.theme).toBe('forest');
-  expect(document.documentElement.getAttribute('data-theme')).toBe('forest');
+  expect(storageData.colorMode).toBe('light');
+  expect(storageData.palette).toBe('forest');
+  expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+
+  // Picking a palette card keeps the mode.
+  document.querySelector('.theme-card[data-palette="aurora"]').click();
+  await flushAsyncWork();
+  expect(storageData.palette).toBe('aurora');
+  expect(document.documentElement.getAttribute('data-palette')).toBe('aurora');
+  expect(document.querySelector('.theme-card[data-palette="aurora"]').getAttribute('aria-pressed')).toBe('true');
 });
 
 it('uses the promise-based browser API path and keeps stats deep-links working', async () => {
@@ -406,7 +430,8 @@ it('uses the promise-based browser API path and keeps stats deep-links working',
 
   await mountExtensionPage('popup/popup.html', 'popup/popup.js', api, { mode: 'browser' });
 
-  expect(document.documentElement.getAttribute('data-theme')).toBe('coastal-dark');
+  expect(document.documentElement.getAttribute('data-palette')).toBe('coastal');
+  expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
 
   document.getElementById('viewAllBlocked').click();
   await flushAsyncWork();
@@ -415,13 +440,15 @@ it('uses the promise-based browser API path and keeps stats deep-links working',
     url: 'chrome-extension://test/options/options.html#stats'
   });
 
-  const themeSelect = document.getElementById('themeSelect');
-  themeSelect.value = 'forest';
-  themeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+  const paletteSelect = document.getElementById('paletteSelect');
+  paletteSelect.value = 'suddhi';
+  paletteSelect.dispatchEvent(new Event('change', { bubbles: true }));
   await flushAsyncWork();
 
-  expect(storageData.theme).toBe('forest');
-  expect(document.documentElement.getAttribute('data-theme')).toBe('forest');
+  // The default palette needs no attribute; the mode stays.
+  expect(storageData.palette).toBe('suddhi');
+  expect(document.documentElement.hasAttribute('data-palette')).toBe(false);
+  expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
 });
 
 it('keeps the popup clickable when the background worker never answers', async () => {

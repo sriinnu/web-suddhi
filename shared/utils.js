@@ -580,6 +580,8 @@
     'thirdPartyCookieBlockingEnabled',
     'loggingEnabled',
     'theme',
+    'palette',
+    'colorMode',
     'toastDuration',
     'enabledLanguageFilters',
     'shortcuts',

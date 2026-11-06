@@ -91,15 +91,6 @@
     toastContainer: document.getElementById('toastContainer')
   };
 
-  const QUICK_THEME_TOGGLE = {
-    light: 'dark',
-    dark: 'light',
-    forest: 'forest-dark',
-    'forest-dark': 'forest',
-    coastal: 'coastal-dark',
-    'coastal-dark': 'coastal'
-  };
-
   const RECOMMENDED_LISTS = [
     { id: 'hagezi-pro', name: 'HaGeZi Pro', desc: 'Comprehensive ad & tracker blocking', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt', category: 'ads', icon: '\u{1F6E1}' },
     { id: 'hagezi-tif', name: 'Threat Intelligence', desc: 'Malware, phishing, C2 protection', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.mini.txt', category: 'security', icon: '\u{1F512}' },
@@ -225,27 +216,96 @@
     );
   }
 
-  function getEffectiveSystemTheme() {
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-      ? 'dark'
-      : 'light';
+  // ============================================
+  // THEME: palette (colour family) x mode (system, light, dark).
+  // Lists and CSS come from shared/palettes.js; custom palettes from
+  // shared/themes.json arrive via custom-themes-loader.js.
+  // ============================================
+  const Themes = window.WebSuddhiThemes;
+  let themeState = { palette: 'suddhi', colorMode: 'system' };
+
+  function isPaletteId(id) {
+    return typeof id === 'string' && id !== '' && Themes.safeId(id) === id;
   }
 
-  function getActiveTheme() {
-    const activeThemeButton = document.querySelector('.theme-btn.active');
-    if (activeThemeButton?.dataset.theme) {
-      return activeThemeButton.dataset.theme;
+  function allPalettes() {
+    const list = Themes.ORDER.map((id) => ({ id, ...Themes.PALETTES[id] }));
+    const custom = Array.isArray(window.__websuddhiCustomThemes) ? window.__websuddhiCustomThemes : [];
+    for (const t of custom) {
+      if (t && t.id && !list.some((p) => p.id === t.id)) list.push(t);
     }
-
-    return document.documentElement.getAttribute('data-theme') || 'system';
+    return list;
   }
 
-  function getQuickToggleTheme(currentTheme) {
-    if (currentTheme === 'system') {
-      return getEffectiveSystemTheme() === 'dark' ? 'light' : 'dark';
+  // Cards show each palette in the mode that is on screen now.
+  function renderPaletteCards() {
+    const grid = document.getElementById('themeGrid');
+    if (!grid || !Themes) return;
+    const mode = Themes.effectiveMode(themeState.colorMode);
+    grid.replaceChildren();
+    for (const p of allPalettes()) {
+      const v = p[mode];
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'theme-card';
+      btn.dataset.palette = p.id;
+      btn.title = p.note ? p.name + ': ' + p.note : p.name;
+      const active = p.id === themeState.palette;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', String(active));
+      const preview = document.createElement('div');
+      preview.className = 'theme-preview';
+      for (const key of ['bg', 'surface2', 'accent', 'fg', 'good']) {
+        const sw = document.createElement('span');
+        sw.className = 'swatch';
+        sw.style.background = v[key];
+        preview.appendChild(sw);
+      }
+      const name = document.createElement('span');
+      name.className = 'theme-card-name';
+      name.textContent = p.name;
+      btn.append(preview, name);
+      grid.appendChild(btn);
     }
+  }
 
-    return QUICK_THEME_TOGGLE[currentTheme] || 'dark';
+  function syncThemeUi() {
+    document.querySelectorAll('.theme-btn[data-mode]').forEach((btn) => {
+      const active = btn.dataset.mode === themeState.colorMode;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', String(active));
+    });
+    renderPaletteCards();
+  }
+
+  async function setTheme(next) {
+    themeState = { palette: next.palette || themeState.palette, colorMode: next.colorMode || themeState.colorMode };
+    Themes.apply(document, themeState.palette, themeState.colorMode);
+    document.documentElement.classList.add('theme-loaded');
+    syncThemeUi();
+    await setStorage({ palette: themeState.palette, colorMode: themeState.colorMode });
+  }
+
+  // The header button flips whatever is showing now, so from "system" it
+  // always visibly changes.
+  function quickToggleMode() {
+    return Themes.effectiveMode(themeState.colorMode) === 'dark' ? 'light' : 'dark';
+  }
+
+  function bindThemeControls() {
+    if (!Themes) return;
+    document.querySelectorAll('.theme-btn[data-mode]').forEach((btn) => {
+      btn.addEventListener('click', () => setTheme({ colorMode: btn.dataset.mode }));
+    });
+    document.getElementById('themeGrid')?.addEventListener('click', (event) => {
+      const card = event.target.closest('.theme-card[data-palette]');
+      if (card) setTheme({ palette: card.dataset.palette });
+    });
+    window.addEventListener('websuddhi:custom-themes-loaded', renderPaletteCards);
+    const media = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+    media?.addEventListener?.('change', () => {
+      if (themeState.colorMode === 'system') renderPaletteCards();
+    });
   }
 
   function getHistoryTotal(entry) {
@@ -395,11 +455,15 @@
   };
 
   async function loadTheme() {
-    const storage = await getStorage(['theme', 'fontSize', 'fontFamily', 'borderRadius']);
-    const theme = storage.theme || 'system';
-    applyTheme(theme);
-    updateThemeButtons(theme);
-    updateThemeOptionButtons(theme);
+    const storage = await getStorage(['palette', 'colorMode', 'theme', 'fontSize', 'fontFamily', 'borderRadius']);
+    if (Themes) {
+      const resolved = Themes.resolve(storage, isPaletteId);
+      themeState = { palette: resolved.palette, colorMode: resolved.colorMode };
+      Themes.apply(document, themeState.palette, themeState.colorMode);
+      document.documentElement.classList.add('theme-loaded');
+      syncThemeUi();
+      if (resolved.migrated) await setStorage({ palette: resolved.palette, colorMode: resolved.colorMode });
+    }
 
     // Font size
     const fontSize = storage.fontSize || 14;
@@ -463,16 +527,6 @@
     }
   }
 
-  function applyTheme(theme) {
-    if (theme === 'system') {
-      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
-    } else {
-      document.documentElement.setAttribute('data-theme', theme);
-    }
-    document.documentElement.classList.add('theme-loaded');
-  }
-
   function applyFontFamily(fontFamily) {
     if (!fontFamily || fontFamily === 'system') {
       document.documentElement.style.removeProperty('font-family');
@@ -492,63 +546,6 @@
     document.documentElement.style.setProperty('--radius-sm', Math.max(val - 4, 0) + 'px');
     document.documentElement.style.setProperty('--radius-md', val + 'px');
     document.documentElement.style.setProperty('--radius-lg', Math.min(val + 6, 30) + 'px');
-  }
-
-  function bindThemeCardClicks() {
-    document.querySelectorAll('.theme-card').forEach(btn => {
-      if (btn.dataset.wired === '1') return;
-      btn.dataset.wired = '1';
-      btn.addEventListener('click', async () => {
-        const theme = btn.dataset.theme;
-        applyTheme(theme);
-        updateThemeButtons(theme);
-        updateThemeOptionButtons(theme);
-        await setStorage({ theme });
-      });
-    });
-  }
-
-  // Read shared/themes.json and append a theme card per entry.
-  // Runs after options DOM is ready; custom-themes-loader.js has already
-  // injected the CSS variables, so applyTheme() will take effect instantly.
-  async function renderCustomThemeCards() {
-    try {
-      const grid = document.getElementById('themeGrid');
-      if (!grid) return;
-      let themes = window.__websuddhiCustomThemes;
-      if (!Array.isArray(themes)) {
-        const url = api.runtime.getURL('shared/themes.json');
-        const resp = await fetch(url);
-        if (!resp.ok) return;
-        themes = await resp.json();
-      }
-      if (!Array.isArray(themes)) return;
-      const existing = new Set(
-        Array.from(grid.querySelectorAll('.theme-card')).map(b => b.dataset.theme)
-      );
-      for (const t of themes) {
-        if (!t || !t.id || existing.has(t.id)) continue;
-        const swatches = Array.isArray(t.swatches) ? t.swatches.slice(0, 4) : [];
-        const btn = document.createElement('button');
-        btn.className = 'theme-card';
-        btn.dataset.theme = t.id;
-        btn.title = (t.name || t.id) + (t.recommendedFont ? ' · ' + t.recommendedFont : '');
-        const preview = document.createElement('div');
-        preview.className = 'theme-preview';
-        for (const hex of swatches) {
-          const span = document.createElement('span');
-          span.className = 'swatch';
-          span.style.background = hex;
-          preview.appendChild(span);
-        }
-        const nameEl = document.createElement('span');
-        nameEl.className = 'theme-card-name';
-        nameEl.textContent = t.name || t.id;
-        btn.appendChild(preview);
-        btn.appendChild(nameEl);
-        grid.appendChild(btn);
-      }
-    } catch (_) { /* themes.json missing — silent */ }
   }
 
   async function loadCustomFonts(selectEl) {
@@ -605,18 +602,6 @@
     } catch (err) {
       console.warn('[websuddhi] loadCustomFonts failed:', err);
     }
-  }
-
-  function updateThemeButtons(activeTheme) {
-    document.querySelectorAll('.theme-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.theme === activeTheme);
-    });
-  }
-
-  function updateThemeOptionButtons(activeTheme) {
-    document.querySelectorAll('.theme-card').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.theme === activeTheme);
-    });
   }
 
   async function loadRequestLog() {
@@ -1534,11 +1519,8 @@
   function setupEventListeners() {
     // Theme toggle
     if (elements.themeToggle) {
-      elements.themeToggle?.addEventListener('click', async () => {
-        const newTheme = getQuickToggleTheme(getActiveTheme());
-        applyTheme(newTheme);
-        updateThemeButtons(newTheme);
-        await setStorage({ theme: newTheme });
+      elements.themeToggle.addEventListener('click', () => {
+        if (Themes) setTheme({ colorMode: quickToggleMode() });
       });
     }
 
@@ -1859,21 +1841,8 @@
       });
     }
 
-    // Theme buttons (sidebar footer)
-    document.querySelectorAll('.theme-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const theme = btn.dataset.theme;
-        applyTheme(theme);
-        updateThemeButtons(theme);
-        updateThemeOptionButtons(theme);
-        await setStorage({ theme });
-      });
-    });
-
-    // Render custom themes from shared/themes.json into the picker and bind clicks.
-    // bindThemeCardClicks handles cards that already exist and the ones appended async.
-    bindThemeCardClicks();
-    renderCustomThemeCards().then(bindThemeCardClicks).catch(() => {});
+    // Mode buttons (sidebar footer) and palette cards (Appearance).
+    bindThemeControls();
 
     // Font family select
     const fontFamilySelect = document.getElementById('fontFamilySelect');

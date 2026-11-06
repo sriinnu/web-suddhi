@@ -1,56 +1,47 @@
 /**
  * @module custom-themes-loader
- * @description Reads shared/themes.json and injects one <style> block per
- * custom theme so [data-theme="<id>"] selectors become active. Users add or
- * remove entries in themes.json — no build step, no JS edit needed.
+ * @description Adds user palettes from shared/themes.json. Each entry is
+ *   { "id": "my-palette", "name": "My palette", "note": "optional",
+ *     "light": { bg, surface, surface2, fg, mute, accent, accentFg, good, warn, bad },
+ *     "dark":  { …the same ten keys… } }
+ * with every value a #RRGGBB colour. All other colours are derived from these
+ * by shared/themes.css, exactly as for the built-in palettes.
  *
- * Load order: after fonts.css + themes.css, before theme-loader.js applies
- * the saved theme. Keep this file synchronous-looking but fetch is async —
- * a very brief FOUC on first paint for custom themes is the accepted cost.
- * @version 3.0.0
+ * Load after shared/palettes.js and shared/themes.css. The fetch is async, so a
+ * custom palette can flash the default palette for a frame on first paint.
+ * @version 3.1.0
  */
 'use strict';
 
 (function () {
-  var api = (typeof browser !== 'undefined' && browser.runtime) ? browser : chrome;
-  if (!api || !api.runtime || typeof api.runtime.getURL !== 'function') return;
+  const api = (typeof browser !== 'undefined' && browser.runtime) ? browser : chrome;
+  const themes = globalThis.WebSuddhiThemes || null;
+  if (!themes || !api || !api.runtime || typeof api.runtime.getURL !== 'function') return;
 
-  var url = api.runtime.getURL('shared/themes.json');
-
-  fetch(url)
+  fetch(api.runtime.getURL('shared/themes.json'))
     .then(function (r) { return r.ok ? r.json() : []; })
-    .then(function (themes) {
-      if (!Array.isArray(themes) || themes.length === 0) return;
+    .then(function (list) {
+      if (!Array.isArray(list) || list.length === 0) return;
 
-      var cssBlocks = [];
-      var valid = [];
-      for (var i = 0; i < themes.length; i++) {
-        var t = themes[i];
-        if (!t || typeof t.id !== 'string' || !t.tokens || typeof t.tokens !== 'object') continue;
-        var safeId = t.id.replace(/[^a-zA-Z0-9_-]/g, '');
-        if (!safeId) continue;
-        var decls = [];
-        var keys = Object.keys(t.tokens);
-        for (var k = 0; k < keys.length; k++) {
-          var key = keys[k];
-          if (!/^--[a-zA-Z0-9_-]+$/.test(key)) continue;
-          var val = String(t.tokens[key]).replace(/[<>]/g, '');
-          decls.push('  ' + key + ': ' + val + ';');
-        }
-        if (decls.length === 0) continue;
-        cssBlocks.push('[data-theme="' + safeId + '"] {\n' + decls.join('\n') + '\n}');
-        valid.push(t);
+      const css = [];
+      const valid = [];
+      for (let i = 0; i < list.length; i++) {
+        const t = list[i];
+        const id = t && themes.safeId(t.id);
+        // Built-in ids are reserved so a custom entry cannot repaint them.
+        if (!id || id !== t.id || themes.PALETTES[id] || !themes.isValidPalette(t)) continue;
+        css.push(themes.paletteCss(id, t));
+        valid.push({ id: id, name: String(t.name || id), note: String(t.note || ''), light: t.light, dark: t.dark });
       }
+      if (css.length === 0) return;
 
-      if (cssBlocks.length === 0) return;
-
-      var style = document.createElement('style');
+      const style = document.createElement('style');
       style.id = 'websuddhi-custom-themes';
-      style.textContent = cssBlocks.join('\n\n');
+      style.textContent = css.join('\n\n');
       (document.head || document.documentElement).appendChild(style);
 
       window.__websuddhiCustomThemes = valid;
       window.dispatchEvent(new CustomEvent('websuddhi:custom-themes-loaded', { detail: valid }));
     })
-    .catch(function () { /* themes.json missing or invalid — silent fallback */ });
+    .catch(function () { /* themes.json missing or invalid: the built-ins still work */ });
 })();
