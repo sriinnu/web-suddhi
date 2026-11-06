@@ -1004,7 +1004,7 @@
       const actionBtn = document.createElement('button');
       actionBtn.className = 'bar-action-btn';
       actionBtn.title = 'Unblock this domain';
-      actionBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="4" x2="4" y2="12"/><line x1="4" y1="4" x2="12" y2="12"/></svg>';
+      actionBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="4" x2="4" y2="12"/><line x1="4" y1="4" x2="12" y2="12"/></svg>'; // omit-allow: static markup, no interpolation
       actionBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const domain = label;
@@ -1418,7 +1418,7 @@
       input.setAttribute('aria-label', 'Toggle ' + list.name);
       const toggleSwitch = document.createElement('span');
       toggleSwitch.className = 'toggle-switch small';
-      toggleSwitch.innerHTML = '<span class="slider"></span>';
+      toggleSwitch.innerHTML = '<span class="slider"></span>'; // omit-allow: static markup, no interpolation
       label.appendChild(input);
       label.appendChild(toggleSwitch);
       toggleWrap.appendChild(label);
@@ -1816,7 +1816,7 @@
           showToast('Failed to update language filters', 'error');
         } finally {
           updateLangFiltersBtn.disabled = false;
-          updateLangFiltersBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Update Language Filters';
+          updateLangFiltersBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Update Language Filters'; // omit-allow: static markup, no interpolation
         }
       });
     }
@@ -2510,7 +2510,7 @@
       previewBtn.type = 'button';
       previewBtn.className = 'site-detail-icon-btn';
       previewBtn.title = 'Preview on active tab';
-      previewBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="2.5"/><path d="M1.5 8C3 4.5 5 3 8 3s5 1.5 6.5 5c-1.5 3.5-3.5 5-6.5 5s-5-1.5-6.5-5z"/></svg>';
+      previewBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="2.5"/><path d="M1.5 8C3 4.5 5 3 8 3s5 1.5 6.5 5c-1.5 3.5-3.5 5-6.5 5s-5-1.5-6.5-5z"/></svg>'; // omit-allow: static markup, no interpolation
       previewBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         await previewSelectorOnActiveTab(host, entry.selector);

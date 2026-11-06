@@ -43,7 +43,7 @@ test.describe('local fixture site (offline, deterministic)', () => {
 
   for (const sel of AD_SELECTORS) {
     test(`ad container hidden: ${sel}`, async () => {
-      const visible = await page.$$eval(sel, (els) =>
+      const visible = await page.$$eval(sel, (els) => // omit-allow: Playwright $eval runs a function in the page, not a string
         els.filter((e) => {
           const r = e.getBoundingClientRect();
           const cs = getComputedStyle(e);
@@ -55,7 +55,7 @@ test.describe('local fixture site (offline, deterministic)', () => {
   }
 
   test('ALL first-party images load and are visible', async () => {
-    const report = await page.$$eval('img.fp-img', (imgs) =>
+    const report = await page.$$eval('img.fp-img', (imgs) => // omit-allow: Playwright $eval runs a function in the page, not a string
       imgs.map((i) => {
         const r = i.getBoundingClientRect();
         const cs = getComputedStyle(i);

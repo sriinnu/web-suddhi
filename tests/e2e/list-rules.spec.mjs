@@ -72,9 +72,9 @@ test.describe('compiled list rules on a page (offline)', () => {
   });
 
   test('a site-specific EasyList selector hides its element', async () => {
-    const display = await page.$eval('#list-target', (e) => getComputedStyle(e).display);
+    const display = await page.$eval('#list-target', (e) => getComputedStyle(e).display); // omit-allow: Playwright $eval runs a function in the page, not a string
     expect(display, `${cosmetic.host}##${cosmetic.selector}`).toBe('none');
-    expect(await page.$eval('#control', (e) => getComputedStyle(e).display)).not.toBe('none');
+    expect(await page.$eval('#control', (e) => getComputedStyle(e).display)).not.toBe('none'); // omit-allow: Playwright $eval runs a function in the page, not a string
   });
 
   test('a first-party ad path is blocked; an ordinary image is not', async () => {

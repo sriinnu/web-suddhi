@@ -67,9 +67,9 @@ function loadContentScript(api, html) {
   if (!window.CSS) window.CSS = {};
   if (!window.CSS.escape) window.CSS.escape = (s) => String(s).replace(/[^a-zA-Z0-9_-]/g, (ch) => "\\" + ch);
   globalThis.CSS = window.CSS;
-  window.eval(read('shared/utils.js'));
+  window.eval(read('shared/utils.js')); // omit-allow: loads the repo's own content script into jsdom
   delete window.__wsPicker; // a fresh core needs a fresh picker
-  window.eval(read('content/ad-blocker.js'));
+  window.eval(read('content/ad-blocker.js')); // omit-allow: loads the repo's own content script into jsdom
 }
 
 function createContentApi() {
@@ -81,7 +81,7 @@ function createContentApi() {
       onMessage: listenerSlot(),
       // LOAD_PICKER: stand in for the background injecting content/picker.js.
       sendMessage: vi.fn((msg, cb) => {
-        if (msg && msg.type === 'LOAD_PICKER') window.eval(read('content/picker.js'));
+        if (msg && msg.type === 'LOAD_PICKER') window.eval(read('content/picker.js')); // omit-allow: loads the repo's own content script into jsdom
         if (typeof cb === 'function') cb({ success: true });
         return undefined;
       }),

@@ -1,0 +1,22 @@
+name: omit
+
+# The omit verdict on every PR: net diff, new dependencies, secrets and
+# injection patterns, whatever agent or person wrote the change.
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  omit:
+    runs-on: ubuntu-latest
+    # A fork's PR gets a read-only token, so the comment could only fail there.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # exec stays off: a PR's receipts and lint config are untrusted code.
+      - uses: sriinnu/omit@46fe58c664065371877d0fbc8eeb9d1618bb28ae # v0.7.0

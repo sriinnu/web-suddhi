@@ -165,7 +165,7 @@
 
     const panel = document.createElement('div');
     panel.className = 'websuddhi-preview-panel';
-    panel.innerHTML = `
+    const panelMarkup = `
       <div class="websuddhi-preview-header">Element Preview</div>
       <div class="websuddhi-preview-selector"></div>
       <div class="websuddhi-preview-info">
@@ -182,6 +182,7 @@
         Click to block <kbd>Esc</kbd> cancel <kbd>Alt</kbd> frame/element <kbd>Shift</kbd> quick-kill <kbd>Ctrl</kbd> specific
       </div>
     `;
+    panel.innerHTML = panelMarkup; // omit-allow: static markup, no interpolation
     panel.style.display = 'none';
     document.body.appendChild(panel);
     return panel;

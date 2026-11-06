@@ -1462,7 +1462,7 @@
           fakeAd.style.cssText = 'position:absolute!important;left:-9999px!important;top:-9999px!important;' +
             'width:1px!important;height:1px!important;opacity:0.01!important;pointer-events:none!important;' +
             'visibility:visible!important;display:block!important;';
-          fakeAd.innerHTML = '&nbsp;';
+          fakeAd.textContent = '\u00a0';
 
           if (document.body) {
             document.body.appendChild(fakeAd);

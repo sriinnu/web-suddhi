@@ -54,7 +54,7 @@ describe('teardownChildFrames', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
 
   it('removes iframes whose src matches and returns the count removed', () => {
-    document.body.innerHTML =
+    document.body.innerHTML = // omit-allow: fixed test fixture markup
       '<iframe src="https://doubleclick.net/ad1"></iframe>' +
       '<iframe src="https://doubleclick.net/ad2"></iframe>' +
       '<iframe src="https://youtube.com/embed/x"></iframe>';
@@ -65,7 +65,7 @@ describe('teardownChildFrames', () => {
   });
 
   it('returns 0 when nothing matches', () => {
-    document.body.innerHTML = '<iframe src="https://safe.com/x"></iframe>';
+    document.body.innerHTML = '<iframe src="https://safe.com/x"></iframe>'; // omit-allow: fixed test fixture markup
     expect(agent.teardownChildFrames(document, 'doubleclick.net')).toBe(0);
     expect(document.querySelectorAll('iframe')).toHaveLength(1);
   });
