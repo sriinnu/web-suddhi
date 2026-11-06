@@ -611,9 +611,9 @@
   let siteStateValue = 'default';
 
   const STATE_WHY = {
-    protected: 'Strict: heavy frames are blocked as well. Use it on sites you do not trust.',
-    default: 'Standard: ads, trackers and annoyances are blocked. The page itself is left alone.',
-    paused: 'Off here: nothing is blocked on this site until you turn it back on.'
+    protected: 'Also stops heavy frames. Use it on sites you do not trust.',
+    default: 'Blocks known ads and trackers, and hides cookie popups.',
+    paused: 'Nothing is blocked on this site until you turn it back on.'
   };
 
   function updateVerdict() {
@@ -625,7 +625,7 @@
       text = 'WebSuddhi is off on every site';
       off = true;
     } else if (siteStateValue === 'paused') {
-      text = 'Blocking is off on this site';
+      text = 'Blocking is off here';
       off = true;
     } else if (!currentTab?.url || !/^https?:/.test(currentTab.url)) {
       text = 'Nothing to block on this page';
@@ -889,7 +889,7 @@
     if (!isPaused || !elements.pauseRibbonText) return;
     if (!pauseExpiry) {
       // Indefinite pause (set from the Paused button): nothing to count down.
-      elements.pauseRibbonText.textContent = 'Paused on this site';
+      elements.pauseRibbonText.textContent = 'Blocking is off on ' + (getActiveHostname() || 'this site');
       return;
     }
     const label = formatPauseRemaining(pauseExpiry);
@@ -1377,7 +1377,15 @@
     elements.phishingRiskBadge.textContent = badgeText;
     elements.phishingRiskText.textContent = statusText;
     elements.phishingRiskDetails.textContent = detailsText;
-    elements.phishingRiskSection.style.display = 'block';
+    // The key/value row carries the verdict; the long text only shows when it matters.
+    const riskChip = document.getElementById('kvRisk');
+    if (riskChip) {
+      const chipKind = { safe: 'good', low: 'warn', medium: 'warn', high: 'bad' }[badgeClass] || '';
+      riskChip.className = 'chip' + (chipKind ? ' ' + chipKind : '');
+      riskChip.textContent = badgeClass === 'safe' ? 'Low' : badgeText;
+      riskChip.title = detailsText;
+    }
+    elements.phishingRiskSection.style.display = (isSuspicious || risk.evaluationError) ? 'block' : 'none';
 
     if (elements.copyDomainBtn) {
       elements.copyDomainBtn.style.display = canCopy ? 'inline-flex' : 'none';
@@ -1546,6 +1554,11 @@
     try {
       const response = await sendToBackgroundWithFallback(['GET_REQUEST_LOG', 'REQUEST_LOG']);
       entries = extractRequestLog(response).filter((e) => host && bareHost(e?.site) === host);
+      hostCategory.clear();
+      for (const e of entries) {
+        const h = e.type === 'cosmetic' ? '' : extractDomain(e.url);
+        if (h && e.category && !hostCategory.has(h)) hostCategory.set(h, e.category);
+      }
     } catch (e) {
       entries = [];
     }
@@ -1558,7 +1571,54 @@
     }
     const categories = Array.from(byCategory, ([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
     renderRing(categories);
-    renderFeed(entries.slice().sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 30));
+    renderFeed(entries.slice().sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 200));
+    if (tabConnections) renderFirewall();
+  }
+
+  // Two-letter marks for the activity groups.
+  const CATEGORY_MARK = {
+    Advertising: 'Ad', Analytics: 'An', Social: 'So', Tracking: 'Tr', Cookie: 'Ck',
+    Annoyance: 'Po', Hidden: 'Hd', Malware: 'Mw', Phishing: 'Ph', Cryptomining: 'Cm', Other: 'Ot'
+  };
+  function categoryMark(name) {
+    return CATEGORY_MARK[name] || String(name || '?').slice(0, 2).replace(/^./, (c) => c.toUpperCase());
+  }
+
+  function groupTitle(group) {
+    const n = group.items.length;
+    if (group.cosmetic) return 'Hid ' + n + (n === 1 ? ' page element' : ' page elements');
+    const what = group.name === 'Other' ? '' : group.name.toLowerCase() + ' ';
+    return 'Stopped ' + n + ' ' + what + (n === 1 ? 'request' : 'requests');
+  }
+
+  function buildFeedItem(entry) {
+    const cosmetic = entry.type === 'cosmetic';
+    const item = document.createElement('li');
+    item.className = 'evi';
+    const label = document.createElement('span');
+    const target = cosmetic ? entry.selector : extractDomain(entry.url) || entry.url;
+    label.textContent = target || 'unknown';
+    label.title = cosmetic ? (entry.selector || '') : (entry.url || '');
+    const when = document.createElement('small');
+    when.textContent = shortTime(entry.timestamp);
+    const allow = document.createElement('button');
+    allow.type = 'button';
+    allow.className = 'link';
+    allow.textContent = 'Allow';
+    allow.title = cosmetic ? 'Stop hiding this on this site' : 'Allow this host on every site';
+    allow.addEventListener('click', async () => {
+      allow.disabled = true;
+      const ok = await allowActivityEntry(entry);
+      if (ok) {
+        item.classList.add('undone');
+        allow.textContent = 'Allowed';
+        showToast('Allowed. Reload the page to see it.');
+      } else {
+        allow.disabled = false;
+      }
+    });
+    item.append(label, when, allow);
+    return item;
   }
 
   function renderFeed(entries) {
@@ -1568,45 +1628,53 @@
     if (elements.activityCount) elements.activityCount.textContent = String(entries.length);
     if (elements.activityEmpty) elements.activityEmpty.hidden = entries.length > 0;
 
+    // One row per category, newest group first; the hosts sit under it.
+    const groups = new Map();
     for (const entry of entries) {
       const cosmetic = entry.type === 'cosmetic';
+      const name = entry.category && entry.category !== 'Unknown' ? entry.category : (cosmetic ? 'Hidden' : 'Other');
+      const key = (cosmetic ? 'c:' : 'n:') + name;
+      if (!groups.has(key)) groups.set(key, { name, cosmetic, items: [] });
+      groups.get(key).items.push(entry);
+    }
+
+    for (const group of groups.values()) {
       const row = document.createElement('div');
       row.className = 'ev';
 
       const icon = document.createElement('span');
-      icon.className = 'ic' + (cosmetic ? ' hid' : '');
-      icon.textContent = cosmetic ? 'CSS' : 'NET';
+      icon.className = 'ic' + (group.cosmetic ? ' hid' : '');
+      icon.textContent = categoryMark(group.name);
       icon.setAttribute('aria-hidden', 'true');
 
       const text = document.createElement('div');
       text.className = 't';
       const title = document.createElement('span');
-      const target = cosmetic ? entry.selector : extractDomain(entry.url) || entry.url;
-      title.textContent = (cosmetic ? 'Hid ' : 'Blocked ') + (target || 'unknown');
-      title.title = cosmetic ? (entry.selector || '') : (entry.url || '');
+      title.textContent = groupTitle(group);
       const meta = document.createElement('small');
-      meta.textContent = [entry.category, shortTime(entry.timestamp)].filter(Boolean).join(' · ');
+      const names = Array.from(new Set(group.items.map((e) => (e.type === 'cosmetic' ? e.selector : extractDomain(e.url) || e.url)).filter(Boolean)));
+      meta.textContent = names.slice(0, 3).join(', ') + (names.length > 3 ? ' +' + (names.length - 3) : '');
+      meta.title = names.join('\n');
       text.append(title, meta);
 
-      const undo = document.createElement('button');
-      undo.type = 'button';
-      undo.className = 'link';
-      undo.textContent = 'Allow';
-      undo.title = cosmetic ? 'Stop hiding this on this site' : 'Allow this host on every site';
-      undo.addEventListener('click', async () => {
-        undo.disabled = true;
-        const ok = await allowActivityEntry(entry);
-        if (ok) {
-          row.classList.add('undone');
-          undo.textContent = 'Allowed';
-          showToast('Allowed. Reload the page to see it.');
-        } else {
-          undo.disabled = false;
-        }
+      const list = document.createElement('ul');
+      list.className = 'evlist';
+      list.hidden = true;
+      for (const entry of group.items) list.appendChild(buildFeedItem(entry));
+
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'link';
+      more.textContent = 'Details';
+      more.setAttribute('aria-expanded', 'false');
+      more.addEventListener('click', () => {
+        list.hidden = !list.hidden;
+        more.setAttribute('aria-expanded', String(!list.hidden));
+        more.textContent = list.hidden ? 'Details' : 'Hide';
       });
 
-      row.append(icon, text, undo);
-      feed.appendChild(row);
+      row.append(icon, text, more);
+      feed.append(row, list);
     }
   }
 
@@ -1703,6 +1771,7 @@
 
       // Frames are owned by the live census panel (loadFrameCensus), not here.
       await loadFrameCensus();
+      await loadConnections();
     } catch (err) {
       setPhishingRiskState(fallbackConnection, {
         isSuspicious: false,
@@ -1719,6 +1788,268 @@
         elements.certOwnerSection.style.display = 'none';
       }
     }
+  }
+
+  // ---- Connections: server address, headers, certificate, other hosts ----
+  let tabConnections = null;
+  const hostCategory = new Map();
+
+  function setText(id, text, title) {
+    const node = document.getElementById(id);
+    if (!node) return;
+    node.textContent = text;
+    if (title !== undefined) node.title = title;
+  }
+
+  function daysUntil(ms) {
+    return Math.round((Number(ms) - Date.now()) / 86_400_000);
+  }
+
+  function certSummary(cert, connection) {
+    if (cert && cert.validTo) {
+      const issuer = String(cert.issuer || '').match(/O=([^,]+)/)?.[1] || cert.issuer || 'Unknown issuer';
+      const days = daysUntil(cert.validTo);
+      return issuer + (days >= 0 ? ', valid ' + days + (days === 1 ? ' day' : ' days') : ', expired');
+    }
+    if (connection && connection.isSecure) return 'Valid (browser checked)';
+    return 'None';
+  }
+
+  async function loadConnections() {
+    if (!currentTab || !currentTab.id) return;
+    let connections = null;
+    try {
+      const resp = await sendToBackground({ type: 'GET_TAB_CONNECTIONS', tabId: currentTab.id });
+      connections = resp && resp.success ? resp.connections : null;
+    } catch (e) {
+      connections = null;
+    }
+    tabConnections = connections || { mainHost: '', mainIp: null, server: null, hsts: false, cert: null, hosts: [] };
+    const conn = (lastSecuritySnapshot && lastSecuritySnapshot.connection) || {};
+    const seen = !!(tabConnections.mainIp || tabConnections.hosts.length);
+    const cert = tabConnections.cert;
+
+    let connText = conn.isFile ? 'Local file' : (conn.isSecure ? 'HTTPS' : (conn.protocol === 'http:' ? 'HTTP, not encrypted' : 'Unknown'));
+    if (cert && cert.protocolVersion) connText += ', ' + cert.protocolVersion.replace('TLSv', 'TLS ');
+    setText('kvConnection', connText, cert && cert.cipherSuite ? cert.cipherSuite : '');
+    setText('kvIp', tabConnections.mainIp || (seen ? 'Hidden by the browser' : 'Reload the page to see it'));
+    const serverRow = document.getElementById('kvServerRow');
+    if (serverRow) serverRow.hidden = !tabConnections.server;
+    setText('kvServer', tabConnections.server || '');
+    setText('kvHsts', seen ? (tabConnections.hsts ? 'On' : 'Off') : 'Unknown');
+    setText('kvCert', certSummary(cert, conn), cert && cert.subject ? cert.subject : '');
+
+    // Fold the real certificate into the details panel.
+    if (cert && lastSecuritySnapshot) {
+      lastSecuritySnapshot.certificate = Object.assign({}, lastSecuritySnapshot.certificate || {}, {
+        organization: String(cert.subject || '').match(/O=([^,]+)/)?.[1] || undefined,
+        issuer: cert.issuer || undefined,
+        validFrom: cert.validFrom ? new Date(cert.validFrom).toLocaleDateString() : undefined,
+        validTo: cert.validTo ? new Date(cert.validTo).toLocaleDateString() : undefined
+      });
+    }
+
+    const others = tabConnections.hosts.filter((h) => !h.firstParty);
+    setText('kvThird', String(others.length));
+    const list = document.getElementById('safetyHosts');
+    if (list) {
+      list.textContent = '';
+      for (const h of others.slice(0, 8)) {
+        const row = document.createElement('div');
+        row.className = 'hl';
+        const name = document.createElement('span');
+        name.className = 'mono';
+        name.textContent = h.host;
+        name.title = h.host;
+        const info = document.createElement('small');
+        info.textContent = [h.ips && h.ips[0], h.blocked ? h.blocked + ' blocked' : h.count + ' req'].filter(Boolean).join(' · ');
+        row.append(name, info);
+        list.appendChild(row);
+      }
+      list.hidden = others.length === 0;
+    }
+
+    await loadFirewall();
+  }
+
+  // ---- Firewall matrix: hosts on this page × request types ----
+  const FW_COLS = [['script', 'Script'], ['frame', 'Frame'], ['xhr', 'XHR'], ['image', 'Image']];
+  let fwRules = {};
+  const fwPending = new Map();
+  const fwKey = (host, type) => host + '\n' + type;
+
+  async function loadFirewall() {
+    const site = getActiveHostname();
+    if (!site) return;
+    try {
+      const resp = await sendToBackground({ type: 'GET_FIREWALL_RULES', site });
+      fwRules = resp && resp.success && resp.rules ? resp.rules : {};
+    } catch (e) {
+      fwRules = {};
+    }
+    renderFirewall();
+  }
+
+  function fwSaved(host, type) {
+    return (fwRules[host] && fwRules[host][type]) || null;
+  }
+
+  function fwOwn(host, type) {
+    const k = fwKey(host, type);
+    return fwPending.has(k) ? fwPending.get(k) : fwSaved(host, type);
+  }
+
+  // What the filter lists did to this host, as far as we saw.
+  function fwListDecision(h) {
+    if (!h || !h.count) return null;
+    if (!h.blocked) return 'allow';
+    return h.blocked >= h.count ? 'block' : null;
+  }
+
+  function fwCell(host, type, label, eff, mine, dirty) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'cell';
+    if (eff) b.dataset.e = eff;
+    b.dataset.mine = mine ? '1' : '0';
+    if (dirty) b.dataset.dirty = '1';
+    b.setAttribute('aria-label', host + ' ' + label + ': ' + (eff || 'mixed') + (mine ? ', your rule' : ', from filter lists'));
+    return b;
+  }
+
+  function fwToggle(host, type, eff) {
+    const k = fwKey(host, type);
+    const own = fwOwn(host, type);
+    const next = own ? null : (eff === 'block' ? 'allow' : 'block');
+    if (next === fwSaved(host, type)) fwPending.delete(k);
+    else fwPending.set(k, next);
+    renderFirewall();
+  }
+
+  function renderFirewall() {
+    const body = document.getElementById('firewallBody');
+    if (!body) return;
+    body.textContent = '';
+    const hosts = (tabConnections && tabConnections.hosts ? tabConnections.hosts : []).slice();
+    // Hosts with a rule stay listed even when this load did not contact them.
+    for (const host of Object.keys(fwRules)) {
+      if (host !== '*' && !hosts.some((h) => h.host === host)) hosts.push({ host, firstParty: false, count: 0, blocked: 0, types: {} });
+    }
+    const groups = [
+      ['This site', hosts.filter((h) => h.firstParty)],
+      ['Other sites', hosts.filter((h) => !h.firstParty).slice(0, 30)]
+    ];
+
+    for (const [label, rows] of groups) {
+      if (!rows.length) continue;
+      const gtr = document.createElement('tr');
+      gtr.className = 'grp';
+      const gtd = document.createElement('td');
+      gtd.colSpan = 6;
+      gtd.textContent = label;
+      gtr.appendChild(gtd);
+      body.appendChild(gtr);
+
+      for (const h of rows) {
+        const tr = document.createElement('tr');
+        const head = document.createElement('td');
+        head.className = 'h';
+        const name = document.createElement('div');
+        name.textContent = h.host;
+        name.title = h.host + (h.ips && h.ips.length ? '\n' + h.ips.join(', ') : '');
+        const sub = document.createElement('small');
+        const cat = hostCategory.get(h.host);
+        let seenText = 'not seen this load';
+        if (h.count && h.blocked >= h.count) seenText = h.blocked + ' blocked';
+        else if (h.count && h.blocked) seenText = h.count + ' req, ' + h.blocked + ' blocked';
+        else if (h.count) seenText = h.count + (h.count === 1 ? ' request' : ' requests');
+        sub.textContent = [cat ? cat.toLowerCase() : (h.firstParty ? 'the page' : ''), seenText].filter(Boolean).join(' · ');
+        head.append(name, sub);
+        tr.appendChild(head);
+
+        const list = fwListDecision(h);
+        const allOwn = fwOwn(h.host, '*');
+        const allEff = allOwn || list;
+        const all = fwCell(h.host, '*', 'all types', allEff, !!allOwn, fwPending.has(fwKey(h.host, '*')));
+        if (h.firstParty) {
+          all.disabled = true;
+          all.title = 'The page itself cannot be blocked here. Use Strict.';
+        } else {
+          all.addEventListener('click', () => fwToggle(h.host, '*', allEff));
+        }
+        const allTd = document.createElement('td');
+        allTd.appendChild(all);
+        tr.appendChild(allTd);
+
+        for (const [type, colLabel] of FW_COLS) {
+          const own = fwOwn(h.host, type);
+          const eff = own || allOwn || list;
+          const c = fwCell(h.host, type, colLabel, eff, !!(own || allOwn), fwPending.has(fwKey(h.host, type)));
+          c.addEventListener('click', () => fwToggle(h.host, type, eff));
+          const td = document.createElement('td');
+          td.appendChild(c);
+          tr.appendChild(td);
+        }
+        body.appendChild(tr);
+      }
+    }
+
+    const third = hosts.filter((h) => !h.firstParty).length;
+    setText('firewallTabCount', String(third));
+    const any = hosts.length > 0;
+    const table = document.getElementById('firewallTable');
+    if (table) table.hidden = !any;
+    const key = document.getElementById('firewallKey');
+    if (key) key.hidden = !any;
+    const empty = document.getElementById('firewallEmpty');
+    if (empty) empty.hidden = any;
+    const foot = document.getElementById('firewallFoot');
+    if (foot) foot.hidden = Object.keys(fwRules).length === 0;
+
+    const n = fwPending.size;
+    const commit = document.getElementById('firewallCommit');
+    if (commit) commit.hidden = n === 0;
+    setText('firewallChanges', n + (n === 1 ? ' change' : ' changes'));
+    setText('firewallScope', 'on ' + getActiveHostname());
+  }
+
+  async function saveFirewall() {
+    const site = getActiveHostname();
+    if (!site || fwPending.size === 0) return;
+    let failed = 0;
+    for (const [k, action] of fwPending) {
+      const [host, type] = k.split('\n');
+      try {
+        const resp = await sendToBackground({ type: 'SET_FIREWALL_RULE', site, host, requestType: type, action });
+        if (resp && resp.success) fwRules = resp.rules || fwRules;
+        else failed++;
+      } catch (e) {
+        failed++;
+      }
+    }
+    fwPending.clear();
+    renderFirewall();
+    if (failed) {
+      showToast(failed + ' rule' + (failed === 1 ? '' : 's') + ' could not be saved');
+      return;
+    }
+    showToast('Saved. Reloading the page.');
+    try { await api.tabs.reload(currentTab.id); } catch (e) { /* tab may be gone */ }
+  }
+
+  async function resetFirewall() {
+    const site = getActiveHostname();
+    if (!site) return;
+    try {
+      await sendToBackground({ type: 'RESET_FIREWALL_SITE', site });
+    } catch (e) {
+      showToast('Could not clear the rules');
+      return;
+    }
+    fwPending.clear();
+    fwRules = {};
+    renderFirewall();
+    showToast('Your rules for ' + site + ' are cleared. Reload to apply.');
   }
 
   // Get organization from hostname
@@ -2237,6 +2568,9 @@
       elements.relaxBtn.closest('.step')?.classList.add('done');
     });
     elements.killAllHogsBtn?.addEventListener('click', killAllHogs);
+    document.getElementById('firewallSave')?.addEventListener('click', saveFirewall);
+    document.getElementById('firewallRevert')?.addEventListener('click', () => { fwPending.clear(); renderFirewall(); });
+    document.getElementById('firewallReset')?.addEventListener('click', resetFirewall);
     elements.brokenBtn?.addEventListener('click', () => {
       if (!elements.fixLadder) return;
       const open = elements.fixLadder.hidden;

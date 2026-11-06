@@ -502,7 +502,7 @@ it('fills the ring and activity from this site only, and runs each click once', 
   await flushAsyncWork();
   expect(setStateCalls.length).toBe(1);
   expect(document.getElementById('siteStateProtected').getAttribute('aria-pressed')).toBe('true');
-  expect(document.getElementById('siteStateWhy').textContent).toMatch(/^Strict/);
+  expect(document.getElementById('siteStateWhy').textContent).toMatch(/heavy frames/);
 
   // The repair ladder opens in place.
   const broken = document.getElementById('brokenBtn');
@@ -514,4 +514,51 @@ it('fills the ring and activity from this site only, and runs each click once', 
   document.getElementById('tabFrames').click();
   expect(document.getElementById('panelFrames').hidden).toBe(false);
   expect(document.getElementById('panelActivity').hidden).toBe(true);
+});
+
+it('fills Site safety from the connection log and saves firewall cells', async () => {
+  const setRuleCalls = [];
+  const { api } = createExtensionApiMock({
+    storageData: { enabled: true },
+    runtimeHandlers: {
+      GET_ALL_SETTINGS: () => ({ success: true, settings: { enabled: true } }),
+      IS_WHITELISTED: () => ({ success: true, whitelisted: false }),
+      GET_SITE_STATE: () => ({ success: true, state: 'default' }),
+      GET_TAB_CONNECTIONS: () => ({
+        success: true,
+        connections: {
+          mainHost: 'example.com', mainIp: '93.184.216.34', server: 'ECS', hsts: true, cert: null,
+          hosts: [
+            { host: 'example.com', firstParty: true, count: 4, blocked: 0, types: { script: 2 }, ips: ['93.184.216.34'] },
+            { host: 'tracker.net', firstParty: false, count: 3, blocked: 3, types: { script: 3 }, ips: ['10.0.0.9'] }
+          ]
+        }
+      }),
+      GET_FIREWALL_RULES: () => ({ success: true, rules: {} }),
+      SET_FIREWALL_RULE: (message) => { setRuleCalls.push(message); return { success: true, rules: {} }; }
+    }
+  });
+
+  await mountExtensionPage('popup/popup.html', 'popup/popup.js', api);
+  await flushAsyncWork();
+
+  expect(document.getElementById('kvIp').textContent).toBe('93.184.216.34');
+  expect(document.getElementById('kvHsts').textContent).toBe('On');
+  expect(document.getElementById('kvThird').textContent).toBe('1');
+  expect(document.getElementById('firewallTabCount').textContent).toBe('1');
+
+  const rows = document.querySelectorAll('#firewallBody tr:not(.grp)');
+  expect(rows.length).toBe(2);
+  // The page's own "All" cell cannot be flipped.
+  expect(rows[0].querySelector('.cell').disabled).toBe(true);
+
+  // Lists blocked tracker.net; flipping its Script cell stages an allow.
+  const script = rows[1].querySelectorAll('.cell')[1];
+  expect(script.dataset.e).toBe('block');
+  script.click();
+  expect(document.getElementById('firewallCommit').hidden).toBe(false);
+  document.getElementById('firewallSave').click();
+  await flushAsyncWork();
+  expect(setRuleCalls.length).toBe(1);
+  expect(setRuleCalls[0]).toMatchObject({ site: 'example.com', host: 'tracker.net', requestType: 'script', action: 'allow' });
 });

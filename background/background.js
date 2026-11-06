@@ -18,6 +18,8 @@ try {
       'phishing-detector.js',
       'frame-registry.js',
       'frame-blocker.js',
+      'connection-log.js',
+      'firewall.js',
       'scriptlets.js'
     );
   }
@@ -1825,6 +1827,35 @@ try {
             return { success: true, census: self.WebSuddhi.frameRegistry.getCensus(message.tabId) };
           }
           return { success: true, census: { frames: [], counts: { frames: 0, heavy: 0, blocked: 0, flagged: 0, cosmetic: 0 } } };
+
+        case 'GET_TAB_CONNECTIONS': {
+          const log = self.WebSuddhi.connectionLog;
+          const tabId = Number.isInteger(message.tabId) ? message.tabId : sender.tab?.id;
+          const connections = log
+            ? log.getConnections(tabId)
+            : { mainHost: '', mainIp: null, server: null, hsts: false, cert: null, hosts: [] };
+          return { success: true, connections };
+        }
+
+        case 'GET_FIREWALL_RULES': {
+          const fwm = self.WebSuddhi.firewall;
+          if (!fwm) return { success: false, error: 'Firewall unavailable' };
+          return { success: true, rules: await fwm.getSiteRules(message.site) };
+        }
+
+        case 'SET_FIREWALL_RULE': {
+          const fwm = self.WebSuddhi.firewall;
+          if (!fwm) return { success: false, error: 'Firewall unavailable' };
+          // `type` is the message name, so the request type travels as `requestType`.
+          return await fwm.setRule(message.site, message.host, message.requestType,
+            message.action === undefined ? null : message.action);
+        }
+
+        case 'RESET_FIREWALL_SITE': {
+          const fwm = self.WebSuddhi.firewall;
+          if (!fwm) return { success: false, error: 'Firewall unavailable' };
+          return await fwm.resetSite(message.site);
+        }
 
         case 'SET_FRAME_RULE': {
           const reg = self.WebSuddhi.frameRegistry;

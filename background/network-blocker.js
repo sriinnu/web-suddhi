@@ -439,6 +439,9 @@
       // Check if domain is allowed
       if (mv2State.allowedDomains.has(domain)) return {};
 
+      // Per-site firewall 'allow' overrides the lists (its own listener handles 'block').
+      if (self.WebSuddhi.firewall && self.WebSuddhi.firewall.decideCached(details) === 'allow') return {};
+
       // Check against blocklist
       if (isDomainBlocked(domain, mv2State.allBlocked)) {
         const tabId = details.tabId;

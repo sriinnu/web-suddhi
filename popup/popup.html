@@ -15,7 +15,7 @@
   <div class="popup-wrapper v2">
     <!-- Header: brand, global switch -->
     <header class="hd">
-      <img src="../icons/icon48.png" alt="" class="logo">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2l11 4v9c0 7-4.6 12.2-11 15C9.6 27.2 5 22 5 15V6z" style="fill:var(--accent)"/><path d="M16 2l11 4v9c0 7-4.6 12.2-11 15z" style="fill:var(--fg)" opacity=".35"/><path d="M11 16l3.5 3.5L21 12.5" fill="none" style="stroke:var(--accent-fg)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <div class="hd-title">
         <b>WebSuddhi</b>
         <small>Clean web, clear mind</small>
@@ -29,11 +29,6 @@
     <main class="main-content">
       <!-- Hero: what happened on this page -->
       <section class="hero" id="siteCard" aria-live="polite">
-        <div class="pause-ribbon" id="pauseRibbon" hidden>
-          <span class="pause-ribbon-dot" aria-hidden="true"></span>
-          <span class="pause-ribbon-text" id="pauseRibbonText">Paused</span>
-          <button type="button" class="pause-ribbon-resume" id="pauseResumeBtn">Resume</button>
-        </div>
         <div class="ring">
           <svg viewBox="0 0 128 128" aria-hidden="true">
             <circle class="trk" cx="64" cy="64" r="54"/>
@@ -63,6 +58,10 @@
         </div>
         <p class="why" id="siteStateWhy"></p>
       </div>
+      <div class="note" id="pauseRibbon" role="status" hidden>
+        <span id="pauseRibbonText">Paused on this site</span>
+        <button type="button" class="link" id="pauseResumeBtn">Resume</button>
+      </div>
 
       <!-- Repair: broken page ladder and the element picker -->
       <div class="fix">
@@ -78,12 +77,27 @@
       <!-- Detail tabs -->
       <div class="tabs" role="tablist" aria-label="Page detail">
         <button type="button" role="tab" id="tabActivity" aria-selected="true" aria-controls="panelActivity" data-tab="activity">Activity<span class="n" id="activityCount">0</span></button>
+        <button type="button" role="tab" id="tabFirewall" aria-selected="false" aria-controls="panelFirewall" data-tab="firewall" tabindex="-1">Firewall<span class="n" id="firewallTabCount">0</span></button>
         <button type="button" role="tab" id="tabFrames" aria-selected="false" aria-controls="panelFrames" data-tab="frames" tabindex="-1">Frames<span class="n" id="framesTabCount">0</span></button>
       </div>
       <section class="panel" id="panelActivity" role="tabpanel" aria-labelledby="tabActivity">
         <div id="activityFeed" class="feed"></div>
         <p class="empty" id="activityEmpty">Nothing blocked on this site yet.</p>
         <div class="panel-foot"><a href="#" class="link view-all" id="viewAllBlocked">All activity</a></div>
+      </section>
+      <section class="panel" id="panelFirewall" role="tabpanel" aria-labelledby="tabFirewall" hidden>
+        <p class="empty" id="firewallEmpty">No connections seen yet. Reload the page to fill this in.</p>
+        <table class="mx" id="firewallTable" hidden>
+          <colgroup><col><col class="cn"><col class="cn"><col class="cn"><col class="cn"><col class="cn"></colgroup>
+          <thead><tr><th scope="col">Host</th><th scope="col">All</th><th scope="col">Script</th><th scope="col">Frame</th><th scope="col">XHR</th><th scope="col">Image</th></tr></thead>
+          <tbody id="firewallBody"></tbody>
+        </table>
+        <div class="mxkey" id="firewallKey" hidden><span>Dashed: from filter lists</span><span>Solid: your rule</span><span>Click a cell to flip it</span></div>
+        <div class="commit" id="firewallCommit" hidden>
+          <b id="firewallChanges">0 changes</b><span id="firewallScope">on this site</span>
+          <span class="sp"><button type="button" class="btn" id="firewallRevert">Revert</button><button type="button" class="btn pri" id="firewallSave">Save and reload</button></span>
+        </div>
+        <div class="panel-foot" id="firewallFoot" hidden><button type="button" class="link" id="firewallReset">Clear my rules for this site</button></div>
       </section>
       <section class="panel" id="panelFrames" role="tabpanel" aria-labelledby="tabFrames" hidden>
         <p class="empty" id="framesEmpty">No third-party frames on this page.</p>
@@ -106,22 +120,24 @@
       <details class="acc site-security-card">
         <summary>Site safety <span class="meta" id="safetyMeta"></span></summary>
         <div class="body" id="siteInfoSection">
-          <button type="button" class="security-main security-main-btn" id="securityMainBtn" aria-expanded="false" aria-controls="certDetailsPanel" title="Certificate details">
-            <div id="siteIcon" class="security-icon-wrap">
-              <svg class="icon icon-secure" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 11V7a5 5 0 0 0-10 0v4"/><rect x="5" y="11" width="14" height="10" rx="2" ry="2"/></svg>
-              <svg class="icon icon-insecure" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 11V7a5 5 0 0 1 9.9-1"/><rect x="5" y="11" width="14" height="10" rx="2" ry="2"/></svg>
-            </div>
-            <div class="security-texts">
-              <span id="securityText" class="security-text">Unknown</span>
-              <span class="security-badge" id="securityBadge">Checking</span>
-              <span class="security-meta">Protocol: <span id="certProtocol">---</span> · Type: <span id="certType">---</span></span>
-            </div>
-            <div id="siteMascot" class="security-mascot" aria-hidden="true">
-              <span class="mascot-happy">[+]</span>
-              <span class="mascot-worried">[!]</span>
-            </div>
-            <svg class="security-expand-chevron" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 1l4 4 4-4"/></svg>
-          </button>
+          <div class="kvs" id="safetyRows">
+            <div class="kv"><span>Connection</span><span id="kvConnection">Checking</span></div>
+            <div class="kv"><span>Server address</span><span class="mono" id="kvIp">Not seen yet</span></div>
+            <div class="kv" id="kvServerRow" hidden><span>Server</span><span class="mono" id="kvServer"></span></div>
+            <div class="kv"><span>Strict HTTPS (HSTS)</span><span id="kvHsts">Unknown</span></div>
+            <div class="kv"><span>Certificate</span><span id="kvCert">Checking</span></div>
+            <div class="kv"><span>Scam risk</span><span><span class="chip" id="kvRisk">Checking</span></span></div>
+            <div class="kv"><span>Other sites contacted</span><span id="kvThird">0</span></div>
+          </div>
+          <div class="hostlist" id="safetyHosts" hidden></div>
+          <div class="row-btns">
+            <button type="button" class="btn" id="securityMainBtn" aria-expanded="false" aria-controls="certDetailsPanel">Certificate details</button>
+            <button type="button" class="btn" id="copyDomainBtn" style="display: none;">Copy domain</button>
+            <button type="button" class="btn btn-danger" id="reportPhishingBtn" style="display: none;">Report scam</button>
+          </div>
+          <div class="legacy-sec" hidden aria-hidden="true">
+            <div id="siteIcon"></div><span id="securityText"></span><span id="securityBadge"></span><span id="certProtocol"></span><span id="certType"></span><div id="siteMascot"></div>
+          </div>
           <div id="certDetailsPanel" class="cert-details-panel" hidden>
             <div id="certOwnerSection" class="cert-owner">
               <span class="cert-owner-title">Certificate owner</span>
@@ -138,10 +154,6 @@
             </div>
             <div id="phishingRiskText" class="phishing-risk-text">Evaluating destination</div>
             <div id="phishingRiskDetails" class="phishing-risk-details">No risk signal available yet.</div>
-            <div class="phishing-risk-actions">
-              <button type="button" class="btn" id="copyDomainBtn" style="display: none;">Copy domain</button>
-              <button type="button" class="btn btn-danger" id="reportPhishingBtn" style="display: none;">Report scam</button>
-            </div>
           </div>
         </div>
       </details>

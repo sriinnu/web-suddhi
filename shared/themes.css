@@ -508,7 +508,7 @@
   --radius-md: 0px;
   --radius-lg: 2px;
   --radius-full: 2px;
-  --line: color-mix(in srgb, var(--fg) 55%, var(--surface));
+  --line: color-mix(in srgb, var(--fg) 30%, var(--surface));
   --line-strong: var(--fg);
 }
 :root[data-palette="newsprint"] {
@@ -565,17 +565,17 @@
   --radius-full: 2px;
 }
 :root[data-palette="receipt"] {
-  --bg: #E9E9E4;
-  --surface: #FFFFFD;
-  --surface2: #E1E1DB;
-  --fg: #161616;
-  --mute: #55554F;
+  --bg: #F1EEE5;
+  --surface: #FFFEF9;
+  --surface2: #E9E4D6;
+  --fg: #1A1916;
+  --mute: #5A564B;
   --accent: #A8122A;
   --accent-fg: #FFFFFF;
   --good: #2F5F2F;
   --warn: #784C00;
   --bad: #8C0F22;
-  --shadow-base: #161616;
+  --shadow-base: #1A1916;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -616,7 +616,7 @@
   --radius-md: 16px;
   --radius-lg: 22px;
   --radius-full: 999px;
-  --line: color-mix(in srgb, var(--fg) 55%, var(--surface));
+  --line: color-mix(in srgb, var(--fg) 30%, var(--surface));
   --line-strong: var(--fg);
 }
 :root[data-palette="ligne-claire"] {

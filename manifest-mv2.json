@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "WebSuddhi",
-  "version": "3.0.6",
+  "version": "3.0.8",
   "description": "Block ads, remove paywalls, strip trackers, and clean up any website. Privacy-first, no tracking.",
   "permissions": [
     "storage",
@@ -32,7 +32,9 @@
       "background/filter-lists.js",
       "background/phishing-detector.js",
       "background/frame-registry.js",
-      "background/frame-blocker.js"
+      "background/frame-blocker.js",
+      "background/connection-log.js",
+      "background/firewall.js"
     ],
     "persistent": true
   },

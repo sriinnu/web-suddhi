@@ -88,7 +88,7 @@
     receipt: {
       name: 'Receipt', note: 'Thermal paper, mono type, red second ink.',
       style: { font: 'mono', shape: 'square', ink: false },
-      light: { bg: '#E9E9E4', surface: '#FFFFFD', surface2: '#E1E1DB', fg: '#161616', mute: '#55554F', accent: '#A8122A', accentFg: '#FFFFFF', good: '#2F5F2F', warn: '#784C00', bad: '#8C0F22' },
+      light: { bg: '#F1EEE5', surface: '#FFFEF9', surface2: '#E9E4D6', fg: '#1A1916', mute: '#5A564B', accent: '#A8122A', accentFg: '#FFFFFF', good: '#2F5F2F', warn: '#784C00', bad: '#8C0F22' },
       dark: { bg: '#101010', surface: '#191918', surface2: '#242422', fg: '#EEEEE7', mute: '#A9A9A1', accent: '#FF7C8C', accentFg: '#2A0008', good: '#9ED39E', warn: '#E8C26A', bad: '#FFA08F' }
     },
     'ligne-claire': {
@@ -227,7 +227,7 @@
         '  --radius-lg: ' + shape.lg + ';', '  --radius-full: ' + shape.full + ';');
     }
     if (style.ink === true) {
-      lines.push('  --line: color-mix(in srgb, var(--fg) 55%, var(--surface));', '  --line-strong: var(--fg);');
+      lines.push('  --line: color-mix(in srgb, var(--fg) 30%, var(--surface));', '  --line-strong: var(--fg);');
     }
     return lines.length ? sel + ' {\n' + lines.join('\n') + '\n}\n' : '';
   }

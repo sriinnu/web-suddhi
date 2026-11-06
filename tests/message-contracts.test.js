@@ -49,7 +49,7 @@ it('wires the frame-engine message types end to end', () => {
   const backgroundSource = readSource('background/background.js');
   const agentSource = readSource('content/frame-agent.js');
 
-  for (const type of ['FRAME_ANNOUNCE', 'FRAME_METRICS', 'FRAME_CHILDREN', 'REPORT_COSMETIC', 'GET_TAB_CENSUS']) {
+  for (const type of ['FRAME_ANNOUNCE', 'FRAME_METRICS', 'FRAME_CHILDREN', 'REPORT_COSMETIC', 'GET_TAB_CENSUS', 'GET_TAB_CONNECTIONS', 'GET_FIREWALL_RULES', 'SET_FIREWALL_RULE', 'RESET_FIREWALL_SITE']) {
     expect(backgroundSource).toContain("case '" + type + "'");
   }
   expect(agentSource).toContain("type: 'FRAME_ANNOUNCE'");
