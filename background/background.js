@@ -17,7 +17,8 @@ try {
       'filter-lists.js',
       'phishing-detector.js',
       'frame-registry.js',
-      'frame-blocker.js'
+      'frame-blocker.js',
+      'scriptlets.js'
     );
   }
 } catch (e) {
