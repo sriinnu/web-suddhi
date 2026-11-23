@@ -19,4 +19,4 @@ jobs:
           fetch-depth: 0
 
       # exec stays off: a PR's receipts and lint config are untrusted code.
-      - uses: sriinnu/omit@46fe58c664065371877d0fbc8eeb9d1618bb28ae # v0.7.0
+      - uses: sriinnu/omit@95e8b60935bee3bcf8da4268558be681548898bf # v0.9.0
